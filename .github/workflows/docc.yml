@@ -1,0 +1,46 @@
+name: Deploy DocC
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+
+      - name: Build DocC
+        run: |
+          swift package --allow-writing-to-directory ./docs \
+            generate-documentation --target TailscaleClient \
+            --output-path ./docs \
+            --transform-for-static-hosting \
+            --hosting-base-path swift-tailscale-client
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

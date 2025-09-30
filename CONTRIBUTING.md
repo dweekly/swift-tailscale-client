@@ -12,8 +12,12 @@ Thanks for your interest in improving this unofficial Swift client for the Tails
 2. Create a feature branch off `main`.
 3. Run the formatter and tests before opening a pull request:
    ```bash
-   swift format lint -r Sources Tests
+   swift format --in-place --recursive Sources Tests
    swift test
+   ```
+   To check formatting without modifying files:
+   ```bash
+   swift format lint --recursive Sources Tests
    ```
 4. If you have Tailscale installed locally, you may run integration tests against a live daemon:
    ```bash

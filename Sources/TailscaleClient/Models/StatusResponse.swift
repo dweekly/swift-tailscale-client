@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 David E. Weekly
+
+
 import Foundation
 
 /// Represents the payload returned from `/localapi/v0/status`.
