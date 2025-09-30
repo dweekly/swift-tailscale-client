@@ -33,6 +33,22 @@ jobs:
             --transform-for-static-hosting \
             --hosting-base-path swift-tailscale-client
 
+          # Create index redirect so base URL works
+          cat > ./docs/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Redirecting to TailscaleClient Documentation</title>
+            <meta http-equiv="refresh" content="0; url=documentation/tailscaleclient/">
+            <link rel="canonical" href="documentation/tailscaleclient/">
+          </head>
+          <body>
+            <p>Redirecting to <a href="documentation/tailscaleclient/">TailscaleClient Documentation</a>...</p>
+          </body>
+          </html>
+          EOF
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
