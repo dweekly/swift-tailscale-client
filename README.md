@@ -9,6 +9,25 @@
 
 `swift-tailscale-client` is a personal, MIT-licensed project by David E. Weekly. It is **not** an official Tailscale product and is not endorsed by Tailscale Inc. The goal is to provide an idiomatic async/await Swift interface to the LocalAPI so Apple-platform apps can query Tailscale state without shelling out to the `tailscale` CLI.
 
+## What This Package Does
+
+This package **connects to an existing tailscaled daemon** to query its state and configuration. It's designed for building monitoring tools, status widgets, dashboards, and developer utilities that work with an existing Tailscale installation.
+
+**This is NOT an embedded Tailscale implementation.** If you need to embed Tailscale directly into your application (making your app its own tailnet node), see Tailscale's official [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift) instead.
+
+### Use swift-tailscale-client when you want to:
+- Build a menu bar app, widget, or dashboard showing Tailscale status
+- Query peer information, connection state, exit nodes from Swift
+- Monitor tailscaled without embedding the full Tailscale implementation
+- Create developer tools that inspect or modify Tailscale configuration
+- Integrate Tailscale status into existing apps (lightweight, pure Swift)
+
+### Use TailscaleKit when you want to:
+- Create a standalone service that joins a tailnet without installing Tailscale system-wide
+- Build an app that acts as its own independent Tailscale node
+- Distribute an application that includes Tailscale functionality
+- Have multiple services with different Tailscale identities on the same device
+
 ## Status
 - **v0.1.0 (in progress):** Provides a `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
 - Future roadmap items (whois, preferences, streaming IPN bus, etc.) are tracked in [`PLAN.md`](PLAN.md).
