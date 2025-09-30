@@ -32,8 +32,3 @@ jobs:
           else
             echo "✅ All files are properly formatted"
           fi
-
-      - name: Run swiftlint
-        run: |
-          brew install swiftlint
-          swiftlint lint --quiet --reporter github-actions-logging

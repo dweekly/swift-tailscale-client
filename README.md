@@ -4,6 +4,7 @@
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20iOS%20%7C%20tvOS%20%7C%20watchOS-lightgray.svg)](https://github.com/dweekly/swift-tailscale-client)
 [![License MIT](https://img.shields.io/github/license/dweekly/swift-tailscale-client)](LICENSE)
 [![CI](https://github.com/dweekly/swift-tailscale-client/workflows/CI/badge.svg)](https://github.com/dweekly/swift-tailscale-client/actions)
+[![Documentation](https://img.shields.io/badge/Documentation-DocC-blue)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/)
 
 > Unofficial Swift 6 client for the Tailscale LocalAPI
 
