@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-
 import XCTest
 
 @testable import TailscaleClient

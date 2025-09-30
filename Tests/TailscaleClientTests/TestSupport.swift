@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-
 import XCTest
 
 extension XCTestCase {
-  func XCTAssertThrowsErrorAsync<T>(
+  func assertThrowsErrorAsync<T>(
     _ expression: @autoclosure () async throws -> T,
     _ verification: (Error) -> Void,
     file: StaticString = #filePath,

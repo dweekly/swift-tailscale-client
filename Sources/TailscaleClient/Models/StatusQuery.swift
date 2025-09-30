@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-
 import Foundation
 
 /// Options that influence how `/localapi/v0/status` responds.

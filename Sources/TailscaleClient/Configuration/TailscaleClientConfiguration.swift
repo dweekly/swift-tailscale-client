@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-
 import Foundation
 
 /// Configuration options controlling how `TailscaleClient` communicates with the LocalAPI.
@@ -15,6 +14,13 @@ public struct TailscaleClientConfiguration: Sendable {
   /// Transport responsible for executing HTTP requests. Defaults to the built-in implementation.
   public var transport: any TailscaleTransport
 
+  /// Creates a new configuration with explicit settings.
+  ///
+  /// - Parameters:
+  ///   - endpoint: The connection endpoint (Unix socket, TCP loopback, or custom URL).
+  ///   - authToken: Optional authentication token for TCP connections.
+  ///   - capabilityVersion: Capability version to advertise to the daemon (defaults to 1).
+  ///   - transport: Transport implementation for executing requests (defaults to URLSessionTailscaleTransport).
   public init(
     endpoint: TailscaleEndpoint,
     authToken: String?,

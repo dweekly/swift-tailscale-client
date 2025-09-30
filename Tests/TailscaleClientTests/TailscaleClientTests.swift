@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-
 import XCTest
 
 @testable import TailscaleClient
@@ -19,7 +18,7 @@ final class TailscaleClientTests: XCTestCase {
       transport: URLSessionTailscaleTransport())
     let client = TailscaleClient(configuration: configuration)
 
-    await XCTAssertThrowsErrorAsync(try await client.status()) { error in
+    await assertThrowsErrorAsync(try await client.status()) { error in
       guard let clientError = error as? TailscaleClientError,
         case .transport(let transportError) = clientError,
         case .networkFailure(let underlying) = transportError
