@@ -1,0 +1,91 @@
+.\" Man page for tailscale-swift
+.\" SPDX-License-Identifier: MIT
+.\" Copyright (c) 2025 David E. Weekly
+.TH TAILSCALE-SWIFT 1 "September 2025" "tailscale-swift" "User Commands"
+.SH NAME
+tailscale-swift \- Development CLI for swift-tailscale-client
+.SH SYNOPSIS
+.B tailscale-swift
+.I <subcommand>
+.RI [ options ]
+.SH DESCRIPTION
+.B tailscale-swift
+is a development-only command-line tool for testing and exploring the
+swift-tailscale-client library. It provides easy access to Tailscale daemon
+status and other diagnostic features.
+.PP
+This tool is not included in the published package and is intended for
+maintainers and developers working on the TailscaleClient library.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help information.
+.SH SUBCOMMANDS
+.TP
+.B status
+Fetch and display current Tailscale status from the local daemon.
+.SH STATUS COMMAND
+.B tailscale-swift status
+.RI [ options ]
+.PP
+Display information about the current Tailscale connection, including backend
+state, version, self node details, network configuration, and peer counts.
+.SS OPTIONS
+.TP
+.B \-v, \-\-verbose
+Include detailed information about all peers.
+.TP
+.B \-h, \-\-help
+Show help for the status command.
+.SS OUTPUT
+The status command displays:
+.IP \(bu 2
+Backend state (running, stopped, needs login, etc.)
+.IP \(bu 2
+Tailscale daemon version
+.IP \(bu 2
+Self node information (hostname, ID, IPs, online status)
+.IP \(bu 2
+Network configuration (Magic DNS suffix, current tailnet)
+.IP \(bu 2
+Peer count and online status
+.PP
+With
+.BR \-\-verbose ,
+detailed information for each peer is shown including hostname, ID, IP addresses,
+and last seen timestamp.
+.SH EXAMPLES
+.TP
+.B tailscale-swift status
+Display basic Tailscale status.
+.TP
+.B tailscale-swift status \-\-verbose
+Display detailed status including all peer information.
+.TP
+.B tailscale-swift \-\-help
+Show general help information.
+.SH REQUIREMENTS
+.IP \(bu 2
+Tailscale daemon must be running locally
+.IP \(bu 2
+macOS 13+ (uses LocalAPI discovery)
+.IP \(bu 2
+Swift 6.1+
+.SH FILES
+.TP
+.I /var/run/tailscale/tailscaled.sock
+Default Unix socket for Tailscale daemon communication on macOS.
+.TP
+.I ~/Library/Group Containers/*.ipn.macos/sameuserproof-*
+macOS-specific LocalAPI discovery location.
+.SH SEE ALSO
+.BR tailscale (8),
+.BR tailscaled (8)
+.PP
+Project homepage: https://github.com/dweekly/swift-tailscale-client
+.SH AUTHORS
+David E. Weekly <david@weekly.org>
+.SH COPYRIGHT
+Copyright \(co 2025 David E. Weekly
+.PP
+Licensed under the MIT License.
