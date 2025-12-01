@@ -29,15 +29,18 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 
 ## v0.1.1 - Polish & Fixes 🚧 (Current)
 
-**Goal:** Address post-release issues and improve documentation
+**Goal:** Improve error handling and developer experience
 
-- [ ] Fix CI swiftlint issues (or remove swiftlint in favor of swift format)
-- [ ] Update CHANGELOG with complete v0.1.0 feature list
-- [ ] Add DocC documentation badge to README
-- [ ] Bug fixes based on community feedback
-- [ ] Improve error messages with contextual information
-
-**Timeline:** 1 week
+### Completed
+- ✅ CI uses `swift format lint` (swiftlint removed)
+- ✅ CHANGELOG.md with comprehensive v0.1.0 feature list
+- ✅ DocC documentation badge in README
+- ✅ Improved error messages with contextual information
+  - Added endpoint context to `unexpectedStatus` and `decoding` errors
+  - Added `bodyPreview` property for debugging response issues
+  - Added specific error types: `socketNotFound`, `connectionRefused`, `malformedResponse`
+  - Implemented `LocalizedError` with `recoverySuggestion` for all error types
+  - Human-readable `description` with actionable guidance
 
 ---
 

@@ -16,6 +16,9 @@ struct UnixSocketTransport {
         return try await Task.detached(priority: .userInitiated) {
           try performSend(request, capabilityVersion: capabilityVersion)
         }.value
+      } catch let error as TailscaleTransportError {
+        // Let our specific transport errors pass through unwrapped
+        throw error
       } catch {
         throw TailscaleTransportError.networkFailure(underlying: error)
       }
@@ -53,7 +56,15 @@ struct UnixSocketTransport {
         }
       }
       guard connectResult == 0 else {
-        throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        let code = POSIXErrorCode(rawValue: errno) ?? .EIO
+        switch code {
+        case .ENOENT:
+          throw TailscaleTransportError.socketNotFound(path: path)
+        case .ECONNREFUSED:
+          throw TailscaleTransportError.connectionRefused(endpoint: "unix:\(path)")
+        default:
+          throw POSIXError(code)
+        }
       }
 
       let requestData = try buildHTTPRequestData(for: request, capabilityVersion: capabilityVersion)
@@ -116,20 +127,24 @@ struct UnixSocketTransport {
 
     private func parseHTTPResponse(from data: Data) throws -> TailscaleResponse {
       guard let separatorRange = data.range(of: Data("\r\n\r\n".utf8)) else {
-        throw POSIXError(.EBADMSG)
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Missing header/body separator (\\r\\n\\r\\n)")
       }
       let headerData = data[..<separatorRange.lowerBound]
       let bodyData = data[separatorRange.upperBound...]
       guard let headerString = String(data: headerData, encoding: .utf8) else {
-        throw POSIXError(.EBADMSG)
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Headers not valid UTF-8")
       }
       let lines = headerString.split(separator: "\r\n", omittingEmptySubsequences: false)
       guard let statusLine = lines.first else {
-        throw POSIXError(.EBADMSG)
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Empty HTTP response")
       }
       let statusComponents = statusLine.split(separator: " ")
       guard statusComponents.count >= 2, let statusCode = Int(statusComponents[1]) else {
-        throw POSIXError(.EBADMSG)
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Invalid status line: '\(statusLine)'")
       }
 
       var headers: [String: String] = [:]

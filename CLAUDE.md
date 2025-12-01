@@ -17,8 +17,8 @@ swift build
 # Format code
 swift format --in-place --recursive Sources/ Tests/
 
-# Lint code
-swiftlint lint
+# Lint code (CI uses swift format lint only)
+swift format lint --recursive Sources/ Tests/
 
 # Run all tests (unit tests with mocked transport only)
 swift test
@@ -36,6 +36,9 @@ swift package --allow-writing-to-directory ./docs \
 
 # Enable LocalAPI discovery debug logging
 TAILSCALE_DISCOVERY_DEBUG=1 swift test
+
+# Run the development CLI tool
+swift run tailscale-swift status
 ```
 
 ## Architecture
@@ -100,20 +103,22 @@ TAILSCALE_DISCOVERY_DEBUG=1 swift test
 - **Documentation**: Add DocC doc comments to all public APIs; include usage examples
 - **Environment variable overrides**: Support them for all configuration (see README table); useful for testing and CI
 
-## Project Status (v0.1.0 MVP)
+## Project Status (v0.1.1)
 
-**Current focus**: Implement rock-solid `TailscaleClient.status()` API with complete test coverage.
+**Current focus**: Polish, bug fixes, and documentation improvements after v0.1.0 release.
 
-**Completed**:
-- Transport abstraction with Unix socket and loopback TCP support
-- macOS LocalAPI discovery (lsof, libproc, filesystem fallback)
-- StatusResponse Codable models
-- Unit and integration test infrastructure
+**v0.1.0 shipped**:
+- Full `/localapi/v0/status` endpoint with strongly-typed models
+- Transport abstraction (Unix socket + TCP loopback)
+- macOS LocalAPI discovery (lsof probe + filesystem fallback)
+- Development CLI tool (`tailscale-swift status`)
+- DocC documentation deployed to GitHub Pages
 
-**Roadmap beyond v0.1.0** (see `PLAN.md`):
-- v0.2.0: `/whois`, `/ping`, `/query-feature` endpoints
-- v0.3.0: Streaming IPN bus support via AsyncSequence
-- v0.4.0+: Preferences management, login/logout flows
+**Roadmap** (see `ROADMAP.md`):
+- v0.1.1: Polish & fixes
+- v0.2.0: `/whois`, `/ping`, `/prefs` endpoints
+- v0.3.0: Taildrop support
+- v0.4.0+: Streaming IPN bus, configuration management
 
 ## File Organization
 

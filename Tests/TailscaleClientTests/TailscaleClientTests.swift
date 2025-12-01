@@ -11,8 +11,9 @@ final class TailscaleClientTests: XCTestCase {
   }
 
   func testStatusFailsGracefullyWhenSocketMissing() async {
+    let socketPath = "/tmp/nonexistent-tailscale.sock"
     let configuration = TailscaleClientConfiguration(
-      endpoint: .unixSocket(path: "/tmp/nonexistent-tailscale.sock"),
+      endpoint: .unixSocket(path: socketPath),
       authToken: nil,
       capabilityVersion: 1,
       transport: URLSessionTailscaleTransport())
@@ -21,14 +22,19 @@ final class TailscaleClientTests: XCTestCase {
     await assertThrowsErrorAsync(try await client.status()) { error in
       guard let clientError = error as? TailscaleClientError,
         case .transport(let transportError) = clientError,
-        case .networkFailure(let underlying) = transportError
+        case .socketNotFound(let path) = transportError
       else {
-        XCTFail("Expected network failure, got: \(error)")
+        XCTFail("Expected socketNotFound error, got: \(error)")
         return
       }
-      let nsError = underlying as NSError
-      XCTAssertEqual(nsError.domain, NSPOSIXErrorDomain)
-      XCTAssertEqual(nsError.code, Int(ENOENT))
+      XCTAssertEqual(path, socketPath)
+      // Verify the error message is helpful
+      XCTAssertTrue(
+        transportError.description.contains("Unix socket not found"),
+        "Error description should mention socket not found")
+      XCTAssertTrue(
+        transportError.recoverySuggestion?.contains("tailscaled") ?? false,
+        "Recovery suggestion should mention tailscaled")
     }
   }
 }

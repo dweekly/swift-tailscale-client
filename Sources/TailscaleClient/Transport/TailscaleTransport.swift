@@ -84,7 +84,59 @@ public enum TailscaleTransportError: Error, Sendable {
   /// The URL could not be constructed from the provided components.
   case invalidURL
   /// A network error occurred. The underlying error provides additional details.
-  case networkFailure(underlying: Error)
+  case networkFailure(underlying: any Error & Sendable)
+  /// The Unix socket could not be found or accessed.
+  case socketNotFound(path: String)
+  /// Connection to the LocalAPI was refused (daemon may not be running).
+  case connectionRefused(endpoint: String)
+  /// The response from the LocalAPI was malformed or could not be parsed.
+  case malformedResponse(detail: String)
+}
+
+extension TailscaleTransportError: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case .unimplemented:
+      return "Transport method not implemented on this platform"
+    case .invalidURL:
+      return "Could not construct valid URL from endpoint configuration"
+    case .networkFailure(let underlying):
+      return "Network failure: \(underlying.localizedDescription)"
+    case .socketNotFound(let path):
+      return
+        "Unix socket not found at '\(path)'. Ensure tailscaled is running or set TAILSCALE_LOCALAPI_SOCKET to the correct path."
+    case .connectionRefused(let endpoint):
+      return
+        "Connection refused to '\(endpoint)'. Ensure the Tailscale daemon is running and accessible."
+    case .malformedResponse(let detail):
+      return "Malformed response from LocalAPI: \(detail)"
+    }
+  }
+}
+
+extension TailscaleTransportError: LocalizedError {
+  public var errorDescription: String? { description }
+
+  public var recoverySuggestion: String? {
+    switch self {
+    case .unimplemented:
+      return "This transport method is only available on macOS/iOS."
+    case .invalidURL:
+      return
+        "Check your endpoint configuration. If using environment variables, verify TAILSCALE_LOCALAPI_URL or TAILSCALE_LOCALAPI_HOST/PORT are valid."
+    case .networkFailure:
+      return "Check your network connection and ensure the Tailscale daemon is running."
+    case .socketNotFound:
+      return
+        "Run 'tailscale status' to verify tailscaled is running. For macOS App Store version, the client auto-discovers the loopback API."
+    case .connectionRefused:
+      return
+        "Start the Tailscale daemon or app. On macOS, open Tailscale from Applications. On Linux, run 'sudo systemctl start tailscaled'."
+    case .malformedResponse:
+      return
+        "This may indicate a version mismatch. Try updating swift-tailscale-client or check if your Tailscale version is supported."
+    }
+  }
 }
 
 /// Default transport implementation using `URLSession` for HTTP and a custom Unix socket transport.

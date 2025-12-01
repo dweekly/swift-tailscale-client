@@ -86,13 +86,14 @@ final class StatusAPITests: XCTestCase {
 
     await assertThrowsErrorAsync(try await client.status()) { error in
       guard let clientError = error as? TailscaleClientError,
-        case .unexpectedStatus(let code, let body) = clientError
+        case .unexpectedStatus(let code, let body, let endpoint) = clientError
       else {
         XCTFail("Expected unexpectedStatus error, got \(error)")
         return
       }
       XCTAssertEqual(code, 500)
       XCTAssertEqual(String(decoding: body, as: UTF8.self), "oops")
+      XCTAssertEqual(endpoint, "/localapi/v0/status")
     }
   }
 
