@@ -5,9 +5,18 @@ import Foundation
 
 /// Primary entry point for interacting with the Tailscale LocalAPI.
 ///
-/// This library is an unofficial, MIT-licensed project by David E. Weekly and is not
-/// endorsed by Tailscale Inc. The initial v0.1.0 release focuses on providing access
-/// to the `/localapi/v0/status` endpoint via an async/await friendly API.
+/// `TailscaleClient` provides async/await access to the Tailscale daemon's LocalAPI,
+/// enabling Swift applications to query status, look up identities, test connectivity,
+/// and fetch metrics without shelling out to the CLI.
+///
+/// ```swift
+/// let client = TailscaleClient()
+/// let status = try await client.status()
+/// let ping = try await client.ping(ip: "100.64.0.5")
+/// ```
+///
+/// > Important: This library is an unofficial, MIT-licensed project by David E. Weekly
+/// > and is not endorsed by Tailscale Inc.
 public actor TailscaleClient {
   /// Configuration applied to each request the client makes.
   public nonisolated let configuration: TailscaleClientConfiguration
@@ -24,6 +33,96 @@ public actor TailscaleClient {
   public func status(query: StatusQuery = .default) async throws -> StatusResponse {
     let endpoint = "/localapi/v0/status"
     let request = TailscaleRequest(path: endpoint, queryItems: query.queryItems)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Looks up identity information for a Tailscale IP address or node key.
+  ///
+  /// - Parameter address: The Tailscale IP address (e.g., "100.64.0.1") or node key to look up.
+  /// - Returns: The node and user profile information for the queried address.
+  /// - Throws: `TailscaleClientError` if the lookup fails or the address is not found.
+  public func whois(address: String) async throws -> WhoIsResponse {
+    let endpoint = "/localapi/v0/whois"
+    let request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [URLQueryItem(name: "addr", value: address)]
+    )
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Fetches the current Tailscale preferences for this node.
+  ///
+  /// - Returns: The current preferences/configuration for the Tailscale node.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func prefs() async throws -> Prefs {
+    let endpoint = "/localapi/v0/prefs"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Fetches Tailscale internal metrics in Prometheus exposition format.
+  ///
+  /// - Returns: Raw metrics text in Prometheus format.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func metrics() async throws -> String {
+    let endpoint = "/localapi/v0/metrics"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRawRequest(request, endpoint: endpoint)
+  }
+
+  /// Pings a Tailscale IP address to test connectivity.
+  ///
+  /// - Parameters:
+  ///   - ip: The Tailscale IP address to ping.
+  ///   - type: The type of ping to perform (default: disco).
+  ///   - size: Optional packet size for disco pings.
+  /// - Returns: The ping result including latency and connection details.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func ping(ip: String, type: PingType = .disco, size: Int? = nil) async throws
+    -> PingResult
+  {
+    let endpoint = "/localapi/v0/ping"
+    var queryItems = [
+      URLQueryItem(name: "ip", value: ip),
+      URLQueryItem(name: "type", value: type.rawValue),
+    ]
+    if let size = size {
+      queryItems.append(URLQueryItem(name: "size", value: String(size)))
+    }
+    let request = TailscaleRequest(method: "POST", path: endpoint, queryItems: queryItems)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  // MARK: - Private Helpers
+
+  private func performRawRequest(_ request: TailscaleRequest, endpoint: String) async throws
+    -> String
+  {
+    let response: TailscaleResponse
+    do {
+      response = try await configuration.transport.send(request, configuration: configuration)
+    } catch let transportError as TailscaleTransportError {
+      throw TailscaleClientError.transport(transportError)
+    }
+
+    guard response.statusCode == 200 else {
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode, body: response.data, endpoint: endpoint)
+    }
+
+    guard let text = String(data: response.data, encoding: .utf8) else {
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode,
+        body: response.data,
+        endpoint: endpoint
+      )
+    }
+    return text
+  }
+
+  private func performRequest<T: Decodable>(_ request: TailscaleRequest, endpoint: String)
+    async throws -> T
+  {
     let response: TailscaleResponse
     do {
       response = try await configuration.transport.send(request, configuration: configuration)
@@ -37,7 +136,7 @@ public actor TailscaleClient {
     }
 
     do {
-      return try JSONDecoder.tailscale().decode(StatusResponse.self, from: response.data)
+      return try JSONDecoder.tailscale().decode(T.self, from: response.data)
     } catch let decodingError as DecodingError {
       throw TailscaleClientError.decoding(decodingError, body: response.data, endpoint: endpoint)
     }

@@ -1,0 +1,51 @@
+{
+  "Node": {
+    "ID": 1234567890123456,
+    "StableID": "nStableExample123",
+    "Name": "example-node.tail-example.ts.net.",
+    "User": 9876543210987654,
+    "Key": "nodekey:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "KeyExpiry": "2025-06-15T12:00:00Z",
+    "Machine": "mkey:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "DiscoKey": "discokey:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "Addresses": [
+      "100.64.0.5/32",
+      "fd7a:115c:a1e0:ab12:4843:cd96:6200:0005/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.5/32",
+      "fd7a:115c:a1e0:ab12:4843:cd96:6200:0005/128"
+    ],
+    "Endpoints": [
+      "203.0.113.50:41641",
+      "192.168.1.100:41641"
+    ],
+    "DERP": "https://controlplane.tailscale.com/derpmap/default",
+    "Hostinfo": {
+      "OS": "darwin",
+      "OSVersion": "14.0.0",
+      "Hostname": "example-macbook",
+      "DeviceModel": "MacBookPro18,3",
+      "TailscaleVersion": "1.99.0",
+      "SSH": true
+    },
+    "Created": "2024-01-15T10:30:00Z",
+    "Tags": ["tag:server", "tag:production"],
+    "Expired": false,
+    "Online": true,
+    "LastSeen": "2024-12-01T08:00:00Z",
+    "ComputedName": "example-macbook",
+    "ComputedNameWithHost": "example-macbook (example-node)",
+    "IsExitNode": false
+  },
+  "UserProfile": {
+    "ID": 9876543210987654,
+    "LoginName": "admin@example.com",
+    "DisplayName": "Admin User",
+    "ProfilePicURL": "https://example.com/admin-avatar.png"
+  },
+  "CapMap": {
+    "https://tailscale.com/cap/ssh": null,
+    "tailnet.maxKeyDuration": [86400]
+  }
+}

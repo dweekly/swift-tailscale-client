@@ -44,3 +44,13 @@ enum TailscaleDateParser {
     return formatter.date(from: string)
   }
 }
+
+extension KeyedDecodingContainer {
+  /// Decodes a Tailscale ISO8601 date string if present.
+  func decodeTailscaleDateIfPresent(forKey key: Key) throws -> Date? {
+    guard let isoString = try decodeIfPresent(String.self, forKey: key) else {
+      return nil
+    }
+    return TailscaleDateParser.parse(isoString)
+  }
+}

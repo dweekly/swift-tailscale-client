@@ -8,77 +8,6 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 
 ---
 
-## v0.1.0 - Status API ✅ (Released)
-
-**Goal:** Rock-solid foundation with comprehensive `/localapi/v0/status` support
-
-### Completed Features
-- ✅ Full `/localapi/v0/status` endpoint implementation
-- ✅ Comprehensive Swift models for all status response fields
-- ✅ Transport abstraction (Unix socket + TCP loopback)
-- ✅ macOS LocalAPI discovery (lsof probe + filesystem fallback)
-- ✅ Environment variable overrides for all configuration
-- ✅ Strict Swift 6 concurrency with full Sendable conformance
-- ✅ Comprehensive test suite (unit + integration tests)
-- ✅ CI/CD with GitHub Actions
-- ✅ DocC documentation site deployed to GitHub Pages
-- ✅ Development CLI tool (`tailscale-swift status`)
-- ✅ Man pages and inline help
-
----
-
-## v0.1.1 - Polish & Fixes ✅ (Released)
-
-**Goal:** Improve error handling and developer experience
-
-### Completed
-- ✅ CI uses `swift format lint` (swiftlint removed)
-- ✅ CHANGELOG.md with comprehensive v0.1.0 feature list
-- ✅ DocC documentation badge in README
-- ✅ Improved error messages with contextual information
-  - Added endpoint context to `unexpectedStatus` and `decoding` errors
-  - Added `bodyPreview` property for debugging response issues
-  - Added specific error types: `socketNotFound`, `connectionRefused`, `malformedResponse`
-  - Implemented `LocalizedError` with `recoverySuggestion` for all error types
-  - Human-readable `description` with actionable guidance
-- ✅ CLI exit node display improvements
-  - Show active exit node with connection quality details
-  - Display connection type (direct IP:port vs DERP relay)
-  - Show last WireGuard handshake time and traffic stats
-  - List available exit nodes in verbose mode
-
----
-
-## v0.2.0 - Essential Monitoring 🚧 (Current)
-
-**Goal:** Add critical endpoints for monitoring and tooling use cases
-
-### Library Features
-- [ ] **`/localapi/v0/whois`** - Identity lookup by IP or node key
-  - `WhoIsResponse`, `WhoIsNode`, `WhoIsUserProfile` models
-  - Essential for "who is this peer?" queries
-- [ ] **`/localapi/v0/prefs` (GET)** - Read current preferences
-  - `Prefs` model with all configuration settings
-  - Enable config inspection without modifying state
-- [ ] **`/localapi/v0/ping`** - Network connectivity diagnostics
-  - `PingRequest`, `PingResponse` models
-  - POST endpoint for testing peer-to-peer connectivity
-
-### CLI Features
-- [ ] `tailscale-swift whois <ip-or-node>` - Lookup identity
-- [ ] `tailscale-swift ping <ip>` - Test connectivity
-- [ ] `tailscale-swift prefs` - Display current preferences
-
-### Testing & Documentation
-- [ ] JSON fixtures for all new endpoints
-- [ ] Integration tests with real daemon
-- [ ] DocC tutorials for whois/ping/prefs
-- [ ] Update README with examples
-
-**Timeline:** 2-3 weeks
-
----
-
 ## v0.3.0 - Taildrop Support
 
 **Goal:** File transfer monitoring and basic Taildrop operations
@@ -100,30 +29,20 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 - [ ] Simple SwiftUI menu bar app showing status + Taildrop
 - [ ] Demonstrates package integration patterns
 
-**Timeline:** 2-3 weeks
-
 ---
 
-## v0.4.0 - Streaming & Advanced Diagnostics
+## v0.4.0 - Streaming & Real-time Updates
 
-**Goal:** Real-time updates and deep system insights
+**Goal:** Real-time updates via IPN bus streaming
 
 ### Library Features
 - [ ] **`/localapi/v0/watch-ipn-bus`** - Stream status changes
   - AsyncSequence-based streaming API
   - Models for IPN bus messages (`Notify`, `BrowseToURL`, etc.)
   - Automatic reconnection handling
-- [ ] **`/localapi/v0/metrics`** - Internal performance metrics
-- [ ] **`/localapi/v0/health`** - System health checks
-  - Warnings, errors, configuration issues
-- [ ] Enhanced error handling with request tracing
 
 ### CLI Features
 - [ ] `tailscale-swift watch` - Stream live status updates
-- [ ] `tailscale-swift health` - Display health warnings
-- [ ] `tailscale-swift metrics` - Show performance metrics
-
-**Timeline:** 3-4 weeks
 
 ---
 
@@ -146,8 +65,6 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 - [ ] `tailscale-swift set shields-up` - Enable/disable shields
 - [ ] `tailscale-swift routes` - Display routing configuration
 - [ ] `tailscale-swift advertise-routes <cidr>` - Advertise subnet
-
-**Timeline:** 2-3 weeks
 
 ---
 

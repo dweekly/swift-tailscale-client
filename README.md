@@ -30,9 +30,10 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - Have multiple services with different Tailscale identities on the same device
 
 ## Status
-- **v0.1.1 (current):** Improved error handling with actionable messages, CLI exit node display with connection quality details.
+- **v0.2.0 (in development):** Added `whois()`, `prefs()`, `ping()`, and `metrics()` endpoints. Pure Swift libproc-based LocalAPI discovery (no shell-outs). Comprehensive test coverage.
+- **v0.1.1:** Improved error handling with actionable messages, CLI exit node display with connection quality details.
 - **v0.1.0:** `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
-- Future roadmap items (whois, ping, preferences, streaming IPN bus, etc.) are tracked in [`ROADMAP.md`](ROADMAP.md).
+- Future roadmap items (Taildrop, streaming IPN bus, etc.) are tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Installation
 Add the package to your `Package.swift` dependencies (once published):
@@ -46,26 +47,57 @@ Add the package to your `Package.swift` dependencies (once published):
 import TailscaleClient
 
 let client = TailscaleClient()
+
+// Get current status
 let status = try await client.status()
 print(status.selfNode?.hostName ?? "unknown")
+
+// Look up a peer by IP
+let whoIs = try await client.whois(address: "100.64.0.5")
+print(whoIs.userProfile?.displayName ?? "unknown user")
+
+// Ping a peer
+let ping = try await client.ping(ip: "100.64.0.5")
+if ping.isSuccess {
+    print("Latency: \(ping.latencyDescription ?? "n/a")")
+}
+
+// Get node preferences
+let prefs = try await client.prefs()
+print("Exit node: \(prefs.exitNodeID ?? "none")")
+
+// Fetch Prometheus metrics
+let metrics = try await client.metrics()
+print(metrics)
 ```
+
+## API Reference
+
+| Method | Description |
+|--------|-------------|
+| `status(query:)` | Fetch current node status, peers, and tailnet info |
+| `whois(address:)` | Look up identity information for a Tailscale IP |
+| `prefs()` | Get current node preferences and configuration |
+| `ping(ip:type:size:)` | Ping a peer to test connectivity and measure latency |
+| `metrics()` | Fetch internal metrics in Prometheus exposition format |
+
+All methods are async and throw `TailscaleClientError` on failure. Errors include actionable recovery suggestions.
 
 ### Configuration Overrides
 ### macOS LocalAPI Discovery
-On macOS the client automatically discovers the App Store GUI's loopback LocalAPI using a two-tier approach:
-1. **lsof probe** (~140ms): Inspects open files of `IPNExtension`/`Tailscale` processes to find the `sameuserproof-<port>-<token>` file
-2. **Filesystem fallback** (~2s): Enumerates `~/Library/Group Containers/...` directories when lsof is unavailable
+On macOS the client automatically discovers the App Store GUI's loopback LocalAPI by locating `sameuserproof-<port>-<token>` files. Discovery uses a two-tier strategy:
 
-This ensures the client works without additional configuration in most scenarios.
+1. **libproc** (primary, ~5ms): Uses `proc_pidinfo` to find the IPNExtension process's open files. This works because IPNExtension runs as the current user.
+2. **Filesystem scan** (fallback, ~50-200ms): Enumerates `~/Library/Group Containers` for Tailscale directories.
 
 Useful environment variables:
 
 | Environment variable | Purpose |
 | --- | --- |
-| `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions (pids scanned, directories searched, selected port/token prefix). |
+| `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions. |
 | `TAILSCALE_SAMEUSER_PATH` | Override with an explicit path to a `sameuserproof-*` file. |
-| `TAILSCALE_SAMEUSER_DIR` | Restrict filesystem fallback scanning to a specific directory. |
-| `TAILSCALE_SKIP_LSOF` | Set to `1` to disable the `lsof` probe and use filesystem scanning only. |
+| `TAILSCALE_SAMEUSER_DIR` | Restrict scanning to a specific directory. |
+| `TAILSCALE_SKIP_LIBPROC` | Set to `1` to skip libproc and use filesystem scan only. |
 
 `TailscaleClient` discovers how to talk to the LocalAPI using environment variables. These are handy when running in CI or when the default Unix socket path is unavailable.
 
