@@ -5,9 +5,18 @@ import Foundation
 
 /// Primary entry point for interacting with the Tailscale LocalAPI.
 ///
-/// This library is an unofficial, MIT-licensed project by David E. Weekly and is not
-/// endorsed by Tailscale Inc. The initial v0.1.0 release focuses on providing access
-/// to the `/localapi/v0/status` endpoint via an async/await friendly API.
+/// `TailscaleClient` provides async/await access to the Tailscale daemon's LocalAPI,
+/// enabling Swift applications to query status, look up identities, test connectivity,
+/// and fetch metrics without shelling out to the CLI.
+///
+/// ```swift
+/// let client = TailscaleClient()
+/// let status = try await client.status()
+/// let ping = try await client.ping(ip: "100.64.0.5")
+/// ```
+///
+/// > Important: This library is an unofficial, MIT-licensed project by David E. Weekly
+/// > and is not endorsed by Tailscale Inc.
 public actor TailscaleClient {
   /// Configuration applied to each request the client makes.
   public nonisolated let configuration: TailscaleClientConfiguration
