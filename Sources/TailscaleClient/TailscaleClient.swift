@@ -24,6 +24,38 @@ public actor TailscaleClient {
   public func status(query: StatusQuery = .default) async throws -> StatusResponse {
     let endpoint = "/localapi/v0/status"
     let request = TailscaleRequest(path: endpoint, queryItems: query.queryItems)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Looks up identity information for a Tailscale IP address or node key.
+  ///
+  /// - Parameter address: The Tailscale IP address (e.g., "100.64.0.1") or node key to look up.
+  /// - Returns: The node and user profile information for the queried address.
+  /// - Throws: `TailscaleClientError` if the lookup fails or the address is not found.
+  public func whois(address: String) async throws -> WhoIsResponse {
+    let endpoint = "/localapi/v0/whois"
+    let request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [URLQueryItem(name: "addr", value: address)]
+    )
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Fetches the current Tailscale preferences for this node.
+  ///
+  /// - Returns: The current preferences/configuration for the Tailscale node.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func prefs() async throws -> Prefs {
+    let endpoint = "/localapi/v0/prefs"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  // MARK: - Private Helpers
+
+  private func performRequest<T: Decodable>(_ request: TailscaleRequest, endpoint: String)
+    async throws -> T
+  {
     let response: TailscaleResponse
     do {
       response = try await configuration.transport.send(request, configuration: configuration)
@@ -37,7 +69,7 @@ public actor TailscaleClient {
     }
 
     do {
-      return try JSONDecoder.tailscale().decode(StatusResponse.self, from: response.data)
+      return try JSONDecoder.tailscale().decode(T.self, from: response.data)
     } catch let decodingError as DecodingError {
       throw TailscaleClientError.decoding(decodingError, body: response.data, endpoint: endpoint)
     }

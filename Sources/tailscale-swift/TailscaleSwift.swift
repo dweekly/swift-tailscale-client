@@ -9,6 +9,6 @@ struct TailscaleSwift: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "tailscale-swift",
     abstract: "Development CLI for swift-tailscale-client",
-    subcommands: [Status.self]
+    subcommands: [Status.self, WhoIs.self, PrefsCommand.self]
   )
 }

@@ -309,12 +309,3 @@ public struct ClientVersionStatus: Sendable, Decodable {
     case runningLatest = "RunningLatest"
   }
 }
-
-extension KeyedDecodingContainer where K: CodingKey {
-  fileprivate func decodeTailscaleDateIfPresent(forKey key: K) throws -> Date? {
-    guard let isoString = try decodeIfPresent(String.self, forKey: key) else {
-      return nil
-    }
-    return TailscaleDateParser.parse(isoString)
-  }
-}
