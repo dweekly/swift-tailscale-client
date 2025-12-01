@@ -59,14 +59,14 @@ swift run tailscale-swift status
 
 3. **macOS Platform Discovery** (`Platform/MacClientInfo.swift`)
    - Two-tier discovery strategy for locating `sameuserproof-<port>-<token>` files:
-     1. **lsof probe** (PRIMARY): Runs `/usr/sbin/lsof -n -a -c IPNExtension -F n` to find open files (~140ms)
-        - Works because lsof is Apple-signed with special entitlements (`anchor apple`, `com.apple.rootless.datavault.metadata`)
-        - Parses the `-F n` (field output) format to extract file paths
-     2. **Filesystem fallback**: Enumerates `~/Library/Group Containers` and `/Library/Group Containers` (~2s)
-        - Used when lsof is unavailable or disabled via `TAILSCALE_SKIP_LSOF=1`
-   - Respects `TAILSCALE_SAMEUSER_PATH`, `TAILSCALE_SAMEUSER_DIR`, and `TAILSCALE_SKIP_LSOF` environment variables
+     1. **libproc** (PRIMARY): Uses `proc_pidinfo` to find IPNExtension's open files (~5ms)
+        - Works because IPNExtension runs as the current user, allowing fd inspection
+        - Uses `proc_listallpids` + `proc_pidpath` to find the process
+     2. **Filesystem fallback**: Enumerates Group Containers directories (~50-200ms)
+        - Used when libproc fails or disabled via `TAILSCALE_SKIP_LIBPROC=1`
+   - Respects `TAILSCALE_SAMEUSER_PATH`, `TAILSCALE_SAMEUSER_DIR`, and `TAILSCALE_SKIP_LIBPROC` environment variables
    - Use `TAILSCALE_DISCOVERY_DEBUG=1` for verbose logging to stderr
-   - Note: libproc APIs (`proc_pidfdinfo`) were considered but fail due to SIP restrictions on cross-process file descriptor inspection
+   - Pure Swift implementation using Darwin APIs with no shell-outs or subprocesses
 
 4. **Models** (`Models/`)
    - `StatusResponse`: Strongly-typed Codable models mirroring LocalAPI JSON responses
@@ -103,20 +103,23 @@ swift run tailscale-swift status
 - **Documentation**: Add DocC doc comments to all public APIs; include usage examples
 - **Environment variable overrides**: Support them for all configuration (see README table); useful for testing and CI
 
-## Project Status (v0.1.1)
+## Project Status (v0.2.0-dev)
 
-**Current focus**: Polish, bug fixes, and documentation improvements after v0.1.0 release.
+**Current focus**: Implementing additional LocalAPI endpoints for monitoring and diagnostics.
 
-**v0.1.0 shipped**:
-- Full `/localapi/v0/status` endpoint with strongly-typed models
-- Transport abstraction (Unix socket + TCP loopback)
-- macOS LocalAPI discovery (lsof probe + filesystem fallback)
-- Development CLI tool (`tailscale-swift status`)
-- DocC documentation deployed to GitHub Pages
+**v0.1.1 shipped**:
+- Improved error handling with actionable messages
+- CLI exit node display with connection quality details
+
+**v0.2.0 in progress** (feature/v0.2.0-monitoring branch):
+- `/whois` endpoint for identity lookup
+- `/prefs` endpoint for node preferences
+- `/ping` endpoint for connectivity testing
+- `/metrics` endpoint for Prometheus-format metrics
+- CLI commands for all new endpoints
+- libproc-based discovery (replaces lsof shell-out)
 
 **Roadmap** (see `ROADMAP.md`):
-- v0.1.1: Polish & fixes
-- v0.2.0: `/whois`, `/ping`, `/prefs` endpoints
 - v0.3.0: Taildrop support
 - v0.4.0+: Streaming IPN bus, configuration management
 

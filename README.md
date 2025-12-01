@@ -52,20 +52,19 @@ print(status.selfNode?.hostName ?? "unknown")
 
 ### Configuration Overrides
 ### macOS LocalAPI Discovery
-On macOS the client automatically discovers the App Store GUI's loopback LocalAPI using a two-tier approach:
-1. **lsof probe** (~140ms): Inspects open files of `IPNExtension`/`Tailscale` processes to find the `sameuserproof-<port>-<token>` file
-2. **Filesystem fallback** (~2s): Enumerates `~/Library/Group Containers/...` directories when lsof is unavailable
+On macOS the client automatically discovers the App Store GUI's loopback LocalAPI by locating `sameuserproof-<port>-<token>` files. Discovery uses a two-tier strategy:
 
-This ensures the client works without additional configuration in most scenarios.
+1. **libproc** (primary, ~5ms): Uses `proc_pidinfo` to find the IPNExtension process's open files. This works because IPNExtension runs as the current user.
+2. **Filesystem scan** (fallback, ~50-200ms): Enumerates `~/Library/Group Containers` for Tailscale directories.
 
 Useful environment variables:
 
 | Environment variable | Purpose |
 | --- | --- |
-| `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions (pids scanned, directories searched, selected port/token prefix). |
+| `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions. |
 | `TAILSCALE_SAMEUSER_PATH` | Override with an explicit path to a `sameuserproof-*` file. |
-| `TAILSCALE_SAMEUSER_DIR` | Restrict filesystem fallback scanning to a specific directory. |
-| `TAILSCALE_SKIP_LSOF` | Set to `1` to disable the `lsof` probe and use filesystem scanning only. |
+| `TAILSCALE_SAMEUSER_DIR` | Restrict scanning to a specific directory. |
+| `TAILSCALE_SKIP_LIBPROC` | Set to `1` to skip libproc and use filesystem scan only. |
 
 `TailscaleClient` discovers how to talk to the LocalAPI using environment variables. These are handy when running in CI or when the default Unix socket path is unavailable.
 
