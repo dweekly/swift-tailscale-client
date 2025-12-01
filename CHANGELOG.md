@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-12-01
+
+### Improved
+
+#### Error Handling
+- Added specific transport error types for better diagnostics:
+  - `socketNotFound(path:)` - Unix socket doesn't exist
+  - `connectionRefused(endpoint:)` - Daemon not listening
+  - `malformedResponse(detail:)` - HTTP response parsing failed
+- Added endpoint context to `unexpectedStatus` and `decoding` errors
+- Added `bodyPreview` property on `TailscaleClientError` for debugging (truncates to 500 chars)
+- Implemented `LocalizedError` protocol with `recoverySuggestion` for all error types
+- Human-readable error descriptions with actionable guidance
+
+#### CLI Exit Node Display
+- Display active exit node prominently when routing through one
+- Show connection quality details:
+  - Connection type (direct IP:port vs DERP relay)
+  - DERP relay location when applicable
+  - Last WireGuard handshake time
+  - Traffic statistics (rx/tx bytes with human-readable formatting)
+- List available exit nodes in verbose mode
+
+### Fixed
+- Transport errors now pass through specific error types instead of wrapping all errors in `networkFailure`
+
 ## [0.1.0] - 2025-09-30
 
 ### Added

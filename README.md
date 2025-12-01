@@ -30,8 +30,9 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - Have multiple services with different Tailscale identities on the same device
 
 ## Status
-- **v0.1.0 (in progress):** Provides a `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
-- Future roadmap items (whois, preferences, streaming IPN bus, etc.) are tracked in [`PLAN.md`](PLAN.md).
+- **v0.1.1 (current):** Improved error handling with actionable messages, CLI exit node display with connection quality details.
+- **v0.1.0:** `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
+- Future roadmap items (whois, ping, preferences, streaming IPN bus, etc.) are tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Installation
 Add the package to your `Package.swift` dependencies (once published):

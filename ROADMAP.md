@@ -27,7 +27,7 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 
 ---
 
-## v0.1.1 - Polish & Fixes 🚧 (Current)
+## v0.1.1 - Polish & Fixes ✅ (Released)
 
 **Goal:** Improve error handling and developer experience
 
@@ -41,10 +41,15 @@ This package connects to existing `tailscaled` daemons to query their state. It 
   - Added specific error types: `socketNotFound`, `connectionRefused`, `malformedResponse`
   - Implemented `LocalizedError` with `recoverySuggestion` for all error types
   - Human-readable `description` with actionable guidance
+- ✅ CLI exit node display improvements
+  - Show active exit node with connection quality details
+  - Display connection type (direct IP:port vs DERP relay)
+  - Show last WireGuard handshake time and traffic stats
+  - List available exit nodes in verbose mode
 
 ---
 
-## v0.2.0 - Essential Monitoring
+## v0.2.0 - Essential Monitoring 🚧 (Current)
 
 **Goal:** Add critical endpoints for monitoring and tooling use cases
 
