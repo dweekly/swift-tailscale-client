@@ -4,6 +4,52 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-01
+
+### Added
+
+#### New Endpoints
+- **`/localapi/v0/whois`** - Identity lookup by Tailscale IP or node key
+  - `WhoIsResponse`, `WhoIsNode`, `WhoIsHostinfo` models
+  - Look up user profile and node info for any peer
+- **`/localapi/v0/prefs`** - Read current node preferences
+  - `Prefs`, `AutoUpdatePrefs`, `AppConnectorPrefs` models
+  - Exit node, DNS, SSH, shields-up, advertised routes configuration
+- **`/localapi/v0/ping`** - Network connectivity diagnostics
+  - `PingResult`, `PingType` models
+  - Support for disco, TSMP, ICMP, and peerAPI ping types
+  - Latency measurement with human-readable formatting
+  - Direct vs DERP relay detection
+- **`/localapi/v0/metrics`** - Internal Tailscale metrics
+  - Returns Prometheus exposition format
+  - Useful for monitoring and observability
+
+#### CLI Commands
+- `tailscale-swift whois <ip>` - Look up identity for a Tailscale IP
+- `tailscale-swift prefs` - Display current node preferences
+- `tailscale-swift ping <ip> [-c count] [-t type]` - Test connectivity with latency stats
+- `tailscale-swift health` - Display health warnings from status
+- `tailscale-swift metrics [--filter pattern]` - Show internal metrics
+
+#### Testing
+- Comprehensive unit tests for all new models (WhoIsResponse, Prefs, PingResult)
+- Error handling tests covering all error types and recovery suggestions
+- Expanded integration tests (17 tests covering all endpoints)
+- Test coverage improved from 44% to 66%
+
+### Changed
+
+#### LocalAPI Discovery
+- **Replaced lsof shell-out with pure Swift libproc implementation**
+  - Uses `proc_pidinfo` and `proc_pidfdinfo` Darwin APIs
+  - ~10x faster (~5ms vs ~50ms)
+  - No subprocess spawning
+  - Added `TAILSCALE_SKIP_LIBPROC=1` env var for fallback
+
+### Fixed
+- Documentation updated to reflect all v0.2.0 capabilities
+- DocC catalog reorganized with proper topic groupings
+
 ## [0.1.1] - 2025-12-01
 
 ### Improved
@@ -45,9 +91,7 @@ All notable changes to this project will be documented in this file. The format 
 #### Transport & Discovery
 - Protocol-oriented `TailscaleTransport` abstraction
 - `URLSessionTailscaleTransport` with Unix socket and TCP loopback support
-- macOS LocalAPI discovery using two-tier approach:
-  - lsof probe (~140ms) scanning IPNExtension/Tailscale processes
-  - Filesystem fallback (~2s) scanning Group Containers
+- macOS LocalAPI discovery with filesystem scanning of Group Containers
 - Custom Unix socket transport using CFSocket on Darwin platforms
 - Automatic injection of `Tailscale-Cap` header and Basic Auth when needed
 
@@ -62,7 +106,6 @@ All notable changes to this project will be documented in this file. The format 
   - `TAILSCALE_DISCOVERY_DEBUG` - Debug logging for discovery process
   - `TAILSCALE_SAMEUSER_PATH` - Explicit sameuserproof file path
   - `TAILSCALE_SAMEUSER_DIR` - Restrict filesystem scanning
-  - `TAILSCALE_SKIP_LSOF` - Disable lsof probe
 - Pluggable transport for testing and custom implementations
 
 #### Development CLI

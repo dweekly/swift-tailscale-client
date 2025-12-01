@@ -8,39 +8,6 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 
 ---
 
-## v0.2.0 - Essential Monitoring 🚧 (Current)
-
-**Goal:** Add critical endpoints for monitoring and tooling use cases
-
-### Library Features
-- [ ] **`/localapi/v0/whois`** - Identity lookup by IP or node key
-  - `WhoIsResponse`, `WhoIsNode`, `WhoIsUserProfile` models
-  - Essential for "who is this peer?" queries
-- [ ] **`/localapi/v0/prefs` (GET)** - Read current preferences
-  - `Prefs` model with all configuration settings
-  - Enable config inspection without modifying state
-- [ ] **`/localapi/v0/ping`** - Network connectivity diagnostics
-  - `PingRequest`, `PingResponse` models
-  - POST endpoint for testing peer-to-peer connectivity
-- [ ] **`/localapi/v0/health`** - System health checks
-  - Warnings, errors, configuration issues
-- [ ] **`/localapi/v0/metrics`** - Internal performance metrics
-
-### CLI Features
-- [ ] `tailscale-swift whois <ip-or-node>` - Lookup identity
-- [ ] `tailscale-swift ping <ip>` - Test connectivity
-- [ ] `tailscale-swift prefs` - Display current preferences
-- [ ] `tailscale-swift health` - Display health warnings
-- [ ] `tailscale-swift metrics` - Show performance metrics
-
-### Testing & Documentation
-- [ ] JSON fixtures for all new endpoints
-- [ ] Integration tests with real daemon
-- [ ] DocC tutorials for new endpoints
-- [ ] Update README with examples
-
----
-
 ## v0.3.0 - Taildrop Support
 
 **Goal:** File transfer monitoring and basic Taildrop operations
