@@ -1,0 +1,8 @@
+{
+  "IP": "100.64.0.6",
+  "NodeIP": "100.64.0.6",
+  "NodeName": "remote-peer",
+  "LatencySeconds": 0.0891,
+  "DERPRegionID": 1,
+  "DERPRegionCode": "sfo"
+}

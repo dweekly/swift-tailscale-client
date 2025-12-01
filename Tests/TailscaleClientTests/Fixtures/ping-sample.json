@@ -1,0 +1,9 @@
+{
+  "IP": "100.64.0.5",
+  "NodeIP": "100.64.0.5",
+  "NodeName": "example-peer",
+  "LatencySeconds": 0.0234,
+  "Endpoint": "203.0.113.50:41641",
+  "DERPRegionID": 0,
+  "DERPRegionCode": ""
+}
