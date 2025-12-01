@@ -51,7 +51,65 @@ public actor TailscaleClient {
     return try await performRequest(request, endpoint: endpoint)
   }
 
+  /// Fetches Tailscale internal metrics in Prometheus exposition format.
+  ///
+  /// - Returns: Raw metrics text in Prometheus format.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func metrics() async throws -> String {
+    let endpoint = "/localapi/v0/metrics"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRawRequest(request, endpoint: endpoint)
+  }
+
+  /// Pings a Tailscale IP address to test connectivity.
+  ///
+  /// - Parameters:
+  ///   - ip: The Tailscale IP address to ping.
+  ///   - type: The type of ping to perform (default: disco).
+  ///   - size: Optional packet size for disco pings.
+  /// - Returns: The ping result including latency and connection details.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func ping(ip: String, type: PingType = .disco, size: Int? = nil) async throws
+    -> PingResult
+  {
+    let endpoint = "/localapi/v0/ping"
+    var queryItems = [
+      URLQueryItem(name: "ip", value: ip),
+      URLQueryItem(name: "type", value: type.rawValue),
+    ]
+    if let size = size {
+      queryItems.append(URLQueryItem(name: "size", value: String(size)))
+    }
+    let request = TailscaleRequest(method: "POST", path: endpoint, queryItems: queryItems)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
   // MARK: - Private Helpers
+
+  private func performRawRequest(_ request: TailscaleRequest, endpoint: String) async throws
+    -> String
+  {
+    let response: TailscaleResponse
+    do {
+      response = try await configuration.transport.send(request, configuration: configuration)
+    } catch let transportError as TailscaleTransportError {
+      throw TailscaleClientError.transport(transportError)
+    }
+
+    guard response.statusCode == 200 else {
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode, body: response.data, endpoint: endpoint)
+    }
+
+    guard let text = String(data: response.data, encoding: .utf8) else {
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode,
+        body: response.data,
+        endpoint: endpoint
+      )
+    }
+    return text
+  }
 
   private func performRequest<T: Decodable>(_ request: TailscaleRequest, endpoint: String)
     async throws -> T
