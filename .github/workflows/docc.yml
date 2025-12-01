@@ -3,8 +3,6 @@ name: Deploy DocC
 on:
   push:
     branches: [ main ]
-    tags:
-      - '*'
   workflow_dispatch:
 
 permissions:
