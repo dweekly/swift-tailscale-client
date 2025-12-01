@@ -13,9 +13,10 @@ import TailscaleClient
 
 let client = TailscaleClient()
 
-// Get current status
+// Get current status and interface name
 let status = try await client.status()
 print(status.selfNode?.hostName ?? "unknown")
+print("Interface: \(status.interfaceName ?? "unknown")")  // e.g., "utun16"
 
 // Look up a peer by IP
 let whoIs = try await client.whois(address: "100.64.0.5")
@@ -53,6 +54,9 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 ### Connectivity Testing
 - ``PingResult``
 - ``PingType``
+
+### Network Interface Discovery
+- ``NetworkInterfaceDiscovery``
 
 ### Transport
 - ``TailscaleTransport``
