@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-12-01
+
+### Added
+
+#### Network Interface Discovery
+- **`NetworkInterfaceDiscovery`** - Identify which TUN interface Tailscale is using
+  - Uses BSD `getifaddrs` API to enumerate system network interfaces
+  - Matches Tailscale IPs against system interfaces to find the TUN (e.g., `utun16`)
+  - `InterfaceInfo` struct with name, address, IPv6 flag, and interface state flags
+- **`StatusResponse.interfaceName`** - Convenient computed property returning interface name
+- **`StatusResponse.interfaceInfo`** - Full interface details including up/running/point-to-point state
+
+#### Testing
+- 17 new unit tests for interface discovery
+- 3 new integration tests validating interface discovery against live daemon
+
 ## [0.2.0] - 2025-12-01
 
 ### Added

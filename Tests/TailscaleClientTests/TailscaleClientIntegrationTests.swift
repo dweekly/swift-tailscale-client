@@ -266,5 +266,67 @@ import XCTest
       let status = try await defaultClient.status()
       XCTAssertNotNil(status.selfNode, "Default configuration should discover LocalAPI")
     }
+
+    // MARK: - Interface Discovery Tests
+
+    func testInterfaceDiscovery() async throws {
+      let status = try await client.status()
+
+      // Should have at least one Tailscale IP
+      guard !status.tailscaleIPs.isEmpty else {
+        throw XCTSkip("No Tailscale IPs available")
+      }
+
+      // Interface discovery should find the TUN interface
+      let interfaceName = status.interfaceName
+      XCTAssertNotNil(interfaceName, "Expected to discover Tailscale interface")
+
+      // The interface should be a utun device on macOS
+      if let name = interfaceName {
+        XCTAssertTrue(
+          name.hasPrefix("utun"),
+          "Expected utun interface, got \(name)")
+        print("Tailscale interface discovered: \(name)")
+      }
+    }
+
+    func testInterfaceInfo() async throws {
+      let status = try await client.status()
+
+      guard !status.tailscaleIPs.isEmpty else {
+        throw XCTSkip("No Tailscale IPs available")
+      }
+
+      // Full interface info should be available
+      let info = status.interfaceInfo
+      XCTAssertNotNil(info, "Expected to get interface info")
+
+      if let info = info {
+        // TUN interfaces should be point-to-point
+        XCTAssertTrue(info.isPointToPoint, "Expected TUN to be point-to-point")
+        XCTAssertTrue(info.isUp, "Expected interface to be up")
+        XCTAssertTrue(info.isRunning, "Expected interface to be running")
+        XCTAssertFalse(info.isLoopback, "TUN should not be loopback")
+        print(
+          "Interface \(info.name): up=\(info.isUp), running=\(info.isRunning), p2p=\(info.isPointToPoint)"
+        )
+      }
+    }
+
+    func testNetworkInterfaceDiscoveryDirectly() async throws {
+      // Test the discovery utility directly
+      let allInterfaces = NetworkInterfaceDiscovery.allInterfaces()
+      XCTAssertFalse(allInterfaces.isEmpty, "Expected at least one network interface")
+
+      // Should have loopback
+      let hasLoopback = allInterfaces.contains { $0.isLoopback }
+      XCTAssertTrue(hasLoopback, "Expected loopback interface")
+
+      // Print all interfaces for debugging
+      for iface in allInterfaces {
+        print(
+          "Interface: \(iface.name) - \(iface.address) (IPv6: \(iface.isIPv6), up: \(iface.isUp))")
+      }
+    }
   }
 #endif

@@ -20,6 +20,31 @@ public struct StatusResponse: Sendable, Decodable {
   public let clientVersion: ClientVersionStatus?
   public let health: [String]
 
+  /// The network interface used by Tailscale (e.g., "utun16").
+  ///
+  /// This property discovers the TUN interface by matching `tailscaleIPs` against
+  /// the system's network interfaces. Returns `nil` if no matching interface is found
+  /// or if the platform doesn't support interface enumeration.
+  ///
+  /// Example:
+  /// ```swift
+  /// let status = try await client.status()
+  /// if let iface = status.interfaceName {
+  ///     print("Tailscale interface: \(iface)")  // e.g., "utun16"
+  /// }
+  /// ```
+  public var interfaceName: String? {
+    NetworkInterfaceDiscovery.tailscaleInterface(matching: tailscaleIPs)?.name
+  }
+
+  /// Full interface information for the Tailscale TUN interface.
+  ///
+  /// Provides additional details beyond just the name, including whether the
+  /// interface is up, running, and its type (point-to-point for TUN).
+  public var interfaceInfo: NetworkInterfaceDiscovery.InterfaceInfo? {
+    NetworkInterfaceDiscovery.tailscaleInterface(matching: tailscaleIPs)
+  }
+
   public init(
     version: String? = nil,
     isTunEnabled: Bool? = nil,

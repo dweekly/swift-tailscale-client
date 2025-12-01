@@ -30,7 +30,8 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - Have multiple services with different Tailscale identities on the same device
 
 ## Status
-- **v0.2.0 (in development):** Added `whois()`, `prefs()`, `ping()`, and `metrics()` endpoints. Pure Swift libproc-based LocalAPI discovery (no shell-outs). Comprehensive test coverage.
+- **v0.2.1:** Network interface discovery - identify which TUN interface (e.g., `utun16`) Tailscale is using via `status.interfaceName`.
+- **v0.2.0:** Added `whois()`, `prefs()`, `ping()`, and `metrics()` endpoints. Pure Swift libproc-based LocalAPI discovery (no shell-outs). Comprehensive test coverage.
 - **v0.1.1:** Improved error handling with actionable messages, CLI exit node display with connection quality details.
 - **v0.1.0:** `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
 - Future roadmap items (Taildrop, streaming IPN bus, etc.) are tracked in [`ROADMAP.md`](ROADMAP.md).
@@ -48,9 +49,10 @@ import TailscaleClient
 
 let client = TailscaleClient()
 
-// Get current status
+// Get current status and interface name
 let status = try await client.status()
 print(status.selfNode?.hostName ?? "unknown")
+print("Interface: \(status.interfaceName ?? "unknown")")  // e.g., "utun16"
 
 // Look up a peer by IP
 let whoIs = try await client.whois(address: "100.64.0.5")
@@ -80,6 +82,11 @@ print(metrics)
 | `prefs()` | Get current node preferences and configuration |
 | `ping(ip:type:size:)` | Ping a peer to test connectivity and measure latency |
 | `metrics()` | Fetch internal metrics in Prometheus exposition format |
+
+| Property | Description |
+|----------|-------------|
+| `StatusResponse.interfaceName` | The TUN interface name (e.g., "utun16") discovered by matching Tailscale IPs |
+| `StatusResponse.interfaceInfo` | Full interface details including up/running state and interface type |
 
 All methods are async and throw `TailscaleClientError` on failure. Errors include actionable recovery suggestions.
 
