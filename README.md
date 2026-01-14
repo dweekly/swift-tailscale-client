@@ -30,11 +30,12 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - Have multiple services with different Tailscale identities on the same device
 
 ## Status
+- **v0.3.0:** IPN bus streaming - `watchIPNBus()` returns an `AsyncThrowingStream` for real-time state change notifications (eliminates polling).
 - **v0.2.1:** Network interface discovery - identify which TUN interface (e.g., `utun16`) Tailscale is using via `status.interfaceName`.
 - **v0.2.0:** Added `whois()`, `prefs()`, `ping()`, and `metrics()` endpoints. Pure Swift libproc-based LocalAPI discovery (no shell-outs). Comprehensive test coverage.
 - **v0.1.1:** Improved error handling with actionable messages, CLI exit node display with connection quality details.
 - **v0.1.0:** `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
-- Future roadmap items (Taildrop, streaming IPN bus, etc.) are tracked in [`ROADMAP.md`](ROADMAP.md).
+- Future roadmap items (DERP map, native STUN probing, DNS diagnostics) are tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Installation
 Add the package to your `Package.swift` dependencies (once published):
@@ -71,6 +72,16 @@ print("Exit node: \(prefs.exitNodeID ?? "none")")
 // Fetch Prometheus metrics
 let metrics = try await client.metrics()
 print(metrics)
+
+// Stream real-time state changes
+for try await notification in try await client.watchIPNBus() {
+    if let state = notification.state {
+        print("State changed: \(state)")
+    }
+    if let engine = notification.engine {
+        print("Traffic: \(engine.rBytes) bytes received")
+    }
+}
 ```
 
 ## API Reference
@@ -82,6 +93,7 @@ print(metrics)
 | `prefs()` | Get current node preferences and configuration |
 | `ping(ip:type:size:)` | Ping a peer to test connectivity and measure latency |
 | `metrics()` | Fetch internal metrics in Prometheus exposition format |
+| `watchIPNBus(options:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`) |
 
 | Property | Description |
 |----------|-------------|

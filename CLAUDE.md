@@ -107,6 +107,9 @@ swift run tailscale-swift status
 - **Error handling**: Provide detailed error context (transport errors include underlying errors, decoding errors include body)
 - **Documentation**: Add DocC doc comments to all public APIs; include usage examples
 - **Environment variable overrides**: Support them for all configuration (see README table); useful for testing and CI
+- **Directory structure**:
+  - `Documentation/` - Project documentation (markdown files, analysis docs, man pages). **Committed to git.**
+  - `docs/` - Generated DocC output. **Gitignored.** Never put project docs here.
 
 ## Project Status (v0.3.0)
 
@@ -126,7 +129,7 @@ swift run tailscale-swift status
 - v0.5.0: DNS diagnostics
 - v0.6.0: Configuration management
 
-**LocalAPI Coverage**: See `docs/LOCALAPI-COVERAGE.md` for comprehensive analysis of all available endpoints, CLI-only features, and implementation strategies.
+**LocalAPI Coverage**: See `Documentation/LOCALAPI-COVERAGE.md` for comprehensive analysis of all available endpoints, CLI-only features, and implementation strategies.
 
 ## File Organization
 
