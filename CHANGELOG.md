@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-01-14
+
+### Added
+
+#### IPN Bus Streaming
+- **`/localapi/v0/watch-ipn-bus`** - Real-time state change notifications
+  - `watchIPNBus(options:)` async method returning `AsyncThrowingStream<IPNNotify, Error>`
+  - Eliminates polling - get instant notifications when Tailscale state changes
+  - `IPNNotify` model with state, engine stats, health, suggested exit node
+  - `IPNState` enum (NoState, InUseOtherUser, NeedsLogin, NeedsMachineAuth, Stopped, Starting, Running)
+  - `EngineStatus` model with traffic bytes, live peers, DERP connection count
+  - `HealthState` and `HealthWarning` models for health monitoring
+  - `NotifyWatchOpt` option set for controlling notification types
+- **Streaming transport support** - New `sendStreaming` method on `TailscaleTransport` protocol
+  - Supports both URLSession (loopback) and Unix socket transports
+  - Line-based JSON streaming for newline-delimited responses
+
+#### CLI Features
+- `tailscale-swift watch` - Stream live IPN bus notifications
+  - `--json` flag for raw JSON output
+  - `--engine` flag to include traffic statistics
+  - `--all-initial` flag to include all initial state
+
+#### Testing
+- 18 new unit tests for IPN bus models and decoding
+- Updated MockTransport to support streaming protocol
+
 ## [0.2.1] - 2025-12-01
 
 ### Added

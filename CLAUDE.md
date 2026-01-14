@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an unofficial, MIT-licensed Swift 6 package providing async/await access to the Tailscale LocalAPI for Apple platforms. The project is in active development toward v0.1.0, which focuses on the `/localapi/v0/status` endpoint.
+This is an unofficial, MIT-licensed Swift 6 package providing async/await access to the Tailscale LocalAPI for Apple platforms. It's designed for building monitoring tools, status widgets, dashboards, and developer utilities that work with an existing Tailscale installation.
 
-**Important**: This is NOT an official Tailscale product and has no affiliation with Tailscale Inc. Maintain this disclaimer in README, DocC, and source headers.
+**Important**: This is NOT an official Tailscale product and has no affiliation with Tailscale Inc. Maintain this disclaimer in README, DocC, and source headers. This is NOT an embedded Tailscale implementation—use official [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift) for that.
 
 ## Build and Test Commands
 
@@ -75,8 +75,13 @@ swift run tailscale-swift status
 
 5. **Client API** (`TailscaleClient.swift`)
    - Public `actor TailscaleClient` providing thread-safe async access
-   - Currently exposes `func status(query:) async throws -> StatusResponse`
+   - Exposes: `status(query:)`, `whois(address:)`, `prefs()`, `ping(ip:type:size:)`, `metrics()`
    - Maps transport errors to `TailscaleClientError` (`.transport`, `.unexpectedStatus`, `.decoding`)
+
+6. **Network Interface Discovery** (`Platform/NetworkInterfaceDiscovery.swift`)
+   - Uses BSD `getifaddrs` to enumerate system interfaces
+   - Matches Tailscale IPs to find the TUN interface (e.g., `utun16`)
+   - Exposed via `StatusResponse.interfaceName` and `StatusResponse.interfaceInfo`
 
 ### Key Patterns
 
@@ -103,25 +108,25 @@ swift run tailscale-swift status
 - **Documentation**: Add DocC doc comments to all public APIs; include usage examples
 - **Environment variable overrides**: Support them for all configuration (see README table); useful for testing and CI
 
-## Project Status (v0.2.0-dev)
+## Project Status (v0.3.0)
 
-**Current focus**: Implementing additional LocalAPI endpoints for monitoring and diagnostics.
+**Current version**: v0.3.0 - IPN Bus Streaming
 
-**v0.1.1 shipped**:
-- Improved error handling with actionable messages
-- CLI exit node display with connection quality details
+**Primary use case**: Network Weather (NWX) macOS app for network diagnostics.
 
-**v0.2.0 in progress** (feature/v0.2.0-monitoring branch):
-- `/whois` endpoint for identity lookup
-- `/prefs` endpoint for node preferences
-- `/ping` endpoint for connectivity testing
-- `/metrics` endpoint for Prometheus-format metrics
-- CLI commands for all new endpoints
-- libproc-based discovery (replaces lsof shell-out)
+**Recent releases**:
+- v0.3.0: IPN bus streaming (`watchIPNBus()`) for real-time state updates
+- v0.2.1: Network interface discovery (`StatusResponse.interfaceName`, `StatusResponse.interfaceInfo`)
+- v0.2.0: Added `whois()`, `prefs()`, `ping()`, `metrics()` endpoints; pure Swift libproc-based discovery
+
+**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`
 
 **Roadmap** (see `ROADMAP.md`):
-- v0.3.0: Taildrop support
-- v0.4.0+: Streaming IPN bus, configuration management
+- v0.4.0: DERP map, exit node suggestions, native STUN probing (netcheck equivalent)
+- v0.5.0: DNS diagnostics
+- v0.6.0: Configuration management
+
+**LocalAPI Coverage**: See `docs/LOCALAPI-COVERAGE.md` for comprehensive analysis of all available endpoints, CLI-only features, and implementation strategies.
 
 ## File Organization
 
@@ -137,18 +142,28 @@ Sources/TailscaleClient/
   Models/                        # Codable response models
     StatusResponse.swift
     StatusQuery.swift
+    WhoIsResponse.swift
+    PrefsResponse.swift
+    PingResult.swift
+    IPNNotify.swift              # IPN bus streaming models
   Platform/                      # Platform-specific helpers
-    MacClientInfo.swift          # macOS loopback discovery
+    MacClientInfo.swift          # macOS loopback discovery (libproc)
+    NetworkInterfaceDiscovery.swift  # TUN interface detection
   Support/                       # Utilities
     DecodingSupport.swift        # JSONDecoder extensions
   TailscaleClient.docc/          # DocC documentation catalog
 
+Sources/tailscale-swift/         # Development CLI tool
+  TailscaleSwift.swift           # Main entry point
+  Status.swift, WhoIs.swift, Prefs.swift, Ping.swift, Health.swift, Metrics.swift
+
 Tests/TailscaleClientTests/
-  TailscaleClientTests.swift
+  *DecodingTests.swift           # JSON decoding tests per model
   StatusAPITests.swift           # Transport and API tests with mocks
-  StatusResponseDecodingTests.swift
-  TailscaleClientConfigurationTests.swift
+  NewEndpointAPITests.swift      # Tests for whois/prefs/ping/metrics
+  ErrorHandlingTests.swift       # Error type and recovery tests
+  NetworkInterfaceDiscoveryTests.swift
   TailscaleClientIntegrationTests.swift  # Gated by TAILSCALE_INTEGRATION=1
-  TestSupport.swift              # XCTest helpers
+  TestSupport.swift              # XCTest helpers (XCTAssertThrowsErrorAsync)
   Fixtures/                      # Sample JSON responses
 ```

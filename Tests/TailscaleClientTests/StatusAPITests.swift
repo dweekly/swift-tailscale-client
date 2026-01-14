@@ -130,6 +130,13 @@ private struct MockTransport: TailscaleTransport {
   {
     try await handler(request, configuration)
   }
+
+  func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+    async throws -> AsyncThrowingStream<Data, Error>
+  {
+    // Not used in these tests
+    throw TailscaleTransportError.unimplemented
+  }
 }
 
 private actor RequestRecorder {

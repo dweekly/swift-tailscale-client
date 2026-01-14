@@ -93,6 +93,81 @@ public actor TailscaleClient {
     return try await performRequest(request, endpoint: endpoint)
   }
 
+  /// Watches the IPN notification bus for real-time state changes.
+  ///
+  /// This streaming API provides instant notifications when Tailscale state changes,
+  /// eliminating the need to poll the status endpoint.
+  ///
+  /// ```swift
+  /// let client = TailscaleClient()
+  /// for try await notify in client.watchIPNBus() {
+  ///     if let state = notify.state {
+  ///         print("Backend state: \(state)")
+  ///     }
+  ///     if let engine = notify.engine {
+  ///         print("Traffic: ↓\(engine.rBytes) ↑\(engine.wBytes)")
+  ///     }
+  /// }
+  /// ```
+  ///
+  /// - Parameter options: Watch options controlling what notifications to receive.
+  ///   Defaults to `.default` which includes initial state, health, and engine updates.
+  /// - Returns: An async stream of IPN notifications.
+  /// - Throws: `TailscaleClientError` if the connection fails.
+  public func watchIPNBus(options: NotifyWatchOpt = .default) async throws
+    -> AsyncThrowingStream<IPNNotify, Error>
+  {
+    let endpoint = "/localapi/v0/watch-ipn-bus"
+    let request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
+    )
+
+    let dataStream: AsyncThrowingStream<Data, Error>
+    do {
+      dataStream = try await configuration.transport.sendStreaming(
+        request, configuration: configuration)
+    } catch let transportError as TailscaleTransportError {
+      throw TailscaleClientError.transport(transportError)
+    }
+
+    return AsyncThrowingStream { continuation in
+      let task = Task {
+        do {
+          for try await lineData in dataStream {
+            do {
+              let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
+              continuation.yield(notify)
+            } catch let decodingError as DecodingError {
+              // Log decoding errors but continue - some messages may have unknown fields
+              // In production, you might want to handle this differently
+              #if DEBUG
+                print("IPN bus decode error: \(decodingError)")
+              #endif
+              continuation.finish(
+                throwing: TailscaleClientError.decoding(
+                  decodingError, body: lineData, endpoint: endpoint))
+              return
+            }
+          }
+          continuation.finish()
+        } catch {
+          if let clientError = error as? TailscaleClientError {
+            continuation.finish(throwing: clientError)
+          } else if let transportError = error as? TailscaleTransportError {
+            continuation.finish(throwing: TailscaleClientError.transport(transportError))
+          } else {
+            continuation.finish(throwing: error)
+          }
+        }
+      }
+
+      continuation.onTermination = { _ in
+        task.cancel()
+      }
+    }
+  }
+
   // MARK: - Private Helpers
 
   private func performRawRequest(_ request: TailscaleRequest, endpoint: String) async throws

@@ -75,6 +75,19 @@ public protocol TailscaleTransport: Sendable {
   /// - Throws: `TailscaleTransportError` if the request fails.
   func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration) async throws
     -> TailscaleResponse
+
+  /// Sends a request and returns a stream of response lines.
+  ///
+  /// Used for streaming endpoints like `/localapi/v0/watch-ipn-bus` that return
+  /// newline-delimited JSON.
+  ///
+  /// - Parameters:
+  ///   - request: The request to send.
+  ///   - configuration: Configuration containing endpoint and authentication details.
+  /// - Returns: An async stream of data lines from the response.
+  /// - Throws: `TailscaleTransportError` if the connection fails.
+  func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+    async throws -> AsyncThrowingStream<Data, Error>
 }
 
 /// Errors that can occur during LocalAPI transport operations.
@@ -167,6 +180,69 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
         unixRequest, capabilityVersion: configuration.capabilityVersion)
     case .loopback, .url:
       return try await sendViaURLSession(request: request, configuration: configuration)
+    }
+  }
+
+  public func sendStreaming(
+    _ request: TailscaleRequest, configuration: TailscaleClientConfiguration
+  ) async throws -> AsyncThrowingStream<Data, Error> {
+    switch configuration.endpoint {
+    case .unixSocket(let path):
+      let unixRequest = enrich(request: request, configuration: configuration)
+      let transport = UnixSocketTransport(path: path)
+      return try await transport.sendStreaming(
+        unixRequest, capabilityVersion: configuration.capabilityVersion)
+    case .loopback, .url:
+      return try await streamViaURLSession(request: request, configuration: configuration)
+    }
+  }
+
+  private func streamViaURLSession(
+    request: TailscaleRequest, configuration: TailscaleClientConfiguration
+  ) async throws -> AsyncThrowingStream<Data, Error> {
+    let urlRequest = try buildURLRequest(
+      for: enrich(request: request, configuration: configuration), configuration: configuration)
+
+    let (bytes, response) = try await session.bytes(for: urlRequest)
+    guard let http = response as? HTTPURLResponse else {
+      throw TailscaleTransportError.networkFailure(underlying: URLError(.badServerResponse))
+    }
+    guard http.statusCode == 200 else {
+      throw TailscaleTransportError.malformedResponse(
+        detail: "Streaming endpoint returned status \(http.statusCode)")
+    }
+
+    return AsyncThrowingStream { continuation in
+      let task = Task {
+        var buffer = Data()
+        do {
+          for try await byte in bytes {
+            buffer.append(byte)
+            // Check for newline - each JSON object is on its own line
+            if byte == UInt8(ascii: "\n") {
+              if !buffer.isEmpty {
+                // Trim the newline and send the line
+                let line = buffer.dropLast()
+                if !line.isEmpty {
+                  continuation.yield(Data(line))
+                }
+                buffer.removeAll(keepingCapacity: true)
+              }
+            }
+          }
+          // Handle any remaining data without trailing newline
+          if !buffer.isEmpty {
+            continuation.yield(buffer)
+          }
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: TailscaleTransportError.networkFailure(underlying: error))
+        }
+      }
+
+      continuation.onTermination = { _ in
+        task.cancel()
+      }
     }
   }
 
