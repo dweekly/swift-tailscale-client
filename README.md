@@ -102,31 +102,48 @@ for try await notification in try await client.watchIPNBus() {
 
 All methods are async and throw `TailscaleClientError` on failure. Errors include actionable recovery suggestions.
 
-### Configuration Overrides
-### macOS LocalAPI Discovery
-On macOS the client automatically discovers the App Store GUI's loopback LocalAPI by locating `sameuserproof-<port>-<token>` files. Discovery uses a two-tier strategy:
+### LocalAPI Discovery
 
-1. **libproc** (primary, ~5ms): Uses `proc_pidinfo` to find the IPNExtension process's open files. This works because IPNExtension runs as the current user.
-2. **Filesystem scan** (fallback, ~50-200ms): Enumerates `~/Library/Group Containers` for Tailscale directories.
+By default, `TailscaleClient()` discovers the LocalAPI via Unix domain sockets, which works with:
+- **Homebrew**: `brew install tailscale` → `/var/run/tailscaled.socket`
+- **System Extension**: MDM-managed → `/Library/Tailscale/Data/tailscaled.sock`
+- **Standalone tailscaled**: Any Unix socket path
 
-Useful environment variables:
+This default behavior does **not** trigger any macOS permission popups.
+
+#### macOS App Store Version
+
+If your users have the **App Store version** of Tailscale (not Homebrew), you must explicitly opt-in to Group Container discovery:
+
+```swift
+// WARNING: This triggers a TCC permission popup on macOS!
+let config = TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)
+let client = TailscaleClient(configuration: config)
+```
+
+When enabled, the library scans Group Containers to find `sameuserproof-<port>-<token>` files. This triggers a macOS popup asking the user to allow access to another app's data. Only enable this if:
+- Your users have the App Store version of Tailscale
+- You have explained to users why this permission is needed
+- Unix socket discovery has failed
+
+#### Environment Variable Overrides
 
 | Environment variable | Purpose |
 | --- | --- |
-| `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions. |
-| `TAILSCALE_SAMEUSER_PATH` | Override with an explicit path to a `sameuserproof-*` file. |
-| `TAILSCALE_SAMEUSER_DIR` | Restrict scanning to a specific directory. |
-| `TAILSCALE_SKIP_LIBPROC` | Set to `1` to skip libproc and use filesystem scan only. |
+| `TAILSCALE_LOCALAPI_SOCKET` | Override Unix socket path |
+| `TAILSCALE_LOCALAPI_PORT` / `TAILSCALE_LOCALAPI_HOST` | Connect via loopback TCP |
+| `TAILSCALE_LOCALAPI_URL` | Full base URL override |
+| `TAILSCALE_LOCALAPI_AUTHKEY` | Auth token for TCP connections |
+| `TAILSCALE_LOCALAPI_CAPABILITY` | Capability version (defaults to `1`) |
+| `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions |
 
-`TailscaleClient` discovers how to talk to the LocalAPI using environment variables. These are handy when running in CI or when the default Unix socket path is unavailable.
+#### App Store Discovery Options (when enabled)
 
 | Environment variable | Purpose |
 | --- | --- |
-| `TAILSCALE_LOCALAPI_SOCKET` | Override the Unix domain socket path (defaults to `/var/run/tailscale/tailscaled.sock`). |
-| `TAILSCALE_LOCALAPI_PORT` / `TAILSCALE_LOCALAPI_HOST` | Connect via loopback TCP (requires `TAILSCALE_LOCALAPI_AUTHKEY`). |
-| `TAILSCALE_LOCALAPI_URL` | Provide a full base URL (e.g. `http://127.0.0.1:41112`). |
-| `TAILSCALE_LOCALAPI_AUTHKEY` | Basic-auth token used when connecting over TCP. |
-| `TAILSCALE_LOCALAPI_CAPABILITY` | Custom capability version to advertise (defaults to `1`). |
+| `TAILSCALE_SAMEUSER_PATH` | Explicit path to `sameuserproof-*` file |
+| `TAILSCALE_SAMEUSER_DIR` | Restrict Group Container scanning to specific directory |
+| `TAILSCALE_SKIP_LIBPROC` | Set to `1` to skip libproc, use filesystem scan only |
 
 ## Testing
 - Unit tests rely on mock transports and sanitized JSON fixtures; run with `swift test`.

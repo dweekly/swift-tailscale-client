@@ -58,15 +58,13 @@ swift run tailscale-swift status
    - On macOS, uses `MacClientInfo` to locate App Store GUI's loopback API
 
 3. **macOS Platform Discovery** (`Platform/MacClientInfo.swift`)
-   - Two-tier discovery strategy for locating `sameuserproof-<port>-<token>` files:
+   - **IMPORTANT**: App Store discovery is disabled by default to avoid TCC popups
+   - Must explicitly opt-in: `TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`
+   - Discovery order (when socket discovery fails and App Store discovery is enabled):
      1. **libproc** (PRIMARY): Uses `proc_pidinfo` to find IPNExtension's open files (~5ms)
-        - Works because IPNExtension runs as the current user, allowing fd inspection
-        - Uses `proc_listallpids` + `proc_pidpath` to find the process
      2. **Filesystem fallback**: Enumerates Group Containers directories (~50-200ms)
-        - Used when libproc fails or disabled via `TAILSCALE_SKIP_LIBPROC=1`
-   - Respects `TAILSCALE_SAMEUSER_PATH`, `TAILSCALE_SAMEUSER_DIR`, and `TAILSCALE_SKIP_LIBPROC` environment variables
+   - Respects `TAILSCALE_SAMEUSER_PATH`, `TAILSCALE_SAMEUSER_DIR`, `TAILSCALE_SKIP_LIBPROC`
    - Use `TAILSCALE_DISCOVERY_DEBUG=1` for verbose logging to stderr
-   - Pure Swift implementation using Darwin APIs with no shell-outs or subprocesses
 
 4. **Models** (`Models/`)
    - `StatusResponse`: Strongly-typed Codable models mirroring LocalAPI JSON responses

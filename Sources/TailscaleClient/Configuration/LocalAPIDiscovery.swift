@@ -22,13 +22,23 @@ struct LocalAPIDiscovery {
 
   private let environment: [String: String]
   private let fileExists: (String) -> Bool
+  private let allowMacOSAppStoreDiscovery: Bool
 
+  /// Creates a new LocalAPI discovery instance.
+  ///
+  /// - Parameters:
+  ///   - environment: Process environment dictionary (defaults to current process environment).
+  ///   - fileExists: Function to check file existence (defaults to FileManager).
+  ///   - allowMacOSAppStoreDiscovery: If `true`, enables scanning Group Containers for the
+  ///     macOS App Store GUI's loopback API. This triggers a TCC permission popup. Defaults to `false`.
   init(
     environment: [String: String] = ProcessInfo.processInfo.environment,
-    fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+    allowMacOSAppStoreDiscovery: Bool = false
   ) {
     self.environment = environment
     self.fileExists = fileExists
+    self.allowMacOSAppStoreDiscovery = allowMacOSAppStoreDiscovery
   }
 
   func discover() -> Result {
@@ -84,19 +94,30 @@ struct LocalAPIDiscovery {
       }
     }
 
-    // 5. macOS App Store GUI loopback (requires Group Container access - may trigger popup)
+    // 5. macOS App Store GUI loopback (requires Group Container access - triggers TCC popup)
     #if os(macOS)
-      if let mac = MacClientInfo().locateSameUserProof() {
+      if allowMacOSAppStoreDiscovery {
         if debug {
-          let tokenPreview = mac.token.prefix(8)
           fputs(
-            "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) token=\(tokenPreview)…\n",
+            "[LocalAPIDiscovery] attempting macOS App Store discovery (TCC popup may appear)\n",
             stderr)
         }
-        return .init(
-          endpoint: .loopback(host: "127.0.0.1", port: mac.port),
-          authToken: mac.token,
-          capabilityVersion: capability)
+        if let mac = MacClientInfo().locateSameUserProof() {
+          if debug {
+            let tokenPreview = mac.token.prefix(8)
+            fputs(
+              "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) token=\(tokenPreview)…\n",
+              stderr)
+          }
+          return .init(
+            endpoint: .loopback(host: "127.0.0.1", port: mac.port),
+            authToken: mac.token,
+            capabilityVersion: capability)
+        }
+      } else if debug {
+        fputs(
+          "[LocalAPIDiscovery] skipping macOS App Store discovery (allowMacOSAppStoreDiscovery=false)\n",
+          stderr)
       }
     #endif
 

@@ -34,8 +34,37 @@ public struct TailscaleClientConfiguration: Sendable {
   }
 
   /// Returns a configuration discovered from the current process environment and platform defaults.
+  ///
+  /// By default, this does NOT attempt to access the macOS App Store GUI's Group Container,
+  /// which would trigger a TCC permission popup. Use `default(allowMacOSAppStoreDiscovery:)`
+  /// if you need to connect to the App Store version of Tailscale.
+  ///
+  /// Discovery order:
+  /// 1. Environment variable overrides (`TAILSCALE_LOCALAPI_URL`, `TAILSCALE_LOCALAPI_SOCKET`, etc.)
+  /// 2. Unix domain sockets (Homebrew: `/var/run/tailscaled.socket`, System: `/Library/Tailscale/Data/tailscaled.sock`)
+  /// 3. Default fallback socket path
   public static var `default`: TailscaleClientConfiguration {
-    let discovery = LocalAPIDiscovery().discover()
+    `default`(allowMacOSAppStoreDiscovery: false)
+  }
+
+  /// Returns a configuration with explicit control over macOS App Store discovery.
+  ///
+  /// - Parameter allowMacOSAppStoreDiscovery: If `true`, enables discovery of the macOS App Store GUI's
+  ///   loopback API by scanning Group Containers. **WARNING:** This will trigger a macOS TCC permission
+  ///   popup asking the user to allow access to another app's data. Only enable this if:
+  ///   - Your users have the App Store version of Tailscale (not Homebrew/standalone)
+  ///   - You have explained to users why this permission is needed
+  ///   - Unix socket discovery has failed
+  ///
+  ///   When `false` (the default), only Unix domain sockets and environment variable overrides are used,
+  ///   which works with Homebrew (`brew install tailscale`) and standalone `tailscaled` installations
+  ///   without any permission popups.
+  ///
+  /// - Returns: A configuration suitable for connecting to the LocalAPI.
+  public static func `default`(allowMacOSAppStoreDiscovery: Bool) -> TailscaleClientConfiguration {
+    let discovery = LocalAPIDiscovery(
+      allowMacOSAppStoreDiscovery: allowMacOSAppStoreDiscovery
+    ).discover()
     return TailscaleClientConfiguration(
       endpoint: discovery.endpoint,
       authToken: discovery.authToken,
