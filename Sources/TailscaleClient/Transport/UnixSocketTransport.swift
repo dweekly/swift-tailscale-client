@@ -160,7 +160,7 @@ struct UnixSocketTransport {
           detail: "Missing header/body separator (\\r\\n\\r\\n)")
       }
       let headerData = data[..<separatorRange.lowerBound]
-      let bodyData = data[separatorRange.upperBound...]
+      var bodyData = Data(data[separatorRange.upperBound...])
       guard let headerString = String(data: headerData, encoding: .utf8) else {
         throw TailscaleTransportError.malformedResponse(
           detail: "Headers not valid UTF-8")
@@ -179,12 +179,58 @@ struct UnixSocketTransport {
       var headers: [String: String] = [:]
       for line in lines.dropFirst() {
         guard let separatorIndex = line.firstIndex(of: ":") else { continue }
-        let name = line[..<separatorIndex]
+        let name = String(line[..<separatorIndex]).lowercased()
         let valueStart = line.index(after: separatorIndex)
         let value = line[valueStart...].trimmingCharacters(in: .whitespaces)
-        headers[String(name)] = value
+        headers[name] = value
       }
-      return TailscaleResponse(statusCode: statusCode, data: Data(bodyData), headers: headers)
+
+      // Handle chunked transfer encoding
+      if headers["transfer-encoding"]?.lowercased() == "chunked" {
+        bodyData = decodeChunked(bodyData)
+      }
+
+      return TailscaleResponse(statusCode: statusCode, data: bodyData, headers: headers)
+    }
+
+    /// Decodes HTTP chunked transfer encoding.
+    private func decodeChunked(_ data: Data) -> Data {
+      var result = Data()
+      var index = data.startIndex
+      let crlf = Data("\r\n".utf8)
+
+      while index < data.endIndex {
+        // Find the end of the chunk size line
+        guard let crlfRange = data[index...].range(of: crlf) else { break }
+
+        // Parse chunk size (hex)
+        let sizeData = data[index..<crlfRange.lowerBound]
+        guard let sizeString = String(data: sizeData, encoding: .utf8),
+          let chunkSize = Int(sizeString.trimmingCharacters(in: .whitespaces), radix: 16)
+        else { break }
+
+        // End of chunks
+        if chunkSize == 0 { break }
+
+        // Move past the size line
+        let chunkStart = crlfRange.upperBound
+
+        // Extract chunk data
+        let chunkEnd =
+          data.index(chunkStart, offsetBy: chunkSize, limitedBy: data.endIndex)
+          ?? data.endIndex
+        result.append(data[chunkStart..<chunkEnd])
+
+        // Move past chunk data and trailing CRLF
+        index = chunkEnd
+        if let nextCRLF = data[index...].range(of: crlf) {
+          index = nextCRLF.upperBound
+        } else {
+          break
+        }
+      }
+
+      return result
     }
 
     private func performStreamingRead(
@@ -268,7 +314,7 @@ struct UnixSocketTransport {
         }
       }
 
-      // Verify we got a 200 response
+      // Parse headers to check for chunked encoding
       guard let headerString = String(data: headerBuffer, encoding: .utf8),
         let statusLine = headerString.split(separator: "\r\n").first
       else {
@@ -282,23 +328,80 @@ struct UnixSocketTransport {
           detail: "Streaming endpoint returned non-200 status")
       }
 
-      // Now read the body line by line
+      // Check if response is chunked
+      let isChunked = headerString.lowercased().contains("transfer-encoding: chunked")
+
+      // Now read the body - handle chunked encoding if needed
       var lineBuffer = Data()
       var readBuffer = [UInt8](repeating: 0, count: 4096)
+
+      // State for chunked decoding
+      var chunkRemaining = 0
+      var readingChunkSize = isChunked
+      var chunkSizeBuffer = Data()
 
       while !Task.isCancelled {
         let readCount = read(fd, &readBuffer, readBuffer.count)
         if readCount > 0 {
-          for i in 0..<readCount {
+          var i = 0
+          while i < readCount {
             let byte = readBuffer[i]
-            lineBuffer.append(byte)
-            if byte == UInt8(ascii: "\n") {
-              // Got a complete line
-              let line = lineBuffer.dropLast()  // Remove newline
-              if !line.isEmpty {
-                continuation.yield(Data(line))
+            i += 1
+
+            if isChunked {
+              if readingChunkSize {
+                // Reading chunk size line
+                chunkSizeBuffer.append(byte)
+                if chunkSizeBuffer.count >= 2,
+                  chunkSizeBuffer[chunkSizeBuffer.count - 2] == UInt8(ascii: "\r"),
+                  byte == UInt8(ascii: "\n")
+                {
+                  // Parse chunk size (remove trailing \r\n)
+                  let sizeData = chunkSizeBuffer.dropLast(2)
+                  if let sizeStr = String(data: sizeData, encoding: .utf8),
+                    let size = Int(sizeStr.trimmingCharacters(in: .whitespaces), radix: 16)
+                  {
+                    chunkRemaining = size
+                    if chunkRemaining == 0 {
+                      // Final chunk - we're done
+                      continuation.finish()
+                      return
+                    }
+                  }
+                  chunkSizeBuffer.removeAll(keepingCapacity: true)
+                  readingChunkSize = false
+                }
+              } else {
+                // Reading chunk data
+                if chunkRemaining > 0 {
+                  lineBuffer.append(byte)
+                  chunkRemaining -= 1
+
+                  // Check for complete JSON line
+                  if byte == UInt8(ascii: "\n") {
+                    let line = lineBuffer.dropLast()  // Remove newline
+                    if !line.isEmpty {
+                      continuation.yield(Data(line))
+                    }
+                    lineBuffer.removeAll(keepingCapacity: true)
+                  }
+                } else {
+                  // Reading trailing \r\n after chunk data
+                  if byte == UInt8(ascii: "\n") {
+                    readingChunkSize = true
+                  }
+                }
               }
-              lineBuffer.removeAll(keepingCapacity: true)
+            } else {
+              // Non-chunked: simple line-by-line reading
+              lineBuffer.append(byte)
+              if byte == UInt8(ascii: "\n") {
+                let line = lineBuffer.dropLast()
+                if !line.isEmpty {
+                  continuation.yield(Data(line))
+                }
+                lineBuffer.removeAll(keepingCapacity: true)
+              }
             }
           }
         } else if readCount == 0 {

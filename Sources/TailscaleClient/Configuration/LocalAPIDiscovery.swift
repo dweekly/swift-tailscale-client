@@ -34,38 +34,63 @@ struct LocalAPIDiscovery {
   func discover() -> Result {
     let capability =
       environment["TAILSCALE_LOCALAPI_CAPABILITY"].flatMap(Int.init) ?? Self.defaultCapability
+    let debug = environment["TAILSCALE_DISCOVERY_DEBUG"] == "1"
 
+    // 1. Explicit URL override
     if let urlString = environment["TAILSCALE_LOCALAPI_URL"],
       let url = URL(string: urlString)
     {
+      if debug { fputs("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_URL: \(urlString)\n", stderr) }
       return .init(
         endpoint: .url(url), authToken: environment["TAILSCALE_LOCALAPI_AUTHKEY"],
         capabilityVersion: capability)
     }
 
+    // 2. Explicit socket path override
     if let socketPath = environment["TAILSCALE_LOCALAPI_SOCKET"], !socketPath.isEmpty {
+      let expanded = Self.expandPath(socketPath)
+      if debug {
+        fputs("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_SOCKET: \(expanded)\n", stderr)
+      }
       return .init(
-        endpoint: .unixSocket(path: Self.expandPath(socketPath)),
+        endpoint: .unixSocket(path: expanded),
         authToken: environment["TAILSCALE_LOCALAPI_AUTHKEY"],
         capabilityVersion: capability)
     }
 
+    // 3. Explicit port/host override
     if let portString = environment["TAILSCALE_LOCALAPI_PORT"],
       let portValue = UInt16(portString)
     {
       let host = environment["TAILSCALE_LOCALAPI_HOST"] ?? "127.0.0.1"
+      if debug {
+        fputs("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_PORT: \(host):\(portValue)\n", stderr)
+      }
       return .init(
         endpoint: .loopback(host: host, port: portValue),
         authToken: environment["TAILSCALE_LOCALAPI_AUTHKEY"],
         capabilityVersion: capability)
     }
 
+    // 4. Check for Unix sockets FIRST (no Group Container access, no scary popup)
+    for candidate in Self.candidateSockets {
+      let expanded = Self.expandPath(candidate.path)
+      if fileExists(expanded) {
+        if debug { fputs("[LocalAPIDiscovery] using Unix socket: \(expanded)\n", stderr) }
+        return .init(
+          endpoint: .unixSocket(path: expanded),
+          authToken: candidate.authToken,
+          capabilityVersion: capability)
+      }
+    }
+
+    // 5. macOS App Store GUI loopback (requires Group Container access - may trigger popup)
     #if os(macOS)
       if let mac = MacClientInfo().locateSameUserProof() {
-        if ProcessInfo.processInfo.environment["TAILSCALE_DISCOVERY_DEBUG"] == "1" {
+        if debug {
           let tokenPreview = mac.token.prefix(8)
           fputs(
-            "[LocalAPIDiscovery] using mac loopback port=\(mac.port) token=\(tokenPreview)…\n",
+            "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) token=\(tokenPreview)…\n",
             stderr)
         }
         return .init(
@@ -75,10 +100,14 @@ struct LocalAPIDiscovery {
       }
     #endif
 
-    let fallback = defaultSocketFallback()
+    // 6. Final fallback to default socket path
+    if debug {
+      fputs(
+        "[LocalAPIDiscovery] falling back to default socket: \(Self.defaultSocketPath)\n", stderr)
+    }
     return .init(
-      endpoint: .unixSocket(path: fallback.path),
-      authToken: fallback.authToken,
+      endpoint: .unixSocket(path: Self.expandPath(Self.defaultSocketPath)),
+      authToken: nil,
       capabilityVersion: capability)
   }
 
@@ -100,8 +129,13 @@ struct LocalAPIDiscovery {
   private static let defaultSocketPath = "/var/run/tailscale/tailscaled.sock"
 
   private static let candidateSockets: [(path: String, authToken: String?)] = [
+    // Homebrew tailscaled (no Group Container access needed!)
+    ("/var/run/tailscaled.socket", nil),
+    // System Extension (MDM-managed)
     ("/Library/Tailscale/Data/tailscaled.sock", nil),
+    // User-level tailscaled
     ("~/Library/Application Support/Tailscale/tailscaled.sock", nil),
+    // Linux/older macOS convention
     ("/var/run/tailscale/tailscaled.sock", nil),
   ]
 }
