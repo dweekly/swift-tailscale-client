@@ -30,6 +30,7 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - Have multiple services with different Tailscale identities on the same device
 
 ## Status
+- **v0.3.1:** Unix socket discovery takes priority (avoids TCC popups); macOS App Store discovery now opt-in; chunked HTTP support for Homebrew tailscaled.
 - **v0.3.0:** IPN bus streaming - `watchIPNBus()` returns an `AsyncThrowingStream` for real-time state change notifications (eliminates polling).
 - **v0.2.1:** Network interface discovery - identify which TUN interface (e.g., `utun16`) Tailscale is using via `status.interfaceName`.
 - **v0.2.0:** Added `whois()`, `prefs()`, `ping()`, and `metrics()` endpoints. Pure Swift libproc-based LocalAPI discovery (no shell-outs). Comprehensive test coverage.

@@ -10,21 +10,21 @@ This package connects to existing `tailscaled` daemons to query their state. It 
 
 ---
 
-## v0.3.0 - Streaming & Real-time Updates
+## v0.3.0 - Streaming & Real-time Updates ✅ (Released)
 
 **Goal:** Eliminate polling with real-time state change notifications
 
 ### Library Features
-- [ ] **`/localapi/v0/watch-ipn-bus`** - Stream status changes
+- [x] **`/localapi/v0/watch-ipn-bus`** - Stream status changes
   - `AsyncSequence`-based streaming API
-  - `Notify` model with State, Health, Engine, NetMap, Prefs fields
-  - Watch options bitmask (initial state, rate limiting, etc.)
-  - Automatic reconnection handling
-- [ ] Models: `Notify`, `EngineStatus`, `NotifyWatchOpt`
+  - `IPNNotify` model with State, Health, Engine, suggested exit node
+  - `NotifyWatchOpt` bitmask (initial state, rate limiting, etc.)
+- [x] Models: `IPNNotify`, `IPNState`, `EngineStatus`, `HealthState`, `NotifyWatchOpt`
 
 ### CLI Features
-- [ ] `tailscale-swift watch` - Stream live status updates
-- [ ] `tailscale-swift watch --json` - JSON output for scripting
+- [x] `tailscale-swift watch` - Stream live status updates
+- [x] `tailscale-swift watch --json` - JSON output for scripting
+- [x] `tailscale-swift watch --engine` - Include traffic statistics
 
 ### Benefits for NWX
 - Instant visibility into connectivity changes
@@ -140,7 +140,7 @@ To maintain focus and avoid scope creep:
 
 ## Implementation Notes
 
-See [`docs/LOCALAPI-COVERAGE.md`](docs/LOCALAPI-COVERAGE.md) for detailed analysis of:
+See [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) for detailed analysis of:
 - All available LocalAPI endpoints
 - CLI-only features and how to replicate them
 - IPN bus message structure

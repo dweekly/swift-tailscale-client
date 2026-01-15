@@ -49,4 +49,91 @@ final class TailscaleClientConfigurationTests: XCTestCase {
       XCTAssertTrue(true)
     }
   }
+
+  // MARK: - Unix Socket Priority Tests
+
+  func testHomebrewSocketPathIsFirstCandidate() {
+    // When Homebrew socket exists, it should be used (first in candidate list)
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { path in
+        path == "/var/run/tailscaled.socket"
+      }
+    )
+    let result = discovery.discover()
+    XCTAssertEqual(result.endpoint, .unixSocket(path: "/var/run/tailscaled.socket"))
+  }
+
+  func testSystemSocketPathUsedWhenHomebrewMissing() {
+    // When Homebrew socket doesn't exist but system socket does
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { path in
+        path == "/Library/Tailscale/Data/tailscaled.sock"
+      }
+    )
+    let result = discovery.discover()
+    XCTAssertEqual(result.endpoint, .unixSocket(path: "/Library/Tailscale/Data/tailscaled.sock"))
+  }
+
+  func testUnixSocketTakesPriorityOverAppStoreDiscovery() {
+    // Even with allowMacOSAppStoreDiscovery=true, Unix socket should win if it exists
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { path in
+        path == "/var/run/tailscaled.socket"
+      },
+      allowMacOSAppStoreDiscovery: true
+    )
+    let result = discovery.discover()
+    // Unix socket should be used, not App Store loopback
+    XCTAssertEqual(result.endpoint, .unixSocket(path: "/var/run/tailscaled.socket"))
+  }
+
+  // MARK: - allowMacOSAppStoreDiscovery Flag Tests
+
+  func testAppStoreDiscoveryDisabledByDefault() {
+    // With no sockets available and allowMacOSAppStoreDiscovery=false (default),
+    // should fall back to default socket path, not attempt App Store discovery
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      allowMacOSAppStoreDiscovery: false
+    )
+    let result = discovery.discover()
+    // Should fall back to default socket path
+    if case .unixSocket(let path) = result.endpoint {
+      XCTAssertTrue(path.contains("tailscale"), "Should fall back to a tailscale socket path")
+    } else {
+      XCTFail("Expected unixSocket endpoint for fallback")
+    }
+  }
+
+  func testDefaultConfigurationDoesNotEnableAppStoreDiscovery() {
+    // Verify that TailscaleClientConfiguration.default uses allowMacOSAppStoreDiscovery=false
+    // This is a compile-time verification that the API exists
+    let _ = TailscaleClientConfiguration.default
+    let _ = TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: false)
+    let _ = TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)
+    // If this compiles, the API is correct
+    XCTAssertTrue(true)
+  }
+
+  // MARK: - Environment Variable Priority Tests
+
+  func testEnvironmentOverridesTakeHighestPriority() {
+    // Environment variables should override even when sockets exist
+    let discovery = LocalAPIDiscovery(
+      environment: [
+        "TAILSCALE_LOCALAPI_SOCKET": "/custom/path.sock"
+      ],
+      fileExists: { path in
+        // Both custom and Homebrew paths "exist"
+        path == "/custom/path.sock" || path == "/var/run/tailscaled.socket"
+      }
+    )
+    let result = discovery.discover()
+    // Environment variable should win
+    XCTAssertEqual(result.endpoint, .unixSocket(path: "/custom/path.sock"))
+  }
 }

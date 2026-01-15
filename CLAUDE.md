@@ -109,16 +109,16 @@ swift run tailscale-swift status
   - `Documentation/` - Project documentation (markdown files, analysis docs, man pages). **Committed to git.**
   - `docs/` - Generated DocC output. **Gitignored.** Never put project docs here.
 
-## Project Status (v0.3.0)
+## Project Status (v0.3.1)
 
-**Current version**: v0.3.0 - IPN Bus Streaming
+**Current version**: v0.3.1 - Unix socket priority, opt-in App Store discovery
 
 **Primary use case**: Network Weather (NWX) macOS app for network diagnostics.
 
 **Recent releases**:
+- v0.3.1: Unix socket priority (avoids TCC popups), opt-in App Store discovery, chunked HTTP support
 - v0.3.0: IPN bus streaming (`watchIPNBus()`) for real-time state updates
 - v0.2.1: Network interface discovery (`StatusResponse.interfaceName`, `StatusResponse.interfaceInfo`)
-- v0.2.0: Added `whois()`, `prefs()`, `ping()`, `metrics()` endpoints; pure Swift libproc-based discovery
 
 **CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`
 

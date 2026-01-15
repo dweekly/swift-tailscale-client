@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-01-14
+
+### Changed
+
+#### LocalAPI Discovery
+- **Unix socket discovery now takes priority** over macOS App Store loopback discovery
+  - Avoids triggering macOS TCC permission popup for Group Container access
+  - Works seamlessly with Homebrew (`brew install tailscale`) and standalone `tailscaled`
+- **macOS App Store discovery is now opt-in** via `allowMacOSAppStoreDiscovery` flag
+  - `TailscaleClientConfiguration.default` no longer triggers TCC popups
+  - Use `.default(allowMacOSAppStoreDiscovery: true)` to enable App Store GUI discovery
+  - Clear documentation warns about TCC popup behavior
+
+#### Transport
+- **Added HTTP chunked transfer encoding support** for Unix socket transport
+  - Fixes compatibility with Homebrew `tailscaled` which uses chunked responses
+  - Both regular requests and streaming (IPN bus) now properly decode chunked data
+
+### Added
+
+#### Socket Paths
+- **Homebrew socket path**: `/var/run/tailscaled.socket` added to discovery candidates
+  - First in priority order for seamless Homebrew experience
+
+### Fixed
+- Unix socket transport now correctly parses chunked HTTP responses
+- Streaming endpoints work correctly with chunked transfer encoding
+
 ## [0.3.0] - 2025-01-14
 
 ### Added
