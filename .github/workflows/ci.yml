@@ -6,12 +6,23 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache SPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
 
       - name: Check Swift version
         run: swift --version
@@ -23,12 +34,28 @@ jobs:
         run: swift test -v
 
       - name: Check formatting
+        run: swift format lint --strict --recursive Sources Tests
+
+  build-platforms:
+    name: Build (${{ matrix.platform }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: iOS
+            destination: generic/platform=iOS Simulator
+          - platform: tvOS
+            destination: generic/platform=tvOS Simulator
+          - platform: watchOS
+            destination: generic/platform=watchOS Simulator
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build for ${{ matrix.platform }}
         run: |
-          swift format lint --recursive Sources Tests > format-issues.txt 2>&1 || true
-          if [ -s format-issues.txt ]; then
-            echo "❌ Formatting issues found:"
-            cat format-issues.txt
-            exit 1
-          else
-            echo "✅ All files are properly formatted"
-          fi
+          xcodebuild build \
+            -scheme TailscaleClient \
+            -destination '${{ matrix.destination }}' \
+            -skipPackagePluginValidation \
+            -skipMacroValidation
