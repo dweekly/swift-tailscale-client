@@ -100,6 +100,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - [ ] First real streaming unit tests: scripted line sequences, malformed line mid-stream, transport error mid-stream, cancellation, reconnect behavior
 - [ ] Migrate all tests to the shared mocks product
 - [ ] Coverage measurement in CI with an initial 75% gate (ratchets to 85% by 1.0)
+- [x] Real-daemon integration suite in CI via the self-hosted macOS runner (`integration.yml`: fork-guarded, read-only tests against the runner's live tailscaled)
 
 ### Docs
 - [ ] `.swift-format` checked in; CI matrix (macOS + Linux build, iOS/tvOS/watchOS build-only checks)
@@ -107,7 +108,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 
 ## v0.5.0 — Linux & Hermetic Integration CI
 
-**Goal:** Linux support is a feature-enabler, not a courtesy: tailscaled runs on Linux CI runners, macOS runners can't. This release unlocks real integration testing of every subsequent endpoint.
+**Goal:** Linux support is a feature-enabler, not a courtesy. The self-hosted macOS runner already provides real-daemon integration CI against one live Tailscale install; headscale on Linux runners adds what it can't — a hermetic environment safe for write-API mutation tests and a matrix across tailscaled versions.
 
 ### Library
 - [ ] Rewrite the Unix socket transport on raw POSIX sockets shared across Darwin and Linux (drop CFSocket). No new dependencies — staying zero-dependency is a selling point; swift-nio is not worth the tree for one socket.

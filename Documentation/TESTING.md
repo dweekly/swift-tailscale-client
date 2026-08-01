@@ -97,9 +97,17 @@ Every transport/decoding change runs against this list; each item becomes a name
 
 Unchanged: `TAILSCALE_INTEGRATION=1 swift test --filter TailscaleClientIntegrationTests` against whatever daemon is running locally. Env vars (`TAILSCALE_LOCALAPI_SOCKET`, etc.) select the target.
 
-### Hermetic CI (v0.5.0, `integration.yml`)
+### Self-hosted macOS runner (live now, `integration.yml`)
 
-macOS runners can't run tailscaled meaningfully; **Linux runners can**. Design:
+The project has a self-hosted macOS runner with Tailscale installed and logged in, so the real-daemon integration suite runs in CI **today** — on pushes to main, same-repo PRs, and manual dispatch. Constraints that shape it:
+
+- **Fork guard is mandatory.** Public repo + self-hosted runner means the workflow must never execute fork code; the job is gated on `github.event.pull_request.head.repo.full_name == github.repository`.
+- **Read-only tests only.** The runner is attached to a real tailnet; the suite queries status/whois/ping/prefs/metrics and must not mutate daemon state. Write-API mutation tests (v0.8.0+) run exclusively in the hermetic headscale environment below.
+- **Single version.** The runner tests whatever Tailscale version it has installed — valuable real-world signal, but not a version matrix.
+
+### Hermetic CI (v0.5.0, headscale in `integration.yml`)
+
+The self-hosted runner gives one real macOS daemon; the version matrix and mutation-safe environment need hermetic infrastructure, and *hosted* macOS runners can't run tailscaled — **Linux runners can**. Design:
 
 - ubuntu runner boots **headscale** (open-source control plane) in a container
 - installs real `tailscaled`, runs it with `--tun=userspace-networking` (no root TUN needed)
@@ -116,10 +124,11 @@ Write endpoints (prefs PATCH etc.) get apply → verify → revert integration t
 
 ## What CI runs where
 
-| Suite | PRs | Nightly | Notes |
-|-------|-----|---------|-------|
-| Unit (mock-backed) | macOS + Linux | ✓ | hermetic, no daemon |
-| Platform build checks (iOS/tvOS/watchOS) | build-only | — | declared platforms must compile |
-| swift-format lint | ✓ | — | against checked-in `.swift-format` |
-| Integration (headscale) | label-triggered | ✓ full matrix | Linux only |
-| Examples build | when touched | — | each `Examples/*` package |
+| Suite | PRs | Push to main | Nightly | Notes |
+|-------|-----|--------------|---------|-------|
+| Unit (mock-backed) | macOS (Linux at v0.5.0) | ✓ | ✓ | hermetic, no daemon |
+| Platform build checks (iOS/tvOS/watchOS) | build-only | ✓ | — | declared platforms must compile |
+| swift-format lint | ✓ | ✓ | — | against checked-in `.swift-format` |
+| Integration (self-hosted macOS, real tailscaled) | same-repo PRs only | ✓ | — | read-only tests; fork-guarded |
+| Integration (headscale, v0.5.0) | label-triggered | — | ✓ full matrix | Linux; hermetic; hosts mutation tests |
+| Examples build | when touched | — | — | each `Examples/*` package |
