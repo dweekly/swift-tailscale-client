@@ -122,12 +122,19 @@ swift run tailscale-swift status
 
 **CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`
 
-**Roadmap** (see `ROADMAP.md`):
-- v0.4.0: DERP map, exit node suggestions, native STUN probing (netcheck equivalent)
-- v0.5.0: DNS diagnostics
-- v0.6.0: Configuration management
+**Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
+- v0.4.0: Reliability foundations — shipped mocks product, streaming hardening, capability probing (`debug-optional-features`), public model inits, timeouts
+- v0.5.0: Linux transport + hermetic (headscale-based) integration CI
+- v0.6.0: Network diagnostics — DERP map, exit node suggestions, native STUN netcheck; CLI becomes a product + Homebrew
+- v0.7.0+: DNS/routing diagnostics, write APIs, auth/profiles, serve/cert; post-1.0: Taildrop, Taildrive, Tailnet Lock
 
-**LocalAPI Coverage**: See `Documentation/LOCALAPI-COVERAGE.md` for comprehensive analysis of all available endpoints, CLI-only features, and implementation strategies.
+**Development practice**: Spike every new endpoint against a real tailscaled (curl over the unix socket) and cross-check `tailscale/tailscale` source (`ipn/localapi/`, `client/local/`) before implementing; capture fixtures from real responses. See `Documentation/TESTING.md`.
+
+**LocalAPI Coverage**: See `Documentation/LOCALAPI-COVERAGE.md` — every LocalAPI endpoint has a documented status there (implemented / planned version / experimental / unsupported with reason).
+
+**Release process**: See `Documentation/RELEASING.md` (annotated tags, CHANGELOG discipline, distribution channels).
+
+**AI-agent skill**: `.claude/skills/swift-tailscale-client/SKILL.md` teaches coding agents how to adopt this package; keep it in sync when the public API changes.
 
 ## File Organization
 
