@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Tailscale product issues
+    url: https://github.com/tailscale/tailscale/issues
+    about: Problems with Tailscale itself (not this Swift client) belong upstream. This is an unofficial project with no affiliation to Tailscale Inc.

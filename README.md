@@ -1,7 +1,7 @@
 # swift-tailscale-client
 
-[![Swift 6.1](https://img.shields.io/badge/Swift-6.1-orange.svg)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20iOS%20%7C%20tvOS%20%7C%20watchOS-lightgray.svg)](https://github.com/dweekly/swift-tailscale-client)
+[![Swift versions](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fdweekly%2Fswift-tailscale-client%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/dweekly/swift-tailscale-client)
+[![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fdweekly%2Fswift-tailscale-client%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/dweekly/swift-tailscale-client)
 [![License MIT](https://img.shields.io/github/license/dweekly/swift-tailscale-client)](LICENSE)
 [![CI](https://github.com/dweekly/swift-tailscale-client/workflows/CI/badge.svg)](https://github.com/dweekly/swift-tailscale-client/actions)
 [![Documentation](https://img.shields.io/badge/Documentation-DocC-blue)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/)
@@ -16,6 +16,19 @@ This package **connects to an existing tailscaled daemon** to query its state an
 
 **This is NOT an embedded Tailscale implementation.** If you need to embed Tailscale directly into your application (making your app its own tailnet node), see Tailscale's official [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift) instead.
 
+## Choosing the Right Tool
+
+There are several ways to work with Tailscale from Swift (or from anywhere). Pick by what you're building:
+
+| You want to… | Use | Why |
+|---|---|---|
+| Show/monitor/control the **Tailscale installation the user already has** (menu bar apps, widgets, dashboards, diagnostics) | **swift-tailscale-client** (this package) | Talks to the local daemon's LocalAPI over its unix socket. Lightweight, pure Swift, async/await, no shelling out, no second node. |
+| Make your app **its own tailnet node** (no Tailscale install required; own identity; dial/listen on the tailnet) | [TailscaleKit / libtailscale](https://github.com/tailscale/libtailscale/tree/main/swift) (official) | Embeds a userspace tsnet node in your process. Heavier, but self-contained. |
+| **Administer a tailnet** — devices, ACLs, DNS, auth keys — from a server or script | [Tailscale API](https://tailscale.com/api) (`api.tailscale.com`) | Cloud admin REST API with published OpenAPI spec; any HTTP client works. It manages the tailnet, not the local machine. |
+| Quick one-off automation on a machine with Tailscale installed | `tailscale` CLI (shell out) | Fine for scripts. This package exists so apps don't have to parse CLI output or spawn processes. |
+
+Rules of thumb: if Tailscale is already installed and you want to observe or control it → this package. If your app must *be* a tailnet node → TailscaleKit. If you're managing the tailnet itself (not a device) → the api.tailscale.com admin API.
+
 ### Use swift-tailscale-client when you want to:
 - Build a menu bar app, widget, or dashboard showing Tailscale status
 - Query peer information, connection state, exit nodes from Swift
@@ -29,6 +42,8 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - Distribute an application that includes Tailscale functionality
 - Have multiple services with different Tailscale identities on the same device
 
+> **Note:** The LocalAPI is not a formally stable interface — Tailscale namespaces it `/localapi/v0/` for a reason. This package tracks upstream, states which Tailscale versions each release was tested against, and uses tolerant decoding so upstream additions don't break your app. See the [stability policy](ROADMAP.md#stability--support-tiers).
+
 ## Status
 - **v0.3.1:** Unix socket discovery takes priority (avoids TCC popups); macOS App Store discovery now opt-in; chunked HTTP support for Homebrew tailscaled.
 - **v0.3.0:** IPN bus streaming - `watchIPNBus()` returns an `AsyncThrowingStream` for real-time state change notifications (eliminates polling).
@@ -36,14 +51,18 @@ This package **connects to an existing tailscaled daemon** to query its state an
 - **v0.2.0:** Added `whois()`, `prefs()`, `ping()`, and `metrics()` endpoints. Pure Swift libproc-based LocalAPI discovery (no shell-outs). Comprehensive test coverage.
 - **v0.1.1:** Improved error handling with actionable messages, CLI exit node display with connection quality details.
 - **v0.1.0:** `TailscaleClient.status()` API that fetches `/localapi/v0/status` and decodes the response into strongly typed Swift models.
-- Future roadmap items (DERP map, native STUN probing, DNS diagnostics) are tracked in [`ROADMAP.md`](ROADMAP.md).
+- The path to 1.0 — full LocalAPI coverage, Linux support, Homebrew CLI, hermetic integration testing — is laid out in [`ROADMAP.md`](ROADMAP.md), with the complete endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
 
 ## Installation
-Add the package to your `Package.swift` dependencies (once published):
+Add the package to your `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.1.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.3.1")
 ```
+
+Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
+
+> **Using an AI coding agent?** This repo ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md) that teaches agents what the package offers and how to integrate it correctly.
 
 ## Quickstart
 ```swift

@@ -1,0 +1,30 @@
+name: Endpoint request
+description: Ask for a LocalAPI endpoint to be wrapped (or re-tiered)
+labels: ["endpoint-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [Documentation/LOCALAPI-COVERAGE.md](../blob/main/Documentation/LOCALAPI-COVERAGE.md) first —
+        every LocalAPI endpoint has a documented status there (implemented, planned with a target version,
+        experimental, or unsupported with a reason). Community demand reorders the roadmap.
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint
+      placeholder: "/localapi/v0/serve-config"
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you building, and why does it need this endpoint?
+    validations:
+      required: true
+  - type: textarea
+    id: shapes
+    attributes:
+      label: Expected request/response shapes (optional)
+      description: If you've spiked it with curl against a real tailscaled, paste sanitized examples — that accelerates implementation considerably.
+      render: json
