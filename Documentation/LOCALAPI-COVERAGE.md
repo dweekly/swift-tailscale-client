@@ -1,10 +1,22 @@
-# LocalAPI Coverage Analysis
+# LocalAPI Coverage
 
-This document tracks the Tailscale LocalAPI endpoints, what's implemented in swift-tailscale-client, and what's available only via the CLI.
+Complete inventory of the Tailscale LocalAPI surface and this package's position on every endpoint: implemented, planned (with target version), experimental, or deliberately unsupported (with the reason).
 
-**Last updated:** 2025-01-14
-**Tailscale version tested:** 1.92.3
-**swift-tailscale-client version:** 0.2.1
+**Last updated:** 2026-08-01
+**Upstream reference:** `tailscale/tailscale` `main` (July 2026), `ipn/localapi/` + `client/local/`
+**swift-tailscale-client version:** 0.3.1
+
+Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
+
+---
+
+## How the LocalAPI is put together (read this first)
+
+Three upstream facts shape everything below:
+
+1. **Endpoint availability is build-dependent.** Since the daemon was modularized, only ~21 handlers are always registered; the rest are attached at `init()` time by optional `feature/*` packages and build-tag-gated code. A size-trimmed tailscaled returns 404 for endpoints this table lists. `POST /localapi/v0/debug-optional-features` reports which optional features a daemon was compiled with — this package's capability-probing strategy (planned `daemonFeatures()`, v0.4.0) is built on it.
+2. **Routing is exact-match with one level of prefix fallback.** The suffix after `/localapi/v0/` is looked up exactly; on a miss it is truncated at the first `/` and looked up again. Only `cert/`, `files/`, `file-put/`, `profiles/`, and `policy/` are true prefixes. Keys like `tka/status` and `update/check` are exact entries that happen to contain a slash.
+3. **The `Host` header must be empty or `local-tailscaled.sock`.** A loopback/`localhost` Host is only accepted when the daemon requires basic auth (the Windows/token path). Upstream also warns that LocalAPI paths are "not necessarily stable APIs" — hence the tier system.
 
 ---
 
@@ -12,187 +24,225 @@ This document tracks the Tailscale LocalAPI endpoints, what's implemented in swi
 
 | Category | Count |
 |----------|-------|
-| Implemented in swift-tailscale-client | 5 |
-| Available via LocalAPI (not yet implemented) | ~25 |
-| CLI-only (no LocalAPI equivalent) | 3 |
+| Implemented (v0.3.1) | 6 |
+| Planned Stable (v0.4.0–v1.3) | ~40 |
+| Planned Experimental | ~15 |
+| Unsupported (documented, with reasons) | 7 |
+| No LocalAPI equivalent (client-side features) | netcheck, captive portal detection |
 
 ---
 
-## Currently Implemented in swift-tailscale-client
+## Implemented (v0.3.1)
 
-| Endpoint | Method | Swift API | Description |
-|----------|--------|-----------|-------------|
-| `/localapi/v0/status` | GET | `status(query:)` | Node status, peers, exit node, health warnings |
-| `/localapi/v0/whois` | GET | `whois(address:)` | Identity lookup by Tailscale IP |
-| `/localapi/v0/prefs` | GET | `prefs()` | Current node preferences |
-| `/localapi/v0/ping` | POST | `ping(ip:type:size:)` | Connectivity test with latency |
-| `/localapi/v0/metrics` | GET | `metrics()` | Prometheus-format internal metrics |
+| Endpoint | Method | Swift API | Notes |
+|----------|--------|-----------|-------|
+| `status` | GET | `status(query:)` | `?peers=false` supported via `StatusQuery` |
+| `whois` | GET | `whois(address:)` | `?addr=`; `?proto=` not yet exposed |
+| `prefs` | GET | `prefs()` | PATCH planned v0.8.0 |
+| `ping` | POST | `ping(ip:type:size:)` | disco/TSMP/ICMP/peerAPI |
+| `metrics` | GET | `metrics()` | Prometheus text; feature-gated upstream (`HasClientMetrics`/`HasDebug`) |
+| `watch-ipn-bus` | GET (streaming) | `watchIPNBus(options:)` | `AsyncThrowingStream<IPNNotify, Error>`; hardening planned v0.4.0 |
 
-### Additional Features (not direct endpoints)
-| Feature | Implementation | Description |
-|---------|---------------|-------------|
-| Network interface discovery | `NetworkInterfaceDiscovery` | Finds TUN interface via `getifaddrs` |
-| macOS LocalAPI discovery | `MacClientInfo` | Finds App Store GUI's loopback API via libproc |
+Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
 ---
 
-## Available via LocalAPI (Not Yet Implemented)
+## Full endpoint matrix
 
-### High Priority for Network Diagnostics
+Gating: **core** = always registered; otherwise the upstream build feature that must be compiled in. Swift API names follow the Go `client/local` method names adapted to Swift.
 
-| Endpoint | Method | Description | Value for NWX |
-|----------|--------|-------------|---------------|
-| `/localapi/v0/watch-ipn-bus` | GET (streaming) | Stream real-time state changes | Eliminates polling; instant updates for Health, NetMap, Engine stats |
-| `/localapi/v0/derpmap` | GET | DERP relay server map | Shows relay infrastructure; foundation for latency probing |
-| `/localapi/v0/suggest-exit-node` | POST | Recommend optimal exit node | Help users optimize routing |
-| `/localapi/v0/dns-osconfig` | GET | OS DNS configuration | DNS debugging |
-| `/localapi/v0/dns-query` | POST | Perform DNS lookup via Tailscale | Test MagicDNS resolution |
-| `/localapi/v0/usermetrics` | GET | User-facing metrics (distinct from /metrics) | Cleaner metrics for display |
+### Status, identity & nodes
 
-### Medium Priority
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `status` | GET | core | Stable | **v0.3.1** | `status(query:)` |
+| `whois` | GET | core | Stable | **v0.3.1** | `whois(address:)` |
+| `peer-by-id` | GET | core | Stable | v0.7.0 | `peer(byID:)` |
+| `user-profile` | GET | core | Stable | v0.7.0 | `userProfile(byID:)` |
+| `services` | GET | core | Stable | v1.0.0 | `services()` |
+| `id-token` | GET | `HasDebug` | Stable | v0.9.0 | `idToken(audience:)` |
 
-| Endpoint | Method | Description | Notes |
-|----------|--------|-------------|-------|
-| `/localapi/v0/check-ip-forwarding` | GET | Validate IP forwarding | Useful for subnet router diagnostics |
-| `/localapi/v0/logtap` | GET (streaming) | Stream daemon logs | Debug logging |
-| `/localapi/v0/bugreport` | POST | Generate diagnostic bundle | Support/debugging |
-| `/localapi/v0/goroutines` | GET | Goroutine stack traces | Deep debugging |
-| `/localapi/v0/profiles/` | GET/POST/DELETE | Manage user profiles | Multi-account support |
+### Preferences & configuration
 
-### Lower Priority / Specialized
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `prefs` | GET, HEAD, PATCH | core | Stable | GET **v0.3.1**; PATCH v0.8.0 | `prefs()`, `editPrefs(_:)` (typed `MaskedPrefs`) |
+| `check-prefs` | POST | core | Stable | v0.8.0 | `checkPrefs(_:)` |
+| `set-use-exit-node-enabled` | POST | `HasUseExitNode` | Stable | v0.8.0 | `setUseExitNode(enabled:)` |
+| `set-expiry-sooner` | POST | core | Stable | v0.8.0 | `setExpirySooner(_:)` |
+| `reload-config` | POST | core | Stable | v0.8.0 | `reloadConfig()` |
+| `start` | POST | core | Stable | v0.8.0 | `start(options:)` |
+| `prefs/service-clients` | GET, POST | `HasServiceClientPrefs` | Experimental | on demand | — (new Jul 2026) |
 
-| Endpoint | Method | Description | Notes |
-|----------|--------|-------------|-------|
-| `/localapi/v0/prefs` | PATCH | Modify preferences | Write operations (exit node, shields, routes) |
-| `/localapi/v0/login-interactive` | POST | Interactive login flow | Auth management |
-| `/localapi/v0/logout` | POST | Logout current node | Auth management |
-| `/localapi/v0/start` | POST | Start backend service | Lifecycle management |
-| `/localapi/v0/shutdown` | POST | Shutdown daemon | Lifecycle management |
-| `/localapi/v0/reset-auth` | POST | Reset auth state | Auth management |
-| `/localapi/v0/set-expiry-sooner` | POST | Shorten key expiry | Key management |
-| `/localapi/v0/reload-config` | POST | Reload config from disk | Config management |
-| `/localapi/v0/check-prefs` | POST | Validate prefs before applying | Config validation |
-| `/localapi/v0/dial` | POST | Establish proxy connection | SSH/proxy support |
-| `/localapi/v0/cert` | GET | TLS certificate retrieval | HTTPS cert management |
-| `/localapi/v0/set-dns` | POST | Configure DNS settings | DNS management |
-| `/localapi/v0/set-use-exit-node-enabled` | POST | Toggle exit node | Exit node control |
-| `/localapi/v0/id-token` | GET | OIDC identity token | Auth tokens |
-| `/localapi/v0/query-feature` | GET | Query feature availability | Feature detection |
+### Diagnostics & networking
 
-### Capability-Gated Endpoints
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `ping` | POST | core | Stable | **v0.3.1** | `ping(ip:type:size:)` |
+| `derpmap` | GET | core | Stable | v0.6.0 | `derpMap()` |
+| `suggest-exit-node` | GET, POST | `HasUseExitNode` | Stable | v0.6.0 | `suggestExitNode()`, POST = force-probe |
+| `metrics` | GET | `HasClientMetrics`/`HasDebug` | Stable | **v0.3.1** | `metrics()` |
+| `usermetrics` | GET | `HasUserMetrics` | Stable | v0.6.0 | `userMetrics()` |
+| `dns-osconfig` | GET | `HasDNS` | Stable | v0.7.0 | `dnsOSConfig()` |
+| `dns-query` | GET | `HasDNS` | Stable | v0.7.0 | `dnsQuery(name:type:)` — returns DNS wire bytes + resolvers |
+| `dns-config` | GET | core | Stable | v0.7.0 | `dnsConfig()` — netmap `tailcfg.DNSConfig` |
+| `check-ip-forwarding` | GET | `HasAdvertiseRoutes` | Stable | v0.7.0 | `checkIPForwarding()` |
+| `routecheck` | POST | `HasRouteCheck` | Stable | v0.7.0 | `routeCheck(probe:)` (new May 2026) |
+| `check-udp-gro-forwarding` / `set-udp-gro-forwarding` | GET | `HasAdvertiseRoutes` | Experimental | on demand | Linux subnet-router perf preflight |
+| `debug-derp-region` | POST | debug | Experimental | on demand | probe a DERP region |
 
-Some endpoints require specific capabilities advertised to the LocalAPI:
+### Streaming
 
-| Endpoint | Required Capability | Description |
-|----------|-------------------|-------------|
-| `/localapi/v0/watch-ipn-bus` | `HasDebug` or `HasServe` | IPN bus streaming |
-| `/localapi/v0/metrics` | `HasClientMetrics` or `HasDebug` | Prometheus metrics |
-| `/localapi/v0/suggest-exit-node` | `HasUseExitNode` | Exit node suggestions |
-| `/localapi/v0/bugreport` | `HasDebug` | Bug reports |
-| `/localapi/v0/logtap` | `HasLogTail` | Log streaming |
-| `/localapi/v0/usermetrics` | `HasUserMetrics` | User metrics |
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `watch-ipn-bus` | GET (stream) | `HasIPNBus` | Stable | **v0.3.1** (hardening v0.4.0) | `watchIPNBus(options:)` |
+| `logtap` | GET (stream) | `HasLogTail` | Experimental | v0.7.0 | `experimental.logtap()` |
+| `debug-bus-events` | GET (stream) | debug | Experimental | on demand | eventbus events (new 2026) |
+| `debug-portmap` | GET (stream) | `HasDebugPortmapper` | Experimental | on demand | UPnP/PMP/PCP probe log |
 
----
+### Auth & profiles
 
-## CLI-Only Features (No LocalAPI Equivalent)
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `login-interactive` | POST | core | Stable | v0.9.0 | `loginInteractive()` — pair with `watchIPNBus` for `BrowseToURL` |
+| `logout` | POST | core | Stable | v0.9.0 | `logout()` |
+| `reset-auth` | POST | core | Stable | v0.9.0 | `resetAuth()` |
+| `profiles/` (prefix) | GET, PUT, POST, DELETE | core | Stable | v0.9.0 | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` |
+| `shutdown` | POST | core | Stable | v1.0.0 | `shutdownDaemon()` |
 
-These features are computed client-side by the `tailscale` CLI and are **not available via LocalAPI**:
+### Serve, Funnel & certificates
 
-### `tailscale netcheck`
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `serve-config` | GET, POST | `HasServe` | Stable | v0.10.0 | `serveConfig()` → snapshot with ETag; `setServeConfig(_:)` sends `If-Match` — **GET returns an ETag and POST requires it**; stale writes must surface as a typed conflict |
+| `cert-domains` | GET | `HasACME` | Stable | v0.10.0 | `certDomains()` |
+| `cert/<domain>` (prefix) | GET | `HasACME` | Stable | v0.10.0 | `certificate(domain:type:minValidity:)` — `?type=pair\|crt\|key` |
+| `set-dns` | POST | `HasACME` | Stable | v0.10.0 | `setDNS(name:value:)` — ACME DNS-01 TXT |
+| `query-feature` | POST | `HasServe` | Stable | v0.10.0 | `queryFeature(_:)` |
+| `check-so-mark-in-use` | GET | core | Unsupported | — | Linux `tailscale serve` preflight internal; no Swift use case |
 
-**What it provides:**
-```json
-{
-  "UDP": true,
-  "IPv4": true,
-  "IPv6": false,
-  "MappingVariesByDestIP": false,
-  "UPnP": false,
-  "PMP": false,
-  "PCP": false,
-  "PreferredDERP": 2,
-  "RegionLatency": {
-    "sfo": 12500000,
-    "lax": 19200000,
-    "sea": 26100000
-  },
-  "CaptivePortal": null
-}
-```
+### Taildrop & Taildrive (post-1.0)
 
-**Why it's CLI-only:** The CLI performs its own UDP/STUN probes to DERP servers. This data is not stored in tailscaled.
+| Endpoint | Method(s) | Gating | Tier | Status | Swift API |
+|----------|-----------|--------|------|--------|-----------|
+| `file-put/<target>/<name>` (prefix) | PUT, POST | taildrop feature | Stable | v1.1 | `pushFile(...)` |
+| `files/` (prefix) | GET, DELETE | taildrop feature | Stable | v1.1 | `waitingFiles()`, `awaitWaitingFiles()` (`?waitfor=` long-poll), `getWaitingFile(_:)`, `deleteWaitingFile(_:)` |
+| `file-targets` | GET | taildrop feature | Stable | v1.1 | `fileTargets()` |
+| `drive/fileserver-address` | PUT | drive feature | Stable | v1.2 | `setDriveFileServerAddress(_:)` |
+| `drive/shares` | GET, PUT, POST, DELETE | drive feature | Stable | v1.2 | `driveShares()`, set/rename/remove |
 
-**How to replicate without shelling out:**
-1. Fetch `/localapi/v0/derpmap` to get DERP server list
-2. Implement STUN client in Swift (send binding requests to each DERP's STUN port)
-3. Measure RTT for each probe
-4. Detect NAT type by comparing mapped addresses across destinations
+### Tailnet Lock (post-1.0)
 
-### `tailscale dns status --all`
+All 13 endpoints, wrapped under **`TailnetLock`** naming (upstream renamed from `NetworkLock`; the Go `NetworkLock*` methods are deprecated aliases). Note `tka/modify` returns **204 No Content**.
 
-**What it provides:**
-- MagicDNS configuration
-- Resolvers and fallback resolvers
-- Split DNS routes
-- Search domains
-- System DNS configuration
+| Endpoint | Method | Tier | Status |
+|----------|--------|------|--------|
+| `tka/status`, `tka/log` (`?limit=`) | GET | Stable | v1.3 |
+| `tka/init`, `tka/modify`, `tka/sign`, `tka/disable`, `tka/force-local-disable`, `tka/affected-sigs`, `tka/wrap-preauth-key`, `tka/verify-deeplink`, `tka/generate-recovery-aum`, `tka/cosign-recovery-aum`, `tka/submit-recovery-aum` | POST | Stable | v1.3 |
 
-**LocalAPI partial equivalent:** `/localapi/v0/dns-osconfig` provides OS DNS config, but not the full formatted output.
+### GUI-client contract
 
-### `tailscale exit-node suggest`
+The endpoints Tailscale's own GUI apps use. Nobody outside Tailscale implements these today; they matter to any serious macOS/iOS app built on this package.
 
-**What it provides:** Best exit node recommendation based on current network conditions.
+| Endpoint | Method | Gating | Tier | Status | Swift API |
+|----------|--------|--------|------|--------|-----------|
+| `set-gui-visible` | POST | debug \|\| windows/darwin | Experimental | v0.9.0 | `experimental.setGUIVisible(_:)` |
+| `set-push-device-token` | POST | debug | Experimental | v0.9.0 | `experimental.setPushDeviceToken(_:)` |
+| `handle-push-message` | POST | debug | Experimental | v0.9.0 | `experimental.handlePushMessage(_:)` |
+| `upload-client-metrics` | POST | `HasClientMetrics` | Unsupported | — | Tailscale-internal telemetry push |
 
-**LocalAPI equivalent:** `/localapi/v0/suggest-exit-node` - **this IS available via LocalAPI** (listed above).
+### Self-update
 
----
+| Endpoint | Method | Gating | Tier | Status |
+|----------|--------|--------|------|--------|
+| `update/check` | GET | `HasClientUpdate` | Experimental | on demand |
+| `update/install` | POST | `HasClientUpdate` | Experimental | on demand |
+| `update/progress` | GET | `HasClientUpdate` | Experimental | on demand — often overlooked; needed to display install progress |
 
-## IPN Bus Streaming (`/localapi/v0/watch-ipn-bus`)
+Note: the official CLI's `tailscale update` does *not* use these — it runs the updater in-process. These exist for GUI clients.
 
-This is a streaming endpoint that sends `ipn.Notify` messages as JSON lines.
+### Debug & introspection
 
-### Notify Fields
+| Endpoint | Method(s) | Tier | Status | Notes |
+|----------|-----------|------|--------|-------|
+| `debug-optional-features` | POST | **Stable** | **v0.4.0** | The capability-discovery endpoint; foundation of this package's probing strategy |
+| `bugreport` | POST | Experimental | v0.7.0 | `experimental.bugreport()` |
+| `goroutines` | GET | Experimental | v0.7.0 | `experimental.goroutines()` |
+| `debug` (`?action=`) | POST | Experimental | on demand | actions: `notify`, `rebind`, `restun`, `break-tcp-conns`, `break-derp-conns`, `force-netmap-update`, `control-knobs`, `pick-new-derp`, `force-prefer-derp`, `derp-set-homeless`, `derp-unset-homeless`, `peer-relay-servers`, `peer-disco-keys`, `rotate-disco-key`, `statedir`, `clear-netmap-cache`, `current-netmap` |
+| `pprof` | GET | Experimental | on demand | |
+| `component-debug-logging` | POST | Experimental | on demand | verbose logging per component for N seconds |
+| `debug-packet-filter-rules` / `debug-packet-filter-matches` | POST | Experimental | on demand | |
+| `debug-peer-endpoint-changes`, `debug-dial-types`, `debug-log`, `debug-rotate-disco-key` | various | Experimental | on demand | |
+| `debug-bus-graph`, `debug-bus-queues` | GET | Experimental | on demand | eventbus observability (new 2026) |
+| `debug-peer-relay-sessions` | GET | Experimental | on demand | peer-relay server sessions (new 2025) |
+| `appc-route-info` | GET | Experimental | on demand | app-connector routes |
+| `policy/<scope>` (prefix) | GET, POST | Experimental | on demand | syspolicy/MDM effective settings; scope = effective/device/profile/user |
+| `disconnect-control` | POST | Unsupported | — | drops the control-plane connection; test-harness tool |
+| `debug-capture` | POST (stream) | Unsupported | — | live pcap streaming; out of scope for a monitoring client |
+| `dev-set-state-store` | POST | Unsupported | — | dev-only raw state writes |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `Version` | string | Backend version (first message only) |
-| `SessionID` | string | Unique session ID (first message only) |
-| `ErrMessage` | *string | Critical error message |
-| `State` | *State | Backend state change (Running, Stopped, NeedsLogin, etc.) |
-| `Prefs` | *PrefsView | Preferences changed |
-| `NetMap` | *NetworkMap | Network topology changed |
-| `Engine` | *EngineStatus | WireGuard stats (RxBytes, TxBytes, NumLive) |
-| `Health` | *health.State | Health warnings changed |
-| `BrowseToURL` | *string | URL to open (OAuth flow) |
-| `LoginFinished` | *empty | Login completed |
-| `SuggestedExitNode` | *StableNodeID | Best exit node changed |
-| `IncomingFiles` | []PartialFile | Taildrop files being received |
-| `OutgoingFiles` | []*OutgoingFile | Taildrop files being sent |
+### Unsupported: the full list and reasons
 
-### Watch Options (bitmask)
-
-| Option | Description |
-|--------|-------------|
-| `NotifyWatchEngineUpdates` | Include periodic Engine stats |
-| `NotifyInitialState` | First message includes current State |
-| `NotifyInitialPrefs` | First message includes current Prefs |
-| `NotifyInitialNetMap` | First message includes current NetMap |
-| `NotifyInitialHealthState` | First message includes Health |
-| `NotifyInitialSuggestedExitNode` | First message includes SuggestedExitNode |
-| `NotifyRateLimit` | Rate-limit spammy netmap updates |
-
-### Implementation Notes
-
-- Streaming HTTP response (chunked transfer or SSE-like)
-- Each line is a complete JSON object
-- Most fields are nil/omitted unless changed
-- Need `AsyncSequence` wrapper for Swift consumption
+| Endpoint | Reason |
+|----------|--------|
+| `dial` | Hijacks the HTTP connection into a raw TCP proxy; no clean mapping onto URLSession or this package's transport abstraction. Use case (userspace `nc`/SSH) is out of scope. |
+| `conn25/state` | Brand new (Apr–Jul 2026, renamed mid-flight), explicitly internal, high churn. Revisit when it stabilizes. |
+| `alpha-set-device-attrs` | Explicitly alpha per upstream (`tailscale/corp#24690`). |
+| `disconnect-control` | Daemon test harness tool. |
+| `check-so-mark-in-use` | Linux serve preflight internal. |
+| `upload-client-metrics` | Tailscale-internal telemetry ingestion. |
+| `debug-capture` | Streaming pcap; heavy, niche, better served by upstream tooling. |
 
 ---
 
-## DERP Map Structure (`/localapi/v0/derpmap`)
+## Features with no LocalAPI equivalent
 
-The DERP map contains relay server information:
+### `tailscale netcheck` — client-side STUN
+
+The CLI fetches the DERP map from LocalAPI, then performs its own UDP/STUN probes; results (UDP/IPv4/IPv6 capability, `MappingVariesByDestIP` NAT detection, UPnP/PMP/PCP, per-region latency, preferred DERP, captive portal) are never stored in tailscaled.
+
+**This package's plan (v0.6.0):** native Swift netcheck —
+1. `derpMap()` to enumerate regions and STUN endpoints (`HostName` + `STUNPort`, usually 3478)
+2. Send STUN Binding Requests over UDP; measure RTT per region
+3. Compare mapped addresses across destinations to classify NAT behavior
+4. Report a `NetcheckReport` shaped like the CLI's JSON output
+
+### Captive portal detection
+
+Purely CLI-side (`maybe_captiveportal.go`); surfaced by the daemon only as a health warning. Out of scope beyond passing health warnings through.
+
+### Health, netmap, SSH
+
+- **Health**: no dedicated endpoint — read `status.health` or stream `Notify.Health` via the IPN bus.
+- **Netmap**: no dedicated endpoint — `debug?action=current-netmap` (debug-gated) or `watch-ipn-bus` with the netmap mask.
+- **SSH**: enabling is a prefs edit (`RunSSH`); the CLI's `tailscale ssh` just dials.
+
+---
+
+## IPN Bus reference (`watch-ipn-bus`)
+
+Streaming endpoint; each line is a complete JSON `ipn.Notify`. Fields are omitted unless changed.
+
+| Field | Type | Modeled in Swift (v0.3.1) |
+|-------|------|---------------------------|
+| `Version`, `SessionID` | string (first message) | ✓ |
+| `ErrMessage` | *string | ✓ |
+| `State` | *State | ✓ (`IPNState`) |
+| `Prefs` | *PrefsView | ✗ — planned v0.4.0 |
+| `NetMap` | *NetworkMap | ✗ — planned v0.4.0 |
+| `Engine` | *EngineStatus | ✓ (LivePeers dropped) |
+| `Health` | *health.State | ✓ |
+| `BrowseToURL` | *string | ✓ |
+| `LoginFinished` | *empty | ✓ |
+| `SuggestedExitNode` | *StableNodeID | ✓ |
+| `IncomingFiles` / `OutgoingFiles` / `FilesWaiting` | Taildrop progress | ✗ — planned v0.4.0 |
+| `LocalTCPPort` | *uint16 | ✓ |
+
+Watch options (`NotifyWatchOpt`, all 11 bits modeled): engineUpdates, initialState, initialPrefs, initialNetMap, noPrivateKeys, initialDriveShares, initialOutgoingFiles, initialHealthState, rateLimit, healthActions, initialSuggestedExitNode. Until the v0.4.0 model work lands, requesting `initialPrefs`/`initialNetMap` produces payloads the Swift models cannot decode — one reason stream hardening (skip-and-report, not die) ships in the same release.
+
+---
+
+## DERP map reference (`derpmap`)
 
 ```json
 {
@@ -217,69 +267,13 @@ The DERP map contains relay server information:
 }
 ```
 
-### Using DERP Map for Latency Probing
-
-To replicate `netcheck` DERP latencies:
-1. For each region, get the first node's `HostName` and `STUNPort` (usually 3478)
-2. Send STUN Binding Request (UDP)
-3. Measure time until Binding Response
-4. The mapped address in the response also reveals NAT behavior
-
----
-
-## Data Available in Status vs Netcheck
-
-| Data Point | `/status` | `netcheck` | Notes |
-|------------|-----------|------------|-------|
-| Peer list | ✓ | ✗ | |
-| Peer online/offline | ✓ | ✗ | |
-| Peer connection type (direct/DERP) | ✓ | ✗ | Via `CurAddr` field |
-| Peer traffic stats | ✓ | ✗ | RxBytes, TxBytes |
-| Last handshake | ✓ | ✗ | |
-| Health warnings | ✓ | ✗ | |
-| Self DERP home | ✓ | ✗ | `Relay` field |
-| UDP connectivity | ✗ | ✓ | |
-| IPv4/IPv6 capability | ✗ | ✓ | |
-| NAT type | ✗ | ✓ | MappingVariesByDestIP |
-| Port mapping (UPnP/PMP/PCP) | ✗ | ✓ | |
-| DERP latencies (all regions) | ✗ | ✓ | |
-| Captive portal detection | ✗ | ✓ | |
-| Preferred DERP | ✗ | ✓ | |
-
----
-
-## Recommended Implementation Order for NWX
-
-### Phase 1: Real-time Updates
-1. **`/localapi/v0/watch-ipn-bus`** - Streaming state changes
-   - Eliminates polling
-   - Instant visibility into connectivity changes
-   - Health warnings pushed immediately
-
-### Phase 2: Network Infrastructure Visibility
-2. **`/localapi/v0/derpmap`** - DERP relay map
-   - Foundation for understanding relay infrastructure
-   - Required for Phase 3
-
-3. **`/localapi/v0/suggest-exit-node`** - Exit node optimization
-   - Quick win, simple endpoint
-
-### Phase 3: Native Network Probing (replaces netcheck)
-4. **STUN client implementation** - Pure Swift
-   - Use DERP map to get server list
-   - Probe each region's STUN port
-   - Measure latencies
-   - Detect NAT type from mapped addresses
-
-### Phase 4: DNS Diagnostics
-5. **`/localapi/v0/dns-osconfig`** - OS DNS configuration
-6. **`/localapi/v0/dns-query`** - DNS lookup testing
+Latency probing: for each region take a node's `HostName`/`STUNPort`, send a STUN Binding Request, time the response; the mapped address doubles as NAT-behavior evidence.
 
 ---
 
 ## References
 
-- [LocalAPI source (localapi.go)](https://github.com/tailscale/tailscale/blob/main/ipn/localapi/localapi.go)
-- [IPN Notify struct](https://pkg.go.dev/tailscale.com/ipn#Notify)
-- [Go client documentation](https://pkg.go.dev/tailscale.com/client/local)
-- [DERP map types](https://pkg.go.dev/tailscale.com/tailcfg#DERPMap)
+- [LocalAPI handlers — `ipn/localapi/`](https://github.com/tailscale/tailscale/tree/main/ipn/localapi)
+- [Go LocalClient — `client/local/`](https://pkg.go.dev/tailscale.com/client/local)
+- [`ipn.Notify`](https://pkg.go.dev/tailscale.com/ipn#Notify) · [`tailcfg.DERPMap`](https://pkg.go.dev/tailscale.com/tailcfg#DERPMap)
+- [CLI sources — `cmd/tailscale/cli/`](https://github.com/tailscale/tailscale/tree/main/cmd/tailscale/cli) (the map from CLI subcommands to LocalAPI calls)

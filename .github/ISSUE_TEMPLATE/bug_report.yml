@@ -1,0 +1,45 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Code snippet or CLI invocation that reproduces the issue.
+      render: swift
+  - type: input
+    id: package-version
+    attributes:
+      label: swift-tailscale-client version
+      placeholder: "0.3.1"
+    validations:
+      required: true
+  - type: input
+    id: tailscale-version
+    attributes:
+      label: Tailscale version and install method
+      description: Output of `tailscale version`, plus how it was installed (App Store, Homebrew, standalone, pkg).
+      placeholder: "1.92.3, Homebrew"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform & OS version
+      placeholder: "macOS 26.1 / iOS 19 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: discovery-debug
+    attributes:
+      label: Discovery debug output (if connection-related)
+      description: Run with `TAILSCALE_DISCOVERY_DEBUG=1` and paste the stderr output.
+      render: text
