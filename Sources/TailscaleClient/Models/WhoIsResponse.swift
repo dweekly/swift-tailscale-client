@@ -7,13 +7,24 @@ import Foundation
 ///
 /// This endpoint identifies who is at a given Tailscale IP address or node key,
 /// returning both node information and user profile details.
-public struct WhoIsResponse: Sendable, Decodable {
+public struct WhoIsResponse: Sendable, Decodable, Equatable {
   /// The node associated with the queried IP or key.
   public let node: WhoIsNode?
   /// The user profile that owns the node.
   public let userProfile: UserProfile?
   /// Peer capabilities map (capability URL to optional values).
   public let capMap: [String: CapabilityValue]?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    node: WhoIsNode? = nil,
+    userProfile: UserProfile? = nil,
+    capMap: [String: CapabilityValue]? = nil
+  ) {
+    self.node = node
+    self.userProfile = userProfile
+    self.capMap = capMap
+  }
 
   enum CodingKeys: String, CodingKey {
     case node = "Node"
@@ -26,7 +37,7 @@ public struct WhoIsResponse: Sendable, Decodable {
 ///
 /// This is similar to `NodeStatus` from the status endpoint but may contain
 /// additional fields specific to the whois response.
-public struct WhoIsNode: Sendable, Decodable {
+public struct WhoIsNode: Sendable, Decodable, Equatable {
   /// Unique node identifier.
   public let id: UInt64
   /// Stable node identifier that persists across key rotations.
@@ -69,6 +80,53 @@ public struct WhoIsNode: Sendable, Decodable {
   public let computedNameWithHost: String?
   /// Whether this node is an exit node.
   public let isExitNode: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    id: UInt64,
+    stableID: String? = nil,
+    name: String? = nil,
+    user: UInt64? = nil,
+    key: String? = nil,
+    keyExpiry: Date? = nil,
+    machine: String? = nil,
+    discoKey: String? = nil,
+    addresses: [String] = [],
+    allowedIPs: [String] = [],
+    endpoints: [String] = [],
+    derp: String? = nil,
+    hostinfo: WhoIsHostinfo? = nil,
+    created: Date? = nil,
+    tags: [String] = [],
+    expired: Bool? = nil,
+    online: Bool? = nil,
+    lastSeen: Date? = nil,
+    computedName: String? = nil,
+    computedNameWithHost: String? = nil,
+    isExitNode: Bool? = nil
+  ) {
+    self.id = id
+    self.stableID = stableID
+    self.name = name
+    self.user = user
+    self.key = key
+    self.keyExpiry = keyExpiry
+    self.machine = machine
+    self.discoKey = discoKey
+    self.addresses = addresses
+    self.allowedIPs = allowedIPs
+    self.endpoints = endpoints
+    self.derp = derp
+    self.hostinfo = hostinfo
+    self.created = created
+    self.tags = tags
+    self.expired = expired
+    self.online = online
+    self.lastSeen = lastSeen
+    self.computedName = computedName
+    self.computedNameWithHost = computedNameWithHost
+    self.isExitNode = isExitNode
+  }
 
   enum CodingKeys: String, CodingKey {
     case id = "ID"
@@ -121,7 +179,7 @@ public struct WhoIsNode: Sendable, Decodable {
 }
 
 /// Host information for a node.
-public struct WhoIsHostinfo: Sendable, Decodable {
+public struct WhoIsHostinfo: Sendable, Decodable, Equatable {
   /// Operating system (e.g., "darwin", "linux", "windows").
   public let os: String?
   /// OS version string.
@@ -134,6 +192,23 @@ public struct WhoIsHostinfo: Sendable, Decodable {
   public let tailscaleVersion: String?
   /// Whether this is a Tailscale SSH server.
   public let isSSHServer: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    os: String? = nil,
+    osVersion: String? = nil,
+    hostname: String? = nil,
+    deviceModel: String? = nil,
+    tailscaleVersion: String? = nil,
+    isSSHServer: Bool? = nil
+  ) {
+    self.os = os
+    self.osVersion = osVersion
+    self.hostname = hostname
+    self.deviceModel = deviceModel
+    self.tailscaleVersion = tailscaleVersion
+    self.isSSHServer = isSSHServer
+  }
 
   enum CodingKeys: String, CodingKey {
     case os = "OS"

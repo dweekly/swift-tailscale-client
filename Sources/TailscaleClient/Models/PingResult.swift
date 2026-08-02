@@ -16,7 +16,7 @@ public enum PingType: String, Sendable {
 }
 
 /// Result of a ping operation from `/localapi/v0/ping`.
-public struct PingResult: Sendable, Decodable {
+public struct PingResult: Sendable, Decodable, Equatable {
   /// The IP address that was pinged.
   public let ip: String?
 
@@ -52,6 +52,35 @@ public struct PingResult: Sendable, Decodable {
 
   /// Whether the error is due to pinging the local node.
   public let isLocalIP: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    ip: String? = nil,
+    nodeIP: String? = nil,
+    nodeName: String? = nil,
+    error: String? = nil,
+    latencySeconds: Double? = nil,
+    endpoint: String? = nil,
+    peerRelay: String? = nil,
+    derpRegionID: Int? = nil,
+    derpRegionCode: String? = nil,
+    peerAPIPort: UInt16? = nil,
+    peerAPIURL: String? = nil,
+    isLocalIP: Bool? = nil
+  ) {
+    self.ip = ip
+    self.nodeIP = nodeIP
+    self.nodeName = nodeName
+    self.error = error
+    self.latencySeconds = latencySeconds
+    self.endpoint = endpoint
+    self.peerRelay = peerRelay
+    self.derpRegionID = derpRegionID
+    self.derpRegionCode = derpRegionCode
+    self.peerAPIPort = peerAPIPort
+    self.peerAPIURL = peerAPIURL
+    self.isLocalIP = isLocalIP
+  }
 
   enum CodingKeys: String, CodingKey {
     case ip = "IP"

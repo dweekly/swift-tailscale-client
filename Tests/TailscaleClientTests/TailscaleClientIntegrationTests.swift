@@ -146,6 +146,20 @@ import XCTest
       }
     }
 
+    // MARK: - Optional Features Tests
+
+    func testDaemonFeaturesAgainstLiveDaemon() async throws {
+      do {
+        let features = try await client.daemonFeatures()
+        // Feature names vary by build; the map existing at all is the contract.
+        XCTAssertFalse(
+          features.features.isEmpty, "Expected at least one optional feature to be reported")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon predates debug-optional-features; skipping")
+      }
+    }
+
     // MARK: - Metrics Endpoint Tests
 
     func testMetricsAgainstLiveDaemon() async throws {
