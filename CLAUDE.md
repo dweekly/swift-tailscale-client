@@ -110,13 +110,14 @@ swift run tailscale-swift status
   - `Documentation/` - Project documentation (markdown files, analysis docs, man pages). **Committed to git.**
   - `docs/` - Generated DocC output. **Gitignored.** Never put project docs here.
 
-## Project Status (v0.6.0)
+## Project Status (v0.7.0)
 
-**Current version**: v0.6.0 - Network diagnostics (DERP map, exit-node suggestions, usermetrics, native STUN netcheck), CLI product
+**Current version**: v0.7.0 - DNS/routing diagnostics, ID lookups, experimental namespace, DocC article set
 
 **Primary use case**: Network Weather (NWX) macOS app for network diagnostics.
 
 **Recent releases**:
+- v0.7.0: DNS diagnostics (dns-osconfig/dns-query/check-ip-forwarding), peer/user lookups, `client.experimental` (bugreport/goroutines/logtap), DocC articles
 - v0.6.0: DERP map, exit-node suggestions, usermetrics, native STUN netcheck; CLI executable product with `--json`; fully `Codable` models; `Examples/StatusDemo`; release binaries
 - v0.5.0: Linux support (POSIX socket transport), extracted unit-tested HTTP parsers, Linux CI, nightly headscale integration
 - v0.4.0: Reliability foundations — `TailscaleClientMocks` product, streaming skip-and-report + reconnect, `daemonFeatures()` capability probing, request timeouts, public model inits
@@ -124,8 +125,8 @@ swift run tailscale-swift status
 **CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding` — all structured commands take `--json`; the CLI is an executable product
 
 **Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
-- v0.7.0 (next): DNS/routing diagnostics (`dns-osconfig`, `dns-query`, `routecheck`, `peer-by-id`), `experimental` namespace debut
-- v0.8.0+: write APIs, auth/profiles, serve/cert; post-1.0: Taildrop, Taildrive, Tailnet Lock
+- v0.8.0 (next): configuration write APIs (`prefs` PATCH via typed `MaskedPrefs`, `check-prefs`, `set-use-exit-node-enabled`, `reload-config`, `start`)
+- v0.9.0+: auth/profiles, serve/cert; post-1.0: Taildrop, Taildrive, Tailnet Lock
 - Open follow-ups: tailscaled version matrix in the headscale nightly; Homebrew tap repo creation + announcement wave at the v0.6.0 release moment
 
 **Development practice**: Spike every new endpoint against a real tailscaled (curl over the unix socket) and cross-check `tailscale/tailscale` source (`ipn/localapi/`, `client/local/`) before implementing; capture fixtures from real responses. See `Documentation/TESTING.md`.

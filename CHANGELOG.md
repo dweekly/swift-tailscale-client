@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-02
+
 ### Added
 
 - **DNS diagnostics**: `dnsOSConfig()` (nameservers, search + split-DNS match domains), `dnsQuery(name:type:)` (resolves through tailscaled's forwarder — the MagicDNS path — returning the raw RFC 1035 answer plus the chosen resolvers), and `checkIPForwarding()` (subnet-router/exit-node preflight with an `isReady` convenience).
