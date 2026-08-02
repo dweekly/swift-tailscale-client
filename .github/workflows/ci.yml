@@ -15,7 +15,7 @@ jobs:
     name: Test on macOS
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache SPM build
         uses: actions/cache@v4
@@ -50,7 +50,7 @@ jobs:
           - platform: watchOS
             destination: generic/platform=watchOS Simulator
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build for ${{ matrix.platform }}
         run: |
