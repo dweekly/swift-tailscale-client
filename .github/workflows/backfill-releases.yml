@@ -11,7 +11,7 @@ on:
         description: "Space-separated existing tags to create releases for"
         required: true
       create:
-        description: "Optional space-separated tag@sha pairs to create as annotated tags first"
+        description: "Optional space-separated tag@sha pairs: create tag + release via the Releases API"
         required: false
         default: ""
 
@@ -27,23 +27,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create annotated tags
+      - name: Create tags and releases for tag@sha pairs
         if: inputs.create != ''
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CREATE: ${{ inputs.create }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # GITHUB_TOKEN cannot git-push refs whose trees differ in workflow
+          # files (the 'workflows' permission is not grantable to it), which
+          # rules out pushing tags at historical commits. The Releases API is
+          # exempt: --target creates the tag server-side with the release.
           for PAIR in $CREATE; do
             TAG="${PAIR%@*}"
             SHA="${PAIR#*@}"
-            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-              echo "$TAG already exists; skipping"
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$TAG already has a release; skipping"
               continue
             fi
-            git tag -a "$TAG" "$SHA" -m "$TAG"
-            git push origin "$TAG"
-            echo "Created and pushed $TAG at $SHA"
+            VERSION="${TAG#v}"
+            awk -v ver="$VERSION" '
+              $0 ~ "^## \\[" ver "\\]" { found = 1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md > /tmp/notes.md
+            if [ -s /tmp/notes.md ]; then
+              gh release create "$TAG" --target "$SHA" --title "$TAG" --notes-file /tmp/notes.md
+            else
+              gh release create "$TAG" --target "$SHA" --title "$TAG" --generate-notes
+            fi
+            echo "Created tag + release for $TAG at $SHA"
           done
 
       - name: Create releases
