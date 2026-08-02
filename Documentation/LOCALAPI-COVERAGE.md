@@ -68,7 +68,7 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | `status` | GET | core | Stable | **v0.3.1** | `status(query:)` |
 | `whois` | GET | core | Stable | **v0.3.1** | `whois(address:)` |
 | `peer-by-id` | GET | core | Stable | **v0.7.0** | `peer(byID:)` — 404 = not in netmap |
-| `user-profile` | GET | core | Stable | **v0.7.0** | `userProfile(byID:)` |
+| `user-profile` | GET | core | Stable | **v0.7.0** | `userProfile(byID:)` — endpoint added upstream 2026; older daemons 404 the path |
 | `services` | GET | core | Stable | v1.0.0 | `services()` |
 | `id-token` | GET | `HasDebug` | Stable | v0.9.0 | `idToken(audience:)` |
 

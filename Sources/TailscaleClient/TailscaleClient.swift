@@ -156,7 +156,9 @@ public actor TailscaleClient {
   ///
   /// Useful for resolving the `UserID` references that appear on peer nodes
   /// (e.g., from the IPN bus or ``peer(byID:)``) into names. A 404 means the
-  /// user is not known to the current netmap.
+  /// user is not known to the current netmap — or, on daemons that predate
+  /// this 2026 endpoint, that the path itself is unknown (LocalAPI routing
+  /// 404s unrecognized paths, so the two cases are indistinguishable).
   ///
   /// - Parameter id: The numeric user ID.
   /// - Returns: The ``UserProfile`` for that ID.

@@ -274,9 +274,17 @@ import XCTest
       XCTAssertEqual(fetched.stableID, node.stableID)
 
       if let userID = node.user {
-        let profile = try await client.userProfile(byID: userID)
-        XCTAssertEqual(profile.id, userID)
-        XCTAssertFalse(profile.loginName?.isEmpty ?? true, "Expected a login name")
+        do {
+          let profile = try await client.userProfile(byID: userID)
+          XCTAssertEqual(profile.id, userID)
+          XCTAssertFalse(profile.loginName?.isEmpty ?? true, "Expected a login name")
+        } catch let error as TailscaleClientError {
+          // user-profile is a 2026 addition; older daemons 404 the unknown
+          // path, which is indistinguishable from "user not found". A 404
+          // for our own (known-valid) user ID means the daemon predates it.
+          guard case .unexpectedStatus(404, _, _) = error else { throw error }
+          throw XCTSkip("Daemon predates the user-profile endpoint; skipping")
+        }
       }
     }
 
