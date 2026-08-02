@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
+import TailscaleClientMocks
 import XCTest
 
 @testable import TailscaleClient
@@ -263,21 +264,4 @@ final class ErrorHandlingTests: XCTestCase {
 
 private enum CodingKeys: String, CodingKey {
   case test
-}
-
-private struct MockTransport: TailscaleTransport {
-  let handler:
-    @Sendable (TailscaleRequest, TailscaleClientConfiguration) async throws -> TailscaleResponse
-
-  func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration) async throws
-    -> TailscaleResponse
-  {
-    try await handler(request, configuration)
-  }
-
-  func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
-    async throws -> AsyncThrowingStream<Data, Error>
-  {
-    throw TailscaleTransportError.unimplemented
-  }
 }

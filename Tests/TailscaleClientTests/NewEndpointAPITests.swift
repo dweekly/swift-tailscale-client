@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
+import TailscaleClientMocks
 import XCTest
 
 @testable import TailscaleClient
@@ -241,36 +242,5 @@ final class NewEndpointAPITests: XCTestCase {
       XCTAssertEqual(code, 503)
       XCTAssertEqual(endpoint, "/localapi/v0/metrics")
     }
-  }
-}
-
-// MARK: - Test Fixtures (reused pattern from StatusAPITests)
-
-private struct MockTransport: TailscaleTransport {
-  let handler:
-    @Sendable (TailscaleRequest, TailscaleClientConfiguration) async throws -> TailscaleResponse
-
-  func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration) async throws
-    -> TailscaleResponse
-  {
-    try await handler(request, configuration)
-  }
-
-  func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
-    async throws -> AsyncThrowingStream<Data, Error>
-  {
-    throw TailscaleTransportError.unimplemented
-  }
-}
-
-private actor RequestRecorder {
-  private var storage: [TailscaleRequest] = []
-
-  func record(request: TailscaleRequest) {
-    storage.append(request)
-  }
-
-  var requests: [TailscaleRequest] {
-    get async { storage }
   }
 }
