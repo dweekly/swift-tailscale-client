@@ -6,7 +6,7 @@ import Foundation
 /// Represents the preferences returned from `/localapi/v0/prefs`.
 ///
 /// This contains the current Tailscale configuration settings for this node.
-public struct Prefs: Sendable, Decodable {
+public struct Prefs: Sendable, Codable, Equatable {
   /// The control server URL (usually https://controlplane.tailscale.com).
   public let controlURL: String?
 
@@ -73,6 +73,55 @@ public struct Prefs: Sendable, Decodable {
   /// Whether posture checking is enabled.
   public let postureChecking: Bool?
 
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    controlURL: String? = nil,
+    routeAll: Bool? = nil,
+    exitNodeID: String? = nil,
+    exitNodeIP: String? = nil,
+    exitNodeAllowLANAccess: Bool? = nil,
+    corpDNS: Bool? = nil,
+    runSSH: Bool? = nil,
+    runWebClient: Bool? = nil,
+    wantRunning: Bool? = nil,
+    loggedOut: Bool? = nil,
+    shieldsUp: Bool? = nil,
+    advertiseTags: [String] = [],
+    hostname: String? = nil,
+    forceDaemon: Bool? = nil,
+    advertiseRoutes: [String] = [],
+    noSNAT: Bool? = nil,
+    netfilterMode: Int? = nil,
+    operatorUser: String? = nil,
+    profileName: String? = nil,
+    autoUpdate: AutoUpdatePrefs? = nil,
+    appConnector: AppConnectorPrefs? = nil,
+    postureChecking: Bool? = nil
+  ) {
+    self.controlURL = controlURL
+    self.routeAll = routeAll
+    self.exitNodeID = exitNodeID
+    self.exitNodeIP = exitNodeIP
+    self.exitNodeAllowLANAccess = exitNodeAllowLANAccess
+    self.corpDNS = corpDNS
+    self.runSSH = runSSH
+    self.runWebClient = runWebClient
+    self.wantRunning = wantRunning
+    self.loggedOut = loggedOut
+    self.shieldsUp = shieldsUp
+    self.advertiseTags = advertiseTags
+    self.hostname = hostname
+    self.forceDaemon = forceDaemon
+    self.advertiseRoutes = advertiseRoutes
+    self.noSNAT = noSNAT
+    self.netfilterMode = netfilterMode
+    self.operatorUser = operatorUser
+    self.profileName = profileName
+    self.autoUpdate = autoUpdate
+    self.appConnector = appConnector
+    self.postureChecking = postureChecking
+  }
+
   enum CodingKeys: String, CodingKey {
     case controlURL = "ControlURL"
     case routeAll = "RouteAll"
@@ -127,11 +176,20 @@ public struct Prefs: Sendable, Decodable {
 }
 
 /// Auto-update preferences.
-public struct AutoUpdatePrefs: Sendable, Decodable {
+public struct AutoUpdatePrefs: Sendable, Codable, Equatable {
   /// Whether to check for updates automatically.
   public let check: Bool?
   /// Whether to apply updates automatically.
   public let apply: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    check: Bool? = nil,
+    apply: Bool? = nil
+  ) {
+    self.check = check
+    self.apply = apply
+  }
 
   enum CodingKeys: String, CodingKey {
     case check = "Check"
@@ -140,9 +198,14 @@ public struct AutoUpdatePrefs: Sendable, Decodable {
 }
 
 /// App connector preferences.
-public struct AppConnectorPrefs: Sendable, Decodable {
+public struct AppConnectorPrefs: Sendable, Codable, Equatable {
   /// Whether app connector is advertised.
   public let advertise: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(advertise: Bool? = nil) {
+    self.advertise = advertise
+  }
 
   enum CodingKeys: String, CodingKey {
     case advertise = "Advertise"

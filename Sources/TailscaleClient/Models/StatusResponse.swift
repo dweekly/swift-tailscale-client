@@ -4,7 +4,7 @@
 import Foundation
 
 /// Represents the payload returned from `/localapi/v0/status`.
-public struct StatusResponse: Sendable, Decodable {
+public struct StatusResponse: Sendable, Decodable, Equatable {
   public let version: String?
   public let isTunEnabled: Bool?
   public let backendState: BackendState?
@@ -149,7 +149,7 @@ public enum BackendState: String, Sendable, Decodable {
   }
 }
 
-public struct NodeStatus: Sendable, Decodable {
+public struct NodeStatus: Sendable, Decodable, Equatable {
   public let id: String
   public let publicKey: String
   public let hostName: String
@@ -182,6 +182,75 @@ public struct NodeStatus: Sendable, Decodable {
   public let inEngine: Bool?
   public let expired: Bool?
   public let keyExpiry: Date?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    id: String,
+    publicKey: String,
+    hostName: String,
+    dnsName: String,
+    operatingSystem: String? = nil,
+    userID: UInt64? = nil,
+    tailscaleIPs: [String] = [],
+    allowedIPs: [String] = [],
+    addresses: [String]? = nil,
+    currentAddress: String? = nil,
+    relay: String? = nil,
+    peerRelay: String? = nil,
+    rxBytes: UInt64? = nil,
+    txBytes: UInt64? = nil,
+    created: Date? = nil,
+    lastWrite: Date? = nil,
+    lastSeen: Date? = nil,
+    lastHandshake: Date? = nil,
+    online: Bool? = nil,
+    exitNode: Bool? = nil,
+    exitNodeOption: Bool? = nil,
+    active: Bool? = nil,
+    peerAPIURL: [URL]? = nil,
+    taildropTarget: Int? = nil,
+    noFileSharingReason: String? = nil,
+    capabilities: [String]? = nil,
+    capabilityMap: [String: CapabilityValue]? = nil,
+    inNetworkMap: Bool? = nil,
+    inMagicSock: Bool? = nil,
+    inEngine: Bool? = nil,
+    expired: Bool? = nil,
+    keyExpiry: Date? = nil
+  ) {
+    self.id = id
+    self.publicKey = publicKey
+    self.hostName = hostName
+    self.dnsName = dnsName
+    self.operatingSystem = operatingSystem
+    self.userID = userID
+    self.tailscaleIPs = tailscaleIPs
+    self.allowedIPs = allowedIPs
+    self.addresses = addresses
+    self.currentAddress = currentAddress
+    self.relay = relay
+    self.peerRelay = peerRelay
+    self.rxBytes = rxBytes
+    self.txBytes = txBytes
+    self.created = created
+    self.lastWrite = lastWrite
+    self.lastSeen = lastSeen
+    self.lastHandshake = lastHandshake
+    self.online = online
+    self.exitNode = exitNode
+    self.exitNodeOption = exitNodeOption
+    self.active = active
+    self.peerAPIURL = peerAPIURL
+    self.taildropTarget = taildropTarget
+    self.noFileSharingReason = noFileSharingReason
+    self.capabilities = capabilities
+    self.capabilityMap = capabilityMap
+    self.inNetworkMap = inNetworkMap
+    self.inMagicSock = inMagicSock
+    self.inEngine = inEngine
+    self.expired = expired
+    self.keyExpiry = keyExpiry
+  }
 
   enum CodingKeys: String, CodingKey {
     case id = "ID"
@@ -270,7 +339,7 @@ public struct NodeStatus: Sendable, Decodable {
 /// the typed cases; anything else (booleans mixed with strings, objects, etc.)
 /// decodes into ``raw(_:)`` so that unfamiliar capability values never cause
 /// a status or whois response to fail decoding.
-public enum CapabilityValue: Sendable, Decodable {
+public enum CapabilityValue: Sendable, Decodable, Equatable {
   case null
   case integers([Int])
   case strings([String])
@@ -305,10 +374,21 @@ public enum CapabilityValue: Sendable, Decodable {
   }
 }
 
-public struct TailnetStatus: Sendable, Decodable {
+public struct TailnetStatus: Sendable, Decodable, Equatable {
   public let name: String?
   public let magicDNSSuffix: String?
   public let magicDNSEnabled: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    name: String? = nil,
+    magicDNSSuffix: String? = nil,
+    magicDNSEnabled: Bool? = nil
+  ) {
+    self.name = name
+    self.magicDNSSuffix = magicDNSSuffix
+    self.magicDNSEnabled = magicDNSEnabled
+  }
 
   enum CodingKeys: String, CodingKey {
     case name = "Name"
@@ -317,11 +397,24 @@ public struct TailnetStatus: Sendable, Decodable {
   }
 }
 
-public struct UserProfile: Sendable, Decodable {
+public struct UserProfile: Sendable, Decodable, Equatable {
   public let id: UInt64
   public let loginName: String?
   public let displayName: String?
   public let profilePicURL: URL?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    id: UInt64,
+    loginName: String? = nil,
+    displayName: String? = nil,
+    profilePicURL: URL? = nil
+  ) {
+    self.id = id
+    self.loginName = loginName
+    self.displayName = displayName
+    self.profilePicURL = profilePicURL
+  }
 
   enum CodingKeys: String, CodingKey {
     case id = "ID"
@@ -345,8 +438,13 @@ public struct UserProfile: Sendable, Decodable {
   }
 }
 
-public struct ClientVersionStatus: Sendable, Decodable {
+public struct ClientVersionStatus: Sendable, Decodable, Equatable {
   public let runningLatest: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(runningLatest: Bool? = nil) {
+    self.runningLatest = runningLatest
+  }
 
   enum CodingKeys: String, CodingKey {
     case runningLatest = "RunningLatest"

@@ -14,6 +14,12 @@ on:
   pull_request:
     branches: [ main ]
 
+# The single self-hosted runner processes one job at a time; cancel superseded
+# runs so rapid pushes don't stack a backlog.
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   integration-macos:
     name: Integration tests (self-hosted macOS, real tailscaled)

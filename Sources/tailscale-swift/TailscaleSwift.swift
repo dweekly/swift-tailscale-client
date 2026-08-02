@@ -17,6 +17,7 @@ struct TailscaleSwift: AsyncParsableCommand {
       HealthCommand.self,
       MetricsCommand.self,
       WatchCommand.self,
+      FeaturesCommand.self,
     ]
   )
 }

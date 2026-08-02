@@ -13,6 +13,10 @@ let package = Package(
         .library(
             name: "TailscaleClient",
             targets: ["TailscaleClient"]
+        ),
+        .library(
+            name: "TailscaleClientMocks",
+            targets: ["TailscaleClientMocks"]
         )
     ],
     dependencies: [
@@ -22,6 +26,10 @@ let package = Package(
     targets: [
         .target(
             name: "TailscaleClient"
+        ),
+        .target(
+            name: "TailscaleClientMocks",
+            dependencies: ["TailscaleClient"]
         ),
         .executableTarget(
             name: "tailscale-swift",
@@ -33,7 +41,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TailscaleClientTests",
-            dependencies: ["TailscaleClient"],
+            dependencies: ["TailscaleClient", "TailscaleClientMocks"],
             resources: [
                 .process("Fixtures")
             ]

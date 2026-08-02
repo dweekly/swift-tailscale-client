@@ -31,7 +31,27 @@ jobs:
         run: swift build -v
 
       - name: Run tests
-        run: swift test -v
+        run: swift test -v --enable-code-coverage
+
+      - name: Check code coverage
+        run: |
+          # .build/debug is a symlink; resolve the real bin dir so find works.
+          BIN_DIR=$(swift build --show-bin-path)
+          PROFDATA="$BIN_DIR/codecov/default.profdata"
+          XCTEST_BIN=$(find "$BIN_DIR" -maxdepth 1 -name '*PackageTests.xctest' | head -1)
+          BIN="$XCTEST_BIN/Contents/MacOS/$(basename "$XCTEST_BIN" .xctest)"
+          PERCENT=$(xcrun llvm-cov export -summary-only "$BIN" \
+            -instr-profile "$PROFDATA" \
+            -ignore-filename-regex '(Tests/|\.build/|Sources/tailscale-swift/)' \
+            | python3 -c "import json,sys; print(round(json.load(sys.stdin)['data'][0]['totals']['lines']['percent'], 1))")
+          # Floor just under the measured v0.4.0 baseline (56.8%); ratchets per
+          # Documentation/TESTING.md as the transport/parser tests land (v0.5.0).
+          MIN=55
+          echo "Library line coverage: ${PERCENT}% (floor: ${MIN}%)"
+          if ! python3 -c "import sys; sys.exit(0 if float('$PERCENT') >= $MIN else 1)"; then
+            echo "::error::Line coverage ${PERCENT}% is below the ${MIN}% floor (see Documentation/TESTING.md)"
+            exit 1
+          fi
 
       - name: Check formatting
         run: swift format lint --strict --recursive Sources Tests

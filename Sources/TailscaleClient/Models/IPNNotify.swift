@@ -50,8 +50,26 @@ public struct IPNNotify: Codable, Sendable, Equatable {
   /// Local TCP port the frontend is listening on.
   public var localTCPPort: UInt16?
 
-  // Note: NetMap, Prefs, IncomingFiles, OutgoingFiles, DriveShares, ClientVersion
-  // are omitted for now as they're complex types. Add as needed.
+  /// Preferences changed (or initial prefs when `.initialPrefs` is requested).
+  /// Same shape as `/localapi/v0/prefs`.
+  public var prefs: Prefs?
+
+  /// Network map changed (or initial netmap when `.initialNetMap` is requested).
+  /// Preserved losslessly as raw JSON; a typed NetworkMap model is planned.
+  public var netMap: JSONValue?
+
+  /// Taildrop transfers currently being received.
+  public var incomingFiles: [PartialFile]?
+
+  /// Taildrop transfers currently being sent.
+  public var outgoingFiles: [OutgoingFile]?
+
+  /// Present when Taildrop files are waiting to be fetched (the payload
+  /// itself is an empty marker object).
+  public var filesWaiting: EmptyMessage?
+
+  // Note: DriveShares, ClientVersion, and the peer-change patch fields are
+  // not modeled yet; unknown keys are ignored by the decoder.
 
   private enum CodingKeys: String, CodingKey {
     case version = "Version"
@@ -64,6 +82,11 @@ public struct IPNNotify: Codable, Sendable, Equatable {
     case health = "Health"
     case suggestedExitNode = "SuggestedExitNode"
     case localTCPPort = "LocalTCPPort"
+    case prefs = "Prefs"
+    case netMap = "NetMap"
+    case incomingFiles = "IncomingFiles"
+    case outgoingFiles = "OutgoingFiles"
+    case filesWaiting = "FilesWaiting"
   }
 
   public init(
@@ -76,7 +99,12 @@ public struct IPNNotify: Codable, Sendable, Equatable {
     engine: EngineStatus? = nil,
     health: HealthState? = nil,
     suggestedExitNode: String? = nil,
-    localTCPPort: UInt16? = nil
+    localTCPPort: UInt16? = nil,
+    prefs: Prefs? = nil,
+    netMap: JSONValue? = nil,
+    incomingFiles: [PartialFile]? = nil,
+    outgoingFiles: [OutgoingFile]? = nil,
+    filesWaiting: EmptyMessage? = nil
   ) {
     self.version = version
     self.sessionID = sessionID
@@ -88,6 +116,132 @@ public struct IPNNotify: Codable, Sendable, Equatable {
     self.health = health
     self.suggestedExitNode = suggestedExitNode
     self.localTCPPort = localTCPPort
+    self.prefs = prefs
+    self.netMap = netMap
+    self.incomingFiles = incomingFiles
+    self.outgoingFiles = outgoingFiles
+    self.filesWaiting = filesWaiting
+  }
+
+  /// Whether the daemon reports Taildrop files waiting to be fetched.
+  public var hasFilesWaiting: Bool {
+    filesWaiting != nil
+  }
+}
+
+/// An empty JSON object used upstream as a presence marker (`empty.Message`).
+public struct EmptyMessage: Codable, Sendable, Equatable {
+  /// Creates an instance for tests, previews, or fixtures.
+  public init() {}
+}
+
+/// A Taildrop file currently being received (upstream: `ipn.PartialFile`).
+public struct PartialFile: Codable, Sendable, Equatable {
+  /// File name, e.g. "photo.jpg".
+  public var name: String
+  /// When the transfer started.
+  public var started: Date?
+  /// Declared size in bytes, or -1 if unknown.
+  public var declaredSize: Int64?
+  /// Bytes received so far.
+  public var received: Int64?
+  /// Whether the transfer finished and the file is ready to be renamed into place.
+  public var done: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    name: String,
+    started: Date? = nil,
+    declaredSize: Int64? = nil,
+    received: Int64? = nil,
+    done: Bool? = nil
+  ) {
+    self.name = name
+    self.started = started
+    self.declaredSize = declaredSize
+    self.received = received
+    self.done = done
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case name = "Name"
+    case started = "Started"
+    case declaredSize = "DeclaredSize"
+    case received = "Received"
+    case done = "Done"
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    name = try container.decode(String.self, forKey: .name)
+    started = try container.decodeTailscaleDateIfPresent(forKey: .started)
+    declaredSize = try container.decodeIfPresent(Int64.self, forKey: .declaredSize)
+    received = try container.decodeIfPresent(Int64.self, forKey: .received)
+    done = try container.decodeIfPresent(Bool.self, forKey: .done)
+  }
+}
+
+/// A Taildrop file currently being sent (upstream: `ipn.OutgoingFile`).
+public struct OutgoingFile: Codable, Sendable, Equatable {
+  /// Unique transfer identifier.
+  public var id: String?
+  /// Stable node ID of the receiving peer.
+  public var peerID: String?
+  /// File name.
+  public var name: String?
+  /// When the transfer started.
+  public var started: Date?
+  /// Declared size in bytes.
+  public var declaredSize: Int64?
+  /// Bytes sent so far.
+  public var sent: Int64?
+  /// Whether the transfer has finished (successfully or not).
+  public var finished: Bool?
+  /// Whether a finished transfer succeeded.
+  public var succeeded: Bool?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    id: String? = nil,
+    peerID: String? = nil,
+    name: String? = nil,
+    started: Date? = nil,
+    declaredSize: Int64? = nil,
+    sent: Int64? = nil,
+    finished: Bool? = nil,
+    succeeded: Bool? = nil
+  ) {
+    self.id = id
+    self.peerID = peerID
+    self.name = name
+    self.started = started
+    self.declaredSize = declaredSize
+    self.sent = sent
+    self.finished = finished
+    self.succeeded = succeeded
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "ID"
+    case peerID = "PeerID"
+    case name = "Name"
+    case started = "Started"
+    case declaredSize = "DeclaredSize"
+    case sent = "Sent"
+    case finished = "Finished"
+    case succeeded = "Succeeded"
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decodeIfPresent(String.self, forKey: .id)
+    peerID = try container.decodeIfPresent(String.self, forKey: .peerID)
+    name = try container.decodeIfPresent(String.self, forKey: .name)
+    started = try container.decodeTailscaleDateIfPresent(forKey: .started)
+    declaredSize = try container.decodeIfPresent(Int64.self, forKey: .declaredSize)
+    sent = try container.decodeIfPresent(Int64.self, forKey: .sent)
+    finished = try container.decodeIfPresent(Bool.self, forKey: .finished)
+    succeeded = try container.decodeIfPresent(Bool.self, forKey: .succeeded)
   }
 }
 

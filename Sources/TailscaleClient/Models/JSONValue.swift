@@ -6,7 +6,7 @@ import Foundation
 /// upstream as raw JSON (`[]json.RawMessage` in `tailcfg`), so any valid JSON
 /// value can appear. `JSONValue` preserves such values losslessly instead of
 /// failing to decode shapes this package has not seen before.
-public enum JSONValue: Sendable, Equatable, Decodable {
+public enum JSONValue: Sendable, Equatable, Codable {
   case null
   case bool(Bool)
   case integer(Int)
@@ -34,6 +34,26 @@ public enum JSONValue: Sendable, Equatable, Decodable {
     } else {
       throw DecodingError.dataCorruptedError(
         in: container, debugDescription: "Value is not valid JSON")
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .null:
+      try container.encodeNil()
+    case .bool(let value):
+      try container.encode(value)
+    case .integer(let value):
+      try container.encode(value)
+    case .double(let value):
+      try container.encode(value)
+    case .string(let value):
+      try container.encode(value)
+    case .array(let value):
+      try container.encode(value)
+    case .object(let value):
+      try container.encode(value)
     }
   }
 }

@@ -10,8 +10,22 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- **`TailscaleClientMocks` library product**: public `MockTransport` (scriptable unary responses and line streams with delays, injected errors, and per-connection scripts) and `RequestRecorder`, so apps can test their Tailscale-facing code without a daemon. The package's own tests now use it.
+- **Capability probing**: `daemonFeatures()` wraps `POST /localapi/v0/debug-optional-features` (`OptionalFeatures` model). Endpoint availability is build-dependent in modern tailscaled; probe instead of guessing.
+- **Request deadlines**: `TailscaleClientConfiguration.requestTimeout` (default 30 s, `nil` disables) applied to unary requests and stream establishment; new `TailscaleClientError.timeout` case.
+- New `TailscaleClientError.endpointUnavailable(endpoint:feature:)` case for optional endpoints missing from the connected daemon build.
+- **IPN bus streaming hardening**: undecodable lines are skipped and reported via the new `onUndecodableLine` callback instead of killing the stream; opt-in auto-reconnect with exponential backoff via `IPNBusReconnectPolicy`.
+- **`IPNNotify` completed**: `prefs`, `netMap` (lossless `JSONValue`), `incomingFiles`/`outgoingFiles` (new `PartialFile`/`OutgoingFile` models), and `filesWaiting` — the `.initialPrefs`/`.initialNetMap` watch options are now safe to request.
+- Public memberwise initializers and `Equatable` on all response models (SwiftUI previews, consumer tests); `Prefs` family is now `Codable`.
+- `LocalAPIDiscovery` is now public so apps can report how the daemon was found.
+- CLI: new `tailscale-swift features` command (`--json` supported).
 - CI: iOS/tvOS/watchOS build checks, SPM caching, strict format linting
 - CI: real-daemon integration workflow on a self-hosted macOS runner (fork-guarded; discovers the LocalAPI via `tailscale debug local-creds` with socket and sameuserproof fallbacks)
+
+### Changed
+
+- All requests now send `Host: local-tailscaled.sock` (upstream's `validHost` requirement), matching the Go client; previously only the unix-socket transport did.
+- The stray debug print in the IPN bus hot path is gone.
 
 ## [0.3.1] - 2025-01-14
 

@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented (v0.3.1) | 6 |
+| Implemented | 7 |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -41,7 +41,8 @@ Three upstream facts shape everything below:
 | `prefs` | GET | `prefs()` | PATCH planned v0.8.0 |
 | `ping` | POST | `ping(ip:type:size:)` | disco/TSMP/ICMP/peerAPI |
 | `metrics` | GET | `metrics()` | Prometheus text; feature-gated upstream (`HasClientMetrics`/`HasDebug`) |
-| `watch-ipn-bus` | GET (streaming) | `watchIPNBus(options:)` | `AsyncThrowingStream<IPNNotify, Error>`; hardening planned v0.4.0 |
+| `watch-ipn-bus` | GET (streaming) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | `AsyncThrowingStream<IPNNotify, Error>`; skip-and-report + opt-in reconnect since v0.4.0 |
+| `debug-optional-features` | POST | `daemonFeatures()` | v0.4.0 — the capability-probing foundation |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -165,7 +166,7 @@ Note: the official CLI's `tailscale update` does *not* use these — it runs the
 
 | Endpoint | Method(s) | Tier | Status | Notes |
 |----------|-----------|------|--------|-------|
-| `debug-optional-features` | POST | **Stable** | **v0.4.0** | The capability-discovery endpoint; foundation of this package's probing strategy |
+| `debug-optional-features` | POST | **Stable** | **implemented (v0.4.0)** | `daemonFeatures()`; the capability-discovery endpoint this package's probing strategy is built on |
 | `bugreport` | POST | Experimental | v0.7.0 | `experimental.bugreport()` |
 | `goroutines` | GET | Experimental | v0.7.0 | `experimental.goroutines()` |
 | `debug` (`?action=`) | POST | Experimental | on demand | actions: `notify`, `rebind`, `restun`, `break-tcp-conns`, `break-derp-conns`, `force-netmap-update`, `control-knobs`, `pick-new-derp`, `force-prefer-derp`, `derp-set-homeless`, `derp-unset-homeless`, `peer-relay-servers`, `peer-disco-keys`, `rotate-disco-key`, `statedir`, `clear-netmap-cache`, `current-netmap` |
