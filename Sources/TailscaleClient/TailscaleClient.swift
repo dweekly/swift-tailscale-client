@@ -398,7 +398,7 @@ public actor TailscaleClient {
 
   // MARK: - Private Helpers
 
-  private func performRawRequest(
+  func performRawRequest(
     _ request: TailscaleRequest,
     endpoint: String,
     optionalEndpoint: Bool = false,
@@ -426,7 +426,7 @@ public actor TailscaleClient {
     return text
   }
 
-  private func performRequest<T: Decodable>(
+  func performRequest<T: Decodable>(
     _ request: TailscaleRequest,
     endpoint: String,
     optionalEndpoint: Bool = false,
@@ -466,7 +466,7 @@ public actor TailscaleClient {
 
   /// Races `operation` against the configured deadline, throwing
   /// `TailscaleClientError.timeout` if the deadline elapses first.
-  fileprivate static func withDeadline<T: Sendable>(
+  static func withDeadline<T: Sendable>(
     _ timeout: Duration?,
     endpoint: String,
     _ operation: @escaping @Sendable () async throws -> T
@@ -486,7 +486,7 @@ public actor TailscaleClient {
     }
   }
 
-  fileprivate static func mapStreamError(_ error: any Error) -> any Error {
+  static func mapStreamError(_ error: any Error) -> any Error {
     if let clientError = error as? TailscaleClientError {
       return clientError
     }

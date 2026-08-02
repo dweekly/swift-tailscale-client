@@ -338,6 +338,24 @@ import XCTest
       }
     }
 
+    // MARK: - Experimental Namespace Tests
+
+    func testGoroutinesAgainstLiveDaemon() async throws {
+      do {
+        let dump = try await client.experimental.goroutines()
+        XCTAssertTrue(dump.contains("goroutine"), "Expected a Go stack dump")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without debug support; skipping")
+        case .unexpectedStatus(let code, _, _) where code == 403:
+          throw XCTSkip("LocalAPI connection lacks write permission for goroutines; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
     // MARK: - Transport Layer Tests
 
     func testTransportHeaderInjection() async throws {
