@@ -33,12 +33,33 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``TailscaleClient``
 - ``TailscaleClientConfiguration``
 - ``TailscaleClientError``
+- ``LocalAPIDiscovery``
+- ``TailscaleEndpoint``
 
 ### Status
 - ``StatusResponse``
 - ``StatusQuery``
 - ``NodeStatus``
 - ``BackendState``
+- ``TailnetStatus``
+- ``ClientVersionStatus``
+- ``CapabilityValue``
+- ``JSONValue``
+
+### Real-Time Updates (IPN Bus)
+- ``IPNNotify``
+- ``IPNState``
+- ``EngineStatus``
+- ``HealthState``
+- ``HealthWarning``
+- ``NotifyWatchOpt``
+- ``IPNBusReconnectPolicy``
+- ``PartialFile``
+- ``OutgoingFile``
+- ``EmptyMessage``
+
+### Capability Probing
+- ``OptionalFeatures``
 
 ### Identity Lookup
 - ``WhoIsResponse``
@@ -61,3 +82,6 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 ### Transport
 - ``TailscaleTransport``
 - ``TailscaleTransportError``
+- ``TailscaleRequest``
+- ``TailscaleResponse``
+- ``URLSessionTailscaleTransport``

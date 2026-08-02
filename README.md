@@ -113,7 +113,8 @@ for try await notification in try await client.watchIPNBus() {
 | `prefs()` | Get current node preferences and configuration |
 | `ping(ip:type:size:)` | Ping a peer to test connectivity and measure latency |
 | `metrics()` | Fetch internal metrics in Prometheus exposition format |
-| `watchIPNBus(options:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`) |
+| `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
+| `daemonFeatures()` | Probe which optional features the daemon was compiled with (`debug-optional-features`) |
 
 | Property | Description |
 |----------|-------------|

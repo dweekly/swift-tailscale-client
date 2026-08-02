@@ -75,28 +75,32 @@ All calls throw `TailscaleClientError` (`.transport`, `.unexpectedStatus(code:bo
    endpoint availability varies with how tailscaled was built. Handle
    `.unexpectedStatus(404, ...)` on optional endpoints gracefully. Check
    `Documentation/LOCALAPI-COVERAGE.md` for each endpoint's status and tier.
-4. **Streaming caveat (v0.3.1):** a malformed line terminates the `watchIPNBus` stream — wrap
-   consumption in a retry loop for long-lived monitors (built-in skip+reconnect is planned v0.4.0).
-   Don't request `initialPrefs`/`initialNetMap` watch options yet; their payloads aren't modeled.
+4. **Streaming (v0.4.0+):** malformed lines are skipped (observe via the `onUndecodableLine:`
+   callback), and long-lived monitors should pass `reconnect: .default` for automatic re-dial
+   with backoff. All watch options including `initialPrefs`/`initialNetMap` are decodable.
+   On v0.3.1 and earlier, a malformed line kills the stream — wrap in a retry loop there.
 5. **Environment overrides** for testing/CI: `TAILSCALE_LOCALAPI_SOCKET`, `TAILSCALE_LOCALAPI_PORT`/
    `_HOST`, `TAILSCALE_LOCALAPI_URL`, `TAILSCALE_DISCOVERY_DEBUG=1` (logs discovery to stderr).
 
 ## Testing an app that uses this package
 
-Inject a mock transport — `TailscaleTransport` is a public protocol:
+Use the shipped `TailscaleClientMocks` product (v0.4.0+) — add it as a test-target dependency:
 
 ```swift
-struct StubTransport: TailscaleTransport {
-    func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration) async throws -> TailscaleResponse {
-        TailscaleResponse(statusCode: 200, headers: [:], body: fixtureJSON)
-    }
-    func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration) async throws -> AsyncThrowingStream<Data, Error> { ... }
+import TailscaleClientMocks
+
+let transport = MockTransport { request, _ in
+    TailscaleResponse(statusCode: 200, data: fixtureJSON)
 }
-let config = TailscaleClientConfiguration(endpoint: .unixSocket(path: "/dev/null"), transport: StubTransport())
+// Streaming: MockTransport.scriptedStream([.jsonLine("{\"State\":6}"), .delay(.seconds(1))])
+// Reconnect scenarios: MockTransport.scriptedStreams([[...first connection...], [...second...]])
+let config = TailscaleClientConfiguration(
+    endpoint: .url(URL(string: "http://mock.local")!), authToken: nil, transport: transport)
 let client = TailscaleClient(configuration: config)
 ```
 
-(A shipped `TailscaleClientMocks` product with scripted transports is planned for v0.4.0.)
+`RequestRecorder` (an actor) captures requests for assertions. On older versions, conform your
+own stub to the public `TailscaleTransport` protocol instead.
 
 ## Repo map (for contributors)
 
