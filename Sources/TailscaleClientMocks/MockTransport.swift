@@ -39,22 +39,30 @@ public struct MockTransport: TailscaleTransport {
 
   /// Creates a transport that serves unary requests; streaming requests throw
   /// `TailscaleTransportError.unimplemented`.
+  ///
+  /// This is the only single-closure initializer so trailing-closure syntax
+  /// stays unambiguous; build streaming-only transports with
+  /// ``streaming(_:)``, ``scriptedStream(_:)``, or ``scriptedStreams(_:)``.
   public init(handler: @escaping Handler) {
     self.handler = handler
     self.streamHandler = nil
-  }
-
-  /// Creates a transport that serves streaming requests; unary requests throw
-  /// `TailscaleTransportError.unimplemented`.
-  public init(streaming: @escaping StreamHandler) {
-    self.handler = nil
-    self.streamHandler = streaming
   }
 
   /// Creates a transport that serves both unary and streaming requests.
   public init(handler: @escaping Handler, streaming: @escaping StreamHandler) {
     self.handler = handler
     self.streamHandler = streaming
+  }
+
+  private init(handler: Handler?, streamHandler: StreamHandler?) {
+    self.handler = handler
+    self.streamHandler = streamHandler
+  }
+
+  /// A transport that serves streaming requests via `streamHandler`; unary
+  /// requests throw `TailscaleTransportError.unimplemented`.
+  public static func streaming(_ streamHandler: @escaping StreamHandler) -> MockTransport {
+    MockTransport(handler: nil, streamHandler: streamHandler)
   }
 
   public func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
@@ -91,7 +99,7 @@ extension MockTransport {
   /// A transport whose streaming side replays the given events in order and then
   /// finishes (unless an event terminates it early with `.failure`).
   public static func scriptedStream(_ events: [MockStreamEvent]) -> MockTransport {
-    MockTransport(streaming: { _, _ in makeStream(events) })
+    .streaming { _, _ in makeStream(events) }
   }
 
   /// A transport that serves a fresh scripted stream per connection attempt,
@@ -99,12 +107,12 @@ extension MockTransport {
   /// throw `TailscaleTransportError.unimplemented`. Useful for reconnect tests.
   public static func scriptedStreams(_ scripts: [[MockStreamEvent]]) -> MockTransport {
     let remaining = ScriptQueue(scripts)
-    return MockTransport(streaming: { _, _ in
+    return .streaming { _, _ in
       guard let events = await remaining.next() else {
         throw TailscaleTransportError.unimplemented
       }
       return makeStream(events)
-    })
+    }
   }
 
   private static func makeStream(_ events: [MockStreamEvent]) -> AsyncThrowingStream<Data, Error> {

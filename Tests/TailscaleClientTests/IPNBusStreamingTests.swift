@@ -127,9 +127,9 @@ final class IPNBusStreamingTests: XCTestCase {
   }
 
   func testInitialConnectionFailureThrows() async {
-    let transport = MockTransport(streaming: { _, _ in
+    let transport = MockTransport.streaming { _, _ in
       throw TailscaleTransportError.socketNotFound(path: "/nonexistent")
-    })
+    }
     let client = makeClient(transport)
 
     await assertThrowsErrorAsync(try await client.watchIPNBus()) { error in
