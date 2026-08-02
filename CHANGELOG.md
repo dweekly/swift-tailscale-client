@@ -4,11 +4,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
-### Added (v0.5.0 stream)
+## [0.5.0] - 2026-08-02
+
+### Added
 
 - **Linux support for the Unix socket transport**: the POSIX socket code now compiles and runs on Glibc platforms (SIGPIPE suppressed via `MSG_NOSIGNAL`; poll-based reads honor task cancellation even when the daemon is silent). `MacClientInfo` and interface discovery remain Darwin-only; loopback *streaming* via URLSession is unavailable on Linux (corelibs has no `URLSession.bytes`), which only affects the Darwin-specific GUI-token flow anyway.
-- **Testable wire-format parsers** extracted from the socket transport: `HTTPWireFormat` (request serialization + response-head parsing), `HTTPHeadBuffer`, `NewlineFramer`, and an incremental `ChunkedTransferDecoder` — with a corner-case suite covering split-anywhere chunk boundaries, trailers, chunk extensions, bare-LF tolerance, >1 MB payloads, oversized heads, and UTF-8 frames split across reads.
+- **Testable wire-format parsers** extracted from the socket transport: `HTTPWireFormat` (request serialization + response-head parsing), `HTTPHeadBuffer`, `NewlineFramer`, and an incremental `ChunkedTransferDecoder` — with a corner-case suite covering split-anywhere chunk boundaries, trailers, chunk extensions, bare-LF tolerance, >1 MB payloads, oversized heads, and UTF-8 frames split across reads. Library line coverage rose from 56.8% to 66.9%.
 - CI: Linux build+test job (swift:6.1 container); nightly hermetic integration workflow running the live suite against headscale + real tailscaled (userspace networking) — no secrets, throwaway tailnet.
+- Release automation: tag-triggered GitHub Releases with notes extracted from this file, plus a backfill workflow for historical tags.
+
+## [0.4.0] - 2026-08-02
 
 ### Fixed
 
@@ -25,7 +30,7 @@ All notable changes to this project will be documented in this file. The format 
 - Public memberwise initializers and `Equatable` on all response models (SwiftUI previews, consumer tests); `Prefs` family is now `Codable`.
 - `LocalAPIDiscovery` is now public so apps can report how the daemon was found.
 - CLI: new `tailscale-swift features` command (`--json` supported).
-- CI: iOS/tvOS/watchOS build checks, SPM caching, strict format linting
+- CI: iOS/tvOS/watchOS build checks, SPM caching, strict format linting, and a coverage floor (measured baseline 56.8%)
 - CI: real-daemon integration workflow on a self-hosted macOS runner (fork-guarded; discovers the LocalAPI via `tailscale debug local-creds` with socket and sameuserproof fallbacks)
 
 ### Changed

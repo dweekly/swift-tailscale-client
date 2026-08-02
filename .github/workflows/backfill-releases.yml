@@ -1,0 +1,47 @@
+name: Backfill Releases
+
+# One-shot helper for tags that predate release.yml: creates GitHub Releases
+# for existing tags, with notes from the current CHANGELOG. Safe to re-run —
+# tags that already have a release are skipped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Space-separated existing tags to create releases for"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    name: Create releases from CHANGELOG
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          for TAG in $TAGS; do
+            VERSION="${TAG#v}"
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$TAG already has a release; skipping"
+              continue
+            fi
+            awk -v ver="$VERSION" '
+              $0 ~ "^## \\[" ver "\\]" { found = 1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md > /tmp/notes.md
+            if [ -s /tmp/notes.md ]; then
+              gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag
+            else
+              echo "::warning::No CHANGELOG entry for $TAG; using auto-generated notes"
+              gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+            fi
+            echo "Created release for $TAG"
+          done

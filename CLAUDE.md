@@ -48,8 +48,9 @@ swift run tailscale-swift status
 1. **Transport Layer** (`Transport/`)
    - `TailscaleTransport` protocol: Pluggable transport abstraction
    - `URLSessionTailscaleTransport`: Production implementation supporting both Unix domain sockets and loopback TCP
-   - `UnixSocketTransport`: Low-level Unix socket communication using `CFSocket` and `connect(2)`
-   - Handles header injection (`Tailscale-Cap`, `Authorization`), request building, and network error mapping
+   - `UnixSocketTransport`: Low-level Unix socket communication via raw POSIX sockets (Darwin + Glibc), with poll-based reads for cancellation
+   - Pure wire-format types (`HTTPWireFormat`, `HTTPHeadBuffer`, `NewlineFramer`, `ChunkedTransferDecoder`) own serialization/parsing and are unit-tested in isolation
+   - Handles header injection (`Tailscale-Cap`, `Authorization`, `Host: local-tailscaled.sock`), request building, and network error mapping
 
 2. **Configuration & Discovery** (`Configuration/`)
    - `TailscaleClientConfiguration`: Connection settings (endpoint, auth token, capability version, transport)
@@ -109,24 +110,23 @@ swift run tailscale-swift status
   - `Documentation/` - Project documentation (markdown files, analysis docs, man pages). **Committed to git.**
   - `docs/` - Generated DocC output. **Gitignored.** Never put project docs here.
 
-## Project Status (v0.3.1)
+## Project Status (v0.5.0)
 
-**Current version**: v0.3.1 - Unix socket priority, opt-in App Store discovery
+**Current version**: v0.5.0 - Linux transport, testable wire-format parsers, hermetic headscale CI
 
 **Primary use case**: Network Weather (NWX) macOS app for network diagnostics.
 
 **Recent releases**:
+- v0.5.0: Linux support (POSIX socket transport), extracted unit-tested HTTP parsers, Linux CI, nightly headscale integration
+- v0.4.0: Reliability foundations — `TailscaleClientMocks` product, streaming skip-and-report + reconnect, `daemonFeatures()` capability probing, request timeouts, public model inits
 - v0.3.1: Unix socket priority (avoids TCC popups), opt-in App Store discovery, chunked HTTP support
-- v0.3.0: IPN bus streaming (`watchIPNBus()`) for real-time state updates
-- v0.2.1: Network interface discovery (`StatusResponse.interfaceName`, `StatusResponse.interfaceInfo`)
 
-**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`
+**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`, `features`
 
 **Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
-- v0.4.0: Reliability foundations — shipped mocks product, streaming hardening, capability probing (`debug-optional-features`), public model inits, timeouts
-- v0.5.0: Linux transport + hermetic (headscale-based) integration CI
-- v0.6.0: Network diagnostics — DERP map, exit node suggestions, native STUN netcheck; CLI becomes a product + Homebrew
+- v0.6.0 (next): Network diagnostics — DERP map, exit node suggestions, usermetrics, native STUN netcheck; CLI becomes a product + Homebrew tap
 - v0.7.0+: DNS/routing diagnostics, write APIs, auth/profiles, serve/cert; post-1.0: Taildrop, Taildrive, Tailnet Lock
+- Open v0.5.0 follow-up: tailscaled version matrix in the headscale nightly
 
 **Development practice**: Spike every new endpoint against a real tailscaled (curl over the unix socket) and cross-check `tailscale/tailscale` source (`ipn/localapi/`, `client/local/`) before implementing; capture fixtures from real responses. See `Documentation/TESTING.md`.
 

@@ -334,6 +334,9 @@ import XCTest
     }
 
     func testNetworkInterfaceDiscoveryDirectly() async throws {
+      #if !canImport(Darwin)
+        throw XCTSkip("Interface enumeration is Darwin-only; Linux returns empty results")
+      #endif
       // Test the discovery utility directly
       let allInterfaces = NetworkInterfaceDiscovery.allInterfaces()
       XCTAssertFalse(allInterfaces.isEmpty, "Expected at least one network interface")

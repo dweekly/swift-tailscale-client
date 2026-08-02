@@ -30,13 +30,13 @@ embedded node.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.3.1")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.5.0")
 // target dependency:
 .product(name: "TailscaleClient", package: "swift-tailscale-client")
 ```
 
-Platforms: macOS 13+, iOS 16+, tvOS 16+, watchOS 9+. Swift 6 strict concurrency; all types Sendable.
-Linux support is on the roadmap (transport currently throws `.unimplemented` there).
+Platforms: macOS 13+, iOS 16+, tvOS 16+, watchOS 9+, Linux (v0.5.0+, unix-socket endpoints;
+interface discovery and loopback streaming stay Darwin-only). Swift 6 strict concurrency.
 
 ## Core usage patterns
 
