@@ -25,13 +25,43 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Verify Tailscale daemon is reachable
+      - name: Configure LocalAPI access
         run: |
           swift --version
-          if ! /Applications/Tailscale.app/Contents/MacOS/Tailscale version 2>/dev/null \
-             && ! command -v tailscale >/dev/null 2>&1; then
-            echo "::warning::No tailscale CLI found on runner; relying on LocalAPI discovery"
-          fi
+          /Applications/Tailscale.app/Contents/MacOS/Tailscale version 2>/dev/null \
+            || tailscale version 2>/dev/null \
+            || echo "::warning::No tailscale CLI found; continuing with LocalAPI probing"
+
+          # Prefer a unix socket (Homebrew / standalone tailscaled).
+          for sock in /var/run/tailscaled.socket /Library/Tailscale/Data/tailscaled.sock /var/run/tailscale/tailscaled.sock; do
+            if [ -S "$sock" ]; then
+              echo "Using unix socket: $sock"
+              echo "TAILSCALE_LOCALAPI_SOCKET=$sock" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+
+          # GUI app (App Store / standalone): loopback port + token from the
+          # sameuserproof file in its Group Container. Requires the runner to
+          # have disk access to that container (grant once via Full Disk Access).
+          shopt -s nullglob
+          for proof in "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macos/sameuserproof-* \
+                       "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macsys/sameuserproof-*; do
+            name=$(basename "$proof")
+            port=$(echo "$name" | cut -d- -f2)
+            token=$(echo "$name" | cut -d- -f3-)
+            echo "::add-mask::$token"
+            echo "Using GUI loopback LocalAPI on port $port"
+            {
+              echo "TAILSCALE_LOCALAPI_HOST=127.0.0.1"
+              echo "TAILSCALE_LOCALAPI_PORT=$port"
+              echo "TAILSCALE_LOCALAPI_AUTHKEY=$token"
+            } >> "$GITHUB_ENV"
+            exit 0
+          done
+
+          echo "::error::No Tailscale LocalAPI found: no unix socket at known paths and no readable sameuserproof file. If the GUI app is installed, grant the runner Full Disk Access (TCC) or install Homebrew tailscaled."
+          exit 1
 
       - name: Run integration suite
         env:
