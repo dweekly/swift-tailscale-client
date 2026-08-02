@@ -147,3 +147,21 @@ jobs:
         # Inherits the LocalAPI env vars exported by the discovery step; the
         # example exits non-zero if it cannot reach tailscaled.
         run: swift run --package-path Examples/StatusDemo StatusDemo
+
+      - name: Report CLI footprint (informational)
+        # Answers "how big is this thing": release binary size (as built and
+        # stripped) and peak RSS for a unary call and a netcheck.
+        run: |
+          swift build -c release --product tailscale-swift
+          BIN=$(swift build -c release --show-bin-path)/tailscale-swift
+          echo "== Binary size (release, host arch) =="
+          ls -l "$BIN" | awk '{print $5, $NF}'
+          cp "$BIN" "$RUNNER_TEMP/tailscale-swift-stripped"
+          strip "$RUNNER_TEMP/tailscale-swift-stripped" 2>/dev/null || true
+          ls -l "$RUNNER_TEMP/tailscale-swift-stripped" | awk '{print $5, "stripped"}'
+          echo "== Peak RSS: status =="
+          /usr/bin/time -l "$BIN" status > /dev/null 2> "$RUNNER_TEMP/time-status.txt" || true
+          grep -E "maximum resident|peak memory" "$RUNNER_TEMP/time-status.txt" || cat "$RUNNER_TEMP/time-status.txt"
+          echo "== Peak RSS: netcheck =="
+          /usr/bin/time -l "$BIN" netcheck > /dev/null 2> "$RUNNER_TEMP/time-netcheck.txt" || true
+          grep -E "maximum resident|peak memory" "$RUNNER_TEMP/time-netcheck.txt" || cat "$RUNNER_TEMP/time-netcheck.txt"

@@ -1,0 +1,15 @@
+{
+  "Bytes": "q80BIAABAAAAAAAABHBlZXIHZXhhbXBsZQJ0cwNuZXQAAAEAAQ==",
+  "Resolvers": [
+    {
+      "Addr": "100.100.100.100"
+    },
+    {
+      "Addr": "https://dns.example/dns-query",
+      "BootstrapResolution": [
+        "203.0.113.53"
+      ],
+      "UseWithExitNode": true
+    }
+  ]
+}

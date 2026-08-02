@@ -135,6 +135,59 @@ public actor TailscaleClient {
     return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
   }
 
+  /// Fetches the OS-level DNS configuration tailscaled has installed.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/dns-osconfig`.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without DNS support; other `TailscaleClientError`
+  ///   cases on failure.
+  public func dnsOSConfig() async throws -> DNSOSConfig {
+    let endpoint = "/localapi/v0/dns-osconfig"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "dns")
+  }
+
+  /// Resolves a name through tailscaled's internal DNS forwarder — the same
+  /// path MagicDNS queries take, including split-DNS routing.
+  ///
+  /// The response carries the raw DNS answer (RFC 1035 wire format) plus the
+  /// resolvers the forwarder chose for the name.
+  ///
+  /// - Parameters:
+  ///   - name: The DNS name to resolve (e.g., `"peer.tailnet.ts.net"`).
+  ///   - type: Record type (`"A"`, `"AAAA"`, `"TXT"`, `"CNAME"`, `"SRV"`, …).
+  /// - Returns: The parsed response from `/localapi/v0/dns-query`.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without DNS support; `.unexpectedStatus(400, …)` for
+  ///   an unknown record type; other `TailscaleClientError` cases on failure.
+  public func dnsQuery(name: String, type: String = "A") async throws -> DNSQueryResponse {
+    let endpoint = "/localapi/v0/dns-query"
+    let request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [
+        URLQueryItem(name: "name", value: name),
+        URLQueryItem(name: "type", value: type),
+      ])
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "dns")
+  }
+
+  /// Checks whether the host is configured to forward IP traffic — the
+  /// preflight for advertising subnet routes or acting as an exit node.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/check-ip-forwarding`;
+  ///   ``IPForwardingCheck/isReady`` is `true` when nothing needs fixing.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without route advertising; other
+  ///   `TailscaleClientError` cases on failure.
+  public func checkIPForwarding() async throws -> IPForwardingCheck {
+    let endpoint = "/localapi/v0/check-ip-forwarding"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "advertise-routes")
+  }
+
   /// Reports which optional features the connected daemon was compiled with.
   ///
   /// Modern tailscaled builds are modular: endpoint availability depends on the

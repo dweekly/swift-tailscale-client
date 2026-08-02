@@ -256,6 +256,52 @@ import XCTest
       }
     }
 
+    // MARK: - DNS Diagnostics Tests
+
+    func testDNSOSConfigAgainstLiveDaemon() async throws {
+      do {
+        let config = try await client.dnsOSConfig()
+        // MagicDNS installs 100.100.100.100; a daemon with DNS disabled may
+        // report empty arrays, which is still a valid response.
+        print("dns-osconfig: \(config.nameservers) search=\(config.searchDomains.count)")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon built without DNS support; skipping")
+      }
+    }
+
+    func testDNSQueryAgainstLiveDaemon() async throws {
+      let status = try await client.status()
+      guard let selfNode = status.selfNode, !selfNode.dnsName.isEmpty else {
+        throw XCTSkip("No self DNS name available")
+      }
+      do {
+        let response = try await client.dnsQuery(name: selfNode.dnsName)
+        XCTAssertGreaterThan(
+          response.bytes.count, 12, "Expected a DNS message beyond the 12-byte header")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without DNS support; skipping")
+        case .unexpectedStatus(let code, _, _) where code == 403:
+          throw XCTSkip("LocalAPI connection lacks write permission for dns-query; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
+    func testCheckIPForwardingAgainstLiveDaemon() async throws {
+      do {
+        let check = try await client.checkIPForwarding()
+        // Either outcome is valid; the shape is the contract.
+        print("check-ip-forwarding ready=\(check.isReady) warning=\(check.warning ?? "none")")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon built without route advertising; skipping")
+      }
+    }
+
     // MARK: - Transport Layer Tests
 
     func testTransportHeaderInjection() async throws {
