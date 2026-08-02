@@ -264,7 +264,7 @@ import XCTest
     /// tailnet.
     private func requireWriteTesting() throws {
       guard ProcessInfo.processInfo.environment["TAILSCALE_INTEGRATION_WRITE"] == "1" else {
-        throw XCTSkip("Write tests run only against hermetic daemons (TAILSCALE_INTEGRATION_WRITE=1)")
+        throw XCTSkip("Write tests need TAILSCALE_INTEGRATION_WRITE=1 (hermetic daemons only)")
       }
     }
 
