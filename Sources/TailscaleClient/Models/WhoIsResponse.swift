@@ -60,8 +60,11 @@ public struct WhoIsNode: Sendable, Codable, Equatable {
   public let allowedIPs: [String]
   /// Network endpoints (IP:port) where this node can be reached.
   public let endpoints: [String]
-  /// Preferred DERP region ID.
+  /// Legacy DERP endpoint string ("127.3.3.40:<region>").
   public let derp: String?
+
+  /// Home DERP region ID (replaces the legacy `derp` string upstream).
+  public let homeDERP: Int?
   /// Host information (OS, hostname, etc.).
   public let hostinfo: WhoIsHostinfo?
   /// When the node was created.
@@ -95,6 +98,7 @@ public struct WhoIsNode: Sendable, Codable, Equatable {
     allowedIPs: [String] = [],
     endpoints: [String] = [],
     derp: String? = nil,
+    homeDERP: Int? = nil,
     hostinfo: WhoIsHostinfo? = nil,
     created: Date? = nil,
     tags: [String] = [],
@@ -117,6 +121,7 @@ public struct WhoIsNode: Sendable, Codable, Equatable {
     self.allowedIPs = allowedIPs
     self.endpoints = endpoints
     self.derp = derp
+    self.homeDERP = homeDERP
     self.hostinfo = hostinfo
     self.created = created
     self.tags = tags
@@ -141,6 +146,7 @@ public struct WhoIsNode: Sendable, Codable, Equatable {
     case allowedIPs = "AllowedIPs"
     case endpoints = "Endpoints"
     case derp = "DERP"
+    case homeDERP = "HomeDERP"
     case hostinfo = "Hostinfo"
     case created = "Created"
     case tags = "Tags"
@@ -166,6 +172,7 @@ public struct WhoIsNode: Sendable, Codable, Equatable {
     allowedIPs = try container.decodeIfPresent([String].self, forKey: .allowedIPs) ?? []
     endpoints = try container.decodeIfPresent([String].self, forKey: .endpoints) ?? []
     derp = try container.decodeIfPresent(String.self, forKey: .derp)
+    homeDERP = try container.decodeIfPresent(Int.self, forKey: .homeDERP)
     hostinfo = try container.decodeIfPresent(WhoIsHostinfo.self, forKey: .hostinfo)
     created = try container.decodeTailscaleDateIfPresent(forKey: .created)
     tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []

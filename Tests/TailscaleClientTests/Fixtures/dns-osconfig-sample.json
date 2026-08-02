@@ -1,0 +1,13 @@
+{
+  "Nameservers": [
+    "100.100.100.100"
+  ],
+  "SearchDomains": [
+    "example.com.beta.tailscale.net.",
+    "corp.example.com."
+  ],
+  "MatchDomains": [
+    "example.com.beta.tailscale.net.",
+    "ts.net."
+  ]
+}

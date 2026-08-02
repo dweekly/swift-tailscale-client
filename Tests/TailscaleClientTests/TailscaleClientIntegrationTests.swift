@@ -256,6 +256,114 @@ import XCTest
       }
     }
 
+    // MARK: - Peer/User Lookup Tests
+
+    func testPeerAndUserProfileLookupAgainstLiveDaemon() async throws {
+      // The numeric IDs come from whois; status carries only stable IDs.
+      let status = try await client.status()
+      guard let selfIP = status.tailscaleIPs.first else {
+        throw XCTSkip("No Tailscale IPs available")
+      }
+      let whoIs = try await client.whois(address: selfIP)
+      guard let node = whoIs.node else {
+        throw XCTSkip("whois returned no node for self")
+      }
+
+      let fetched = try await client.peer(byID: node.id)
+      XCTAssertEqual(fetched.id, node.id)
+      XCTAssertEqual(fetched.stableID, node.stableID)
+
+      if let userID = node.user {
+        do {
+          let profile = try await client.userProfile(byID: userID)
+          XCTAssertEqual(profile.id, userID)
+          XCTAssertFalse(profile.loginName?.isEmpty ?? true, "Expected a login name")
+        } catch let error as TailscaleClientError {
+          // user-profile is a 2026 addition; older daemons 404 the unknown
+          // path, which is indistinguishable from "user not found". A 404
+          // for our own (known-valid) user ID means the daemon predates it.
+          guard case .unexpectedStatus(404, _, _) = error else { throw error }
+          throw XCTSkip("Daemon predates the user-profile endpoint; skipping")
+        }
+      }
+    }
+
+    func testPeerByIDNotFoundAgainstLiveDaemon() async throws {
+      await assertThrowsErrorAsync(try await client.peer(byID: 1)) { error in
+        guard let clientError = error as? TailscaleClientError,
+          case .unexpectedStatus(let code, _, _) = clientError
+        else {
+          XCTFail("Expected unexpectedStatus, got \(error)")
+          return
+        }
+        XCTAssertTrue(code == 404 || code == 400, "Expected not-found for bogus ID, got \(code)")
+      }
+    }
+
+    // MARK: - DNS Diagnostics Tests
+
+    func testDNSOSConfigAgainstLiveDaemon() async throws {
+      do {
+        let config = try await client.dnsOSConfig()
+        // MagicDNS installs 100.100.100.100; a daemon with DNS disabled may
+        // report empty arrays, which is still a valid response.
+        print("dns-osconfig: \(config.nameservers) search=\(config.searchDomains.count)")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon built without DNS support; skipping")
+      }
+    }
+
+    func testDNSQueryAgainstLiveDaemon() async throws {
+      let status = try await client.status()
+      guard let selfNode = status.selfNode, !selfNode.dnsName.isEmpty else {
+        throw XCTSkip("No self DNS name available")
+      }
+      do {
+        let response = try await client.dnsQuery(name: selfNode.dnsName)
+        XCTAssertGreaterThan(
+          response.bytes.count, 12, "Expected a DNS message beyond the 12-byte header")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without DNS support; skipping")
+        case .unexpectedStatus(let code, _, _) where code == 403:
+          throw XCTSkip("LocalAPI connection lacks write permission for dns-query; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
+    func testCheckIPForwardingAgainstLiveDaemon() async throws {
+      do {
+        let check = try await client.checkIPForwarding()
+        // Either outcome is valid; the shape is the contract.
+        print("check-ip-forwarding ready=\(check.isReady) warning=\(check.warning ?? "none")")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon built without route advertising; skipping")
+      }
+    }
+
+    // MARK: - Experimental Namespace Tests
+
+    func testGoroutinesAgainstLiveDaemon() async throws {
+      do {
+        let dump = try await client.experimental.goroutines()
+        XCTAssertTrue(dump.contains("goroutine"), "Expected a Go stack dump")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without debug support; skipping")
+        case .unexpectedStatus(let code, _, _) where code == 403:
+          throw XCTSkip("LocalAPI connection lacks write permission for goroutines; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
     // MARK: - Transport Layer Tests
 
     func testTransportHeaderInjection() async throws {

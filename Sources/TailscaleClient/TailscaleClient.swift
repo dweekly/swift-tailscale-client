@@ -135,6 +135,94 @@ public actor TailscaleClient {
     return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
   }
 
+  /// Fetches the full netmap record for a peer by its numeric node ID.
+  ///
+  /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the
+  /// IPN bus) — not the stable string ID shown in `status`. A 404 surfaces as
+  /// ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` and means the
+  /// peer is not in the current netmap, not that the endpoint is missing.
+  ///
+  /// - Parameter id: The peer's numeric node ID.
+  /// - Returns: The peer's `tailcfg.Node` record decoded as ``WhoIsNode``.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func peer(byID id: UInt64) async throws -> WhoIsNode {
+    let endpoint = "/localapi/v0/peer-by-id"
+    let request = TailscaleRequest(
+      path: endpoint, queryItems: [URLQueryItem(name: "id", value: String(id))])
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Looks up a user profile by its numeric user ID.
+  ///
+  /// Useful for resolving the `UserID` references that appear on peer nodes
+  /// (e.g., from the IPN bus or ``peer(byID:)``) into names. A 404 means the
+  /// user is not known to the current netmap — or, on daemons that predate
+  /// this 2026 endpoint, that the path itself is unknown (LocalAPI routing
+  /// 404s unrecognized paths, so the two cases are indistinguishable).
+  ///
+  /// - Parameter id: The numeric user ID.
+  /// - Returns: The ``UserProfile`` for that ID.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func userProfile(byID id: UInt64) async throws -> UserProfile {
+    let endpoint = "/localapi/v0/user-profile"
+    let request = TailscaleRequest(
+      path: endpoint, queryItems: [URLQueryItem(name: "id", value: String(id))])
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Fetches the OS-level DNS configuration tailscaled has installed.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/dns-osconfig`.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without DNS support; other `TailscaleClientError`
+  ///   cases on failure.
+  public func dnsOSConfig() async throws -> DNSOSConfig {
+    let endpoint = "/localapi/v0/dns-osconfig"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "dns")
+  }
+
+  /// Resolves a name through tailscaled's internal DNS forwarder — the same
+  /// path MagicDNS queries take, including split-DNS routing.
+  ///
+  /// The response carries the raw DNS answer (RFC 1035 wire format) plus the
+  /// resolvers the forwarder chose for the name.
+  ///
+  /// - Parameters:
+  ///   - name: The DNS name to resolve (e.g., `"peer.tailnet.ts.net"`).
+  ///   - type: Record type (`"A"`, `"AAAA"`, `"TXT"`, `"CNAME"`, `"SRV"`, …).
+  /// - Returns: The parsed response from `/localapi/v0/dns-query`.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without DNS support; `.unexpectedStatus(400, …)` for
+  ///   an unknown record type; other `TailscaleClientError` cases on failure.
+  public func dnsQuery(name: String, type: String = "A") async throws -> DNSQueryResponse {
+    let endpoint = "/localapi/v0/dns-query"
+    let request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [
+        URLQueryItem(name: "name", value: name),
+        URLQueryItem(name: "type", value: type),
+      ])
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "dns")
+  }
+
+  /// Checks whether the host is configured to forward IP traffic — the
+  /// preflight for advertising subnet routes or acting as an exit node.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/check-ip-forwarding`;
+  ///   ``IPForwardingCheck/isReady`` is `true` when nothing needs fixing.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without route advertising; other
+  ///   `TailscaleClientError` cases on failure.
+  public func checkIPForwarding() async throws -> IPForwardingCheck {
+    let endpoint = "/localapi/v0/check-ip-forwarding"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "advertise-routes")
+  }
+
   /// Reports which optional features the connected daemon was compiled with.
   ///
   /// Modern tailscaled builds are modular: endpoint availability depends on the
@@ -312,7 +400,7 @@ public actor TailscaleClient {
 
   // MARK: - Private Helpers
 
-  private func performRawRequest(
+  func performRawRequest(
     _ request: TailscaleRequest,
     endpoint: String,
     optionalEndpoint: Bool = false,
@@ -340,7 +428,7 @@ public actor TailscaleClient {
     return text
   }
 
-  private func performRequest<T: Decodable>(
+  func performRequest<T: Decodable>(
     _ request: TailscaleRequest,
     endpoint: String,
     optionalEndpoint: Bool = false,
@@ -380,7 +468,7 @@ public actor TailscaleClient {
 
   /// Races `operation` against the configured deadline, throwing
   /// `TailscaleClientError.timeout` if the deadline elapses first.
-  fileprivate static func withDeadline<T: Sendable>(
+  static func withDeadline<T: Sendable>(
     _ timeout: Duration?,
     endpoint: String,
     _ operation: @escaping @Sendable () async throws -> T
@@ -400,7 +488,7 @@ public actor TailscaleClient {
     }
   }
 
-  fileprivate static func mapStreamError(_ error: any Error) -> any Error {
+  static func mapStreamError(_ error: any Error) -> any Error {
     if let clientError = error as? TailscaleClientError {
       return clientError
     }

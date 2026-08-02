@@ -121,7 +121,7 @@ swift run tailscale-swift status
 - v0.5.0: Linux support (POSIX socket transport), extracted unit-tested HTTP parsers, Linux CI, nightly headscale integration
 - v0.4.0: Reliability foundations — `TailscaleClientMocks` product, streaming skip-and-report + reconnect, `daemonFeatures()` capability probing, request timeouts, public model inits
 
-**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck` — all structured commands take `--json`; the CLI is an executable product
+**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding` — all structured commands take `--json`; the CLI is an executable product
 
 **Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
 - v0.7.0 (next): DNS/routing diagnostics (`dns-osconfig`, `dns-query`, `routecheck`, `peer-by-id`), `experimental` namespace debut

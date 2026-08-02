@@ -29,6 +29,14 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 
 ## Topics
 
+### Articles
+- <doc:GettingStarted>
+- <doc:DiscoveryAndPermissions>
+- <doc:Streaming>
+- <doc:ErrorHandling>
+- <doc:StabilityTiers>
+- <doc:VersionCompatibility>
+
 ### Essentials
 - ``TailscaleClient``
 - ``TailscaleClientConfiguration``
@@ -85,6 +93,16 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``NodeLocation``
 - ``Netcheck``
 - ``NetcheckReport``
+
+### DNS & Routing Diagnostics
+- ``DNSOSConfig``
+- ``DNSQueryResponse``
+- ``DNSResolver``
+- ``IPForwardingCheck``
+
+### Experimental (SemVer-Exempt)
+- ``ExperimentalClient``
+- ``LogtapEntry``
 
 ### Network Interface Discovery
 - ``NetworkInterfaceDiscovery``
