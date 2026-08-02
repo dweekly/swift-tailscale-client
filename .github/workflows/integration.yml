@@ -28,9 +28,42 @@ jobs:
       - name: Configure LocalAPI access
         run: |
           swift --version
-          /Applications/Tailscale.app/Contents/MacOS/Tailscale version 2>/dev/null \
-            || tailscale version 2>/dev/null \
-            || echo "::warning::No tailscale CLI found; continuing with LocalAPI probing"
+
+          # Authoritative: ask the tailscale CLI how it reaches the LocalAPI.
+          # `debug local-creds` prints either a unix socket path or a
+          # localhost port + auth token, using Tailscale's own discovery.
+          TS=""
+          for cand in /Applications/Tailscale.app/Contents/MacOS/Tailscale tailscale; do
+            if command -v "$cand" >/dev/null 2>&1 || [ -x "$cand" ]; then TS="$cand"; break; fi
+          done
+          if [ -n "$TS" ]; then
+            "$TS" version || true
+            creds=$("$TS" debug local-creds 2>/dev/null || true)
+            echo "local-creds: ${creds//-u:*/-u:<masked>}"
+            sock=$(echo "$creds" | sed -n 's/.*--unix-socket \([^ ]*\).*/\1/p' | head -1)
+            token=$(echo "$creds" | sed -n 's/.*-u:\([^ ]*\).*/\1/p' | head -1)
+            port=$(echo "$creds" | sed -n 's#.*http://localhost:\([0-9]*\)/.*#\1#p' | head -1)
+            if [ -n "$sock" ] && [ -S "$sock" ]; then
+              echo "Using unix socket from local-creds: $sock"
+              echo "TAILSCALE_LOCALAPI_SOCKET=$sock" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            if [ -n "$token" ] && [ -n "$port" ]; then
+              echo "::add-mask::$token"
+              if curl -fsS -m 3 -u ":$token" "http://127.0.0.1:$port/localapi/v0/status?peers=false" >/dev/null 2>&1; then
+                echo "Using loopback LocalAPI from local-creds on port $port"
+                {
+                  echo "TAILSCALE_LOCALAPI_HOST=127.0.0.1"
+                  echo "TAILSCALE_LOCALAPI_PORT=$port"
+                  echo "TAILSCALE_LOCALAPI_AUTHKEY=$token"
+                } >> "$GITHUB_ENV"
+                exit 0
+              fi
+              echo "local-creds port $port did not answer; falling back"
+            fi
+          else
+            echo "::warning::No tailscale CLI found; continuing with LocalAPI probing"
+          fi
 
           # Prefer a unix socket (Homebrew / standalone tailscaled).
           for sock in /var/run/tailscaled.socket /Library/Tailscale/Data/tailscaled.sock /var/run/tailscale/tailscaled.sock; do
