@@ -7,7 +7,7 @@ import Foundation
 ///
 /// This endpoint identifies who is at a given Tailscale IP address or node key,
 /// returning both node information and user profile details.
-public struct WhoIsResponse: Sendable, Decodable, Equatable {
+public struct WhoIsResponse: Sendable, Codable, Equatable {
   /// The node associated with the queried IP or key.
   public let node: WhoIsNode?
   /// The user profile that owns the node.
@@ -37,7 +37,7 @@ public struct WhoIsResponse: Sendable, Decodable, Equatable {
 ///
 /// This is similar to `NodeStatus` from the status endpoint but may contain
 /// additional fields specific to the whois response.
-public struct WhoIsNode: Sendable, Decodable, Equatable {
+public struct WhoIsNode: Sendable, Codable, Equatable {
   /// Unique node identifier.
   public let id: UInt64
   /// Stable node identifier that persists across key rotations.
@@ -179,7 +179,7 @@ public struct WhoIsNode: Sendable, Decodable, Equatable {
 }
 
 /// Host information for a node.
-public struct WhoIsHostinfo: Sendable, Decodable, Equatable {
+public struct WhoIsHostinfo: Sendable, Codable, Equatable {
   /// Operating system (e.g., "darwin", "linux", "windows").
   public let os: String?
   /// OS version string.
