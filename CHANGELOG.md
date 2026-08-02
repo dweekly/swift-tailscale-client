@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
-- `CapabilityValue` no longer fails decoding on capability payloads it doesn't model (e.g. the object payloads Tailscale 1.98+ sends for `default-auto-update`); unmodeled shapes now decode as `.unsupported` instead of failing the entire `status()` response. Found by the first self-hosted integration CI run against a live daemon.
+- `CapabilityValue` now decodes any valid `CapMap` payload instead of failing the entire `status()`/`whois()` response. Upstream defines capability values as arrays of arbitrary JSON; boolean arrays (e.g. `"default-auto-update": [false]` on Tailscale 1.98) decode as the new `.booleans` case, and anything else (objects, mixed arrays) decodes losslessly as `.raw([JSONValue])`. Found by running the integration suite against a live daemon.
 
 ### Added
 

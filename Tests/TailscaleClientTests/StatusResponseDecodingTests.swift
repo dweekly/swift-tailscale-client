@@ -19,10 +19,66 @@ final class StatusResponseDecodingTests: XCTestCase {
     XCTAssertEqual(response.peers.count, 1)
     XCTAssertNotNil(response.users["1234567890123456"])
     XCTAssertEqual(response.clientVersion?.runningLatest, true)
+
+    let capMap = try XCTUnwrap(response.selfNode?.capabilityMap)
+    guard case .integers([86400]) = capMap["tailnet.maxKeyDuration"] else {
+      return XCTFail("expected .integers([86400])")
+    }
+    guard case .booleans([false]) = capMap["default-auto-update"] else {
+      return XCTFail("expected .booleans([false])")
+    }
+    guard case .null = capMap["https://tailscale.com/cap/ssh"] else {
+      return XCTFail("expected .null")
+    }
+    guard case .strings(["example.com"]) = capMap["tailnet-display-name"] else {
+      return XCTFail("expected .strings")
+    }
+    guard case .raw(let values) = capMap["example.com/cap/structured"],
+      case .object(let object) = values.first,
+      object["mode"] == .string("strict"),
+      object["retries"] == .integer(3)
+    else {
+      return XCTFail("expected .raw with one object")
+    }
   }
 
-  /// Tailscale 1.98.9 sends CapMap values that are arrays of JSON objects
-  /// (e.g. "default-auto-update"); these must decode as .unsupported rather
+  func testCapabilityValueDecodesArbitraryJSON() throws {
+    let json = """
+      {
+        "empty": [],
+        "mixed": [1, "two", true],
+        "nested": [[1, 2], [3]],
+        "doubles": [1.5, 2.5]
+      }
+      """
+    let decoded = try JSONDecoder().decode(
+      [String: CapabilityValue].self, from: Data(json.utf8))
+
+    guard case .integers([]) = decoded["empty"] else {
+      return XCTFail("expected empty array to decode as .integers([])")
+    }
+    guard case .raw([.integer(1), .string("two"), .bool(true)]) = decoded["mixed"] else {
+      return XCTFail("expected .raw for mixed array")
+    }
+    guard
+      case .raw([.array([.integer(1), .integer(2)]), .array([.integer(3)])]) = decoded["nested"]
+    else {
+      return XCTFail("expected .raw for nested arrays")
+    }
+    guard case .raw([.double(1.5), .double(2.5)]) = decoded["doubles"] else {
+      return XCTFail("expected .raw for doubles")
+    }
+  }
+
+  func testCapabilityValueRejectsNonArrayScalar() {
+    // Upstream CapMap values are always null or a JSON array; a bare scalar
+    // indicates a malformed response and should surface as a decoding error.
+    XCTAssertThrowsError(
+      try JSONDecoder().decode([String: CapabilityValue].self, from: Data(#"{"cap": 5}"#.utf8)))
+  }
+
+  /// Live daemons send CapMap values beyond int/string arrays (booleans,
+  /// objects, mixed arrays); these must decode losslessly as .raw rather
   /// than failing the whole status response.
   func testDecodesNodeWithObjectCapabilityValues() throws {
     let json = """
@@ -42,8 +98,11 @@ final class StatusResponseDecodingTests: XCTestCase {
       """
     let node = try JSONDecoder.tailscale().decode(NodeStatus.self, from: Data(json.utf8))
 
-    guard case .unsupported = node.capabilityMap?["default-auto-update"] else {
-      return XCTFail("expected .unsupported for object payload")
+    guard case .raw(let values) = node.capabilityMap?["default-auto-update"],
+      case .object(let object) = values.first,
+      object["Apply"] == .bool(true)
+    else {
+      return XCTFail("expected .raw with one object for object payload")
     }
     guard case .null = node.capabilityMap?["https://tailscale.com/cap/is-admin"] else {
       return XCTFail("expected .null")
@@ -54,8 +113,8 @@ final class StatusResponseDecodingTests: XCTestCase {
     guard case .strings(["a"]) = node.capabilityMap?["example-strings"] else {
       return XCTFail("expected .strings")
     }
-    guard case .unsupported = node.capabilityMap?["example-mixed"] else {
-      return XCTFail("expected .unsupported for mixed array")
+    guard case .raw([.bool(true), .double(3.5)]) = node.capabilityMap?["example-mixed"] else {
+      return XCTFail("expected .raw for mixed array")
     }
   }
 }

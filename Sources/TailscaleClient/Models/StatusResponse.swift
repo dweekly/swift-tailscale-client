@@ -263,15 +263,20 @@ public struct NodeStatus: Sendable, Decodable {
   }
 }
 
+/// The value of one entry in a node's capability map (`CapMap`).
+///
+/// Upstream (`tailcfg.NodeCapMap`) each value is either `null` or an array of
+/// arbitrary JSON. Homogeneous arrays of the common scalar types decode into
+/// the typed cases; anything else (booleans mixed with strings, objects, etc.)
+/// decodes into ``raw(_:)`` so that unfamiliar capability values never cause
+/// a status or whois response to fail decoding.
 public enum CapabilityValue: Sendable, Decodable {
   case null
   case integers([Int])
   case strings([String])
-  /// A payload shape this version doesn't model. Upstream defines cap-map
-  /// values as arrays of arbitrary JSON (e.g. `default-auto-update` carries
-  /// objects), so decoding must degrade gracefully instead of failing the
-  /// entire status response.
-  case unsupported
+  case booleans([Bool])
+  /// An array of values that is not uniformly integers, strings, or booleans.
+  case raw([JSONValue])
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
@@ -287,7 +292,16 @@ public enum CapabilityValue: Sendable, Decodable {
       self = .strings(strings)
       return
     }
-    self = .unsupported
+    if let booleans = try? container.decode([Bool].self) {
+      self = .booleans(booleans)
+      return
+    }
+    if let values = try? container.decode([JSONValue].self) {
+      self = .raw(values)
+      return
+    }
+    throw DecodingError.dataCorruptedError(
+      in: container, debugDescription: "Capability value is not null or a JSON array")
   }
 }
 
