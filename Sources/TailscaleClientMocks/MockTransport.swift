@@ -32,7 +32,7 @@ public struct MockTransport: TailscaleTransport {
   /// Produces the line stream for a streaming request.
   public typealias StreamHandler =
     @Sendable (TailscaleRequest, TailscaleClientConfiguration) async throws
-      -> AsyncThrowingStream<Data, Error>
+    -> AsyncThrowingStream<Data, Error>
 
   private let handler: Handler?
   private let streamHandler: StreamHandler?
