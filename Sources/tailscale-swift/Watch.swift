@@ -35,7 +35,9 @@ struct WatchCommand: AsyncParsableCommand {
     }
 
     print("Watching IPN bus (Ctrl+C to stop)...")
-    fflush(stdout)
+    // fflush(nil) flushes all streams; the stdout global is not
+    // concurrency-safe under strict concurrency on Glibc.
+    fflush(nil)
 
     var isFirstMessage = true
 
@@ -49,7 +51,7 @@ struct WatchCommand: AsyncParsableCommand {
           printFormatted(notify, isFirst: isFirstMessage)
         }
         isFirstMessage = false
-        fflush(stdout)
+        fflush(nil)
       }
       print("Stream ended")
     } catch {

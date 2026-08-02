@@ -140,7 +140,7 @@ public struct LocalAPIDiscovery {
         }
       } else if debug {
         Self.debugLog(
-          "[LocalAPIDiscovery] skipping macOS App Store discovery (allowMacOSAppStoreDiscovery=false)")
+          "[LocalAPIDiscovery] skipping macOS App Store discovery (opt-in flag disabled)")
       }
     #endif
 
