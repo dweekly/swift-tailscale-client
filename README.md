@@ -45,6 +45,8 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 > **Note:** The LocalAPI is not a formally stable interface — Tailscale namespaces it `/localapi/v0/` for a reason. This package tracks upstream, states which Tailscale versions each release was tested against, and uses tolerant decoding so upstream additions don't break your app. See the [stability policy](ROADMAP.md#stability--support-tiers).
 
 ## Status
+- **v0.5.0:** Linux support (POSIX socket transport), unit-tested HTTP wire-format parsers, Linux CI, and nightly hermetic integration against headscale + real tailscaled.
+- **v0.4.0:** Reliability foundations - shipped `TailscaleClientMocks` product, IPN stream hardening (skip-and-report + opt-in reconnect), `daemonFeatures()` capability probing, request timeouts, public inits and `Equatable` on all models.
 - **v0.3.1:** Unix socket discovery takes priority (avoids TCC popups); macOS App Store discovery now opt-in; chunked HTTP support for Homebrew tailscaled.
 - **v0.3.0:** IPN bus streaming - `watchIPNBus()` returns an `AsyncThrowingStream` for real-time state change notifications (eliminates polling).
 - **v0.2.1:** Network interface discovery - identify which TUN interface (e.g., `utun16`) Tailscale is using via `status.interfaceName`.
@@ -57,7 +59,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 Add the package to your `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.3.1")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.5.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
