@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added (v0.5.0 stream)
+
+- **Linux support for the Unix socket transport**: the POSIX socket code now compiles and runs on Glibc platforms (SIGPIPE suppressed via `MSG_NOSIGNAL`; poll-based reads honor task cancellation even when the daemon is silent). `MacClientInfo` and interface discovery remain Darwin-only; loopback *streaming* via URLSession is unavailable on Linux (corelibs has no `URLSession.bytes`), which only affects the Darwin-specific GUI-token flow anyway.
+- **Testable wire-format parsers** extracted from the socket transport: `HTTPWireFormat` (request serialization + response-head parsing), `HTTPHeadBuffer`, `NewlineFramer`, and an incremental `ChunkedTransferDecoder` — with a corner-case suite covering split-anywhere chunk boundaries, trailers, chunk extensions, bare-LF tolerance, >1 MB payloads, oversized heads, and UTF-8 frames split across reads.
+- CI: Linux build+test job (swift:6.1 container); nightly hermetic integration workflow running the live suite against headscale + real tailscaled (userspace networking) — no secrets, throwaway tailnet.
+
 ### Fixed
 
 - `CapabilityValue` now decodes any valid `CapMap` payload instead of failing the entire `status()`/`whois()` response. Upstream defines capability values as arrays of arbitrary JSON; boolean arrays (e.g. `"default-auto-update": [false]` on Tailscale 1.98) decode as the new `.booleans` case, and anything else (objects, mixed arrays) decodes losslessly as `.raw([JSONValue])`. Found by running the integration suite against a live daemon.

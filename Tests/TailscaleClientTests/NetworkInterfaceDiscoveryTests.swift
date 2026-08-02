@@ -6,6 +6,12 @@ import XCTest
 @testable import TailscaleClient
 
 final class NetworkInterfaceDiscoveryTests: XCTestCase {
+  override func setUpWithError() throws {
+    #if !canImport(Darwin)
+      throw XCTSkip("Interface enumeration is Darwin-only; Linux returns empty results")
+    #endif
+  }
+
 
   // MARK: - allInterfaces Tests
 
