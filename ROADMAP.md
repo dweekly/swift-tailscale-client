@@ -181,7 +181,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - [x] Unit tests assert exact PATCH bodies (mask correctness is the whole game)
 
 ### Docs
-- [ ] DocC article: *Writing Safely* (check-prefs first, mask semantics, how to avoid clobbering user config)
+- [x] DocC article: *Writing Safely* (check-prefs first, mask semantics, how to avoid clobbering user config)
 
 ## v0.9.0 — Auth, Profiles & the GUI Contract
 

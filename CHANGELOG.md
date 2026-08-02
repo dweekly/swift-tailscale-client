@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- DocC article *Writing Safely*: mask semantics, validate-before-apply, purpose-built endpoints over raw edits, and the hermetic write-testing pattern.
 - CLI: `set exit-node <stableID>` (with `--allow-lan-access`), `set shields-up <bool>`, and `set accept-routes <bool>` — the write APIs from the command line, with `--json` echoing the updated prefs.
 
 ### Added

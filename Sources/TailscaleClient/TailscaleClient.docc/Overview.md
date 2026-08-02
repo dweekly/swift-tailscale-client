@@ -34,6 +34,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - <doc:DiscoveryAndPermissions>
 - <doc:Streaming>
 - <doc:ErrorHandling>
+- <doc:WritingSafely>
 - <doc:StabilityTiers>
 - <doc:VersionCompatibility>
 
