@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file. The format 
 - **Experimental namespace debuts** (`client.experimental`, exempt from SemVer per the stability tiers): `bugreport(note:diagnose:record:)`, `goroutines()`, and streaming `logtap()` (`AsyncThrowingStream<LogtapEntry, Error>`, non-JSON lines tolerated).
 - CLI: `dns status`, `dns query <name> [--type]`, and `check-forwarding` subcommands (all with `--json`; `check-forwarding` exits non-zero when the host is not ready).
 - CI now reports the CLI's footprint (binary size and peak RSS) in the self-hosted integration job.
+- **DocC article set**: Getting Started, Discovery & Permissions (the TCC tradeoff), Streaming Guide, Error Handling (including the two meanings of 404), Experimental APIs & Stability Tiers, and Version Compatibility (known daemon-version edges) — published with the hosted documentation.
 
 ### Fixed
 

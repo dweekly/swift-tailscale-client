@@ -29,6 +29,14 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 
 ## Topics
 
+### Articles
+- <doc:GettingStarted>
+- <doc:DiscoveryAndPermissions>
+- <doc:Streaming>
+- <doc:ErrorHandling>
+- <doc:StabilityTiers>
+- <doc:VersionCompatibility>
+
 ### Essentials
 - ``TailscaleClient``
 - ``TailscaleClientConfiguration``

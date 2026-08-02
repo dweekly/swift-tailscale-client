@@ -163,7 +163,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - [x] `logtap` streaming tests reuse the scripted-stream harness; DNS fixtures for wire-format responses
 
 ### Docs
-- [ ] DocC article: *Experimental APIs & Stability Tiers*
+- [x] DocC article: *Experimental APIs & Stability Tiers* — landed alongside the full article set (Getting Started, Discovery & Permissions, Streaming, Error Handling, Version Compatibility), pulling the 1.0 documentation criteria forward
 
 ## v0.8.0 — Configuration (First Write APIs)
 
