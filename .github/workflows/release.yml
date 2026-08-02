@@ -68,6 +68,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install curl
+        # The swift container image ships without curl, which the upload
+        # step needs (learned the hard way on v0.6.0).
+        run: apt-get update -qq && apt-get install -y -qq curl ca-certificates
+
       - name: Build CLI
         run: |
           swift build -c release --product tailscale-swift
