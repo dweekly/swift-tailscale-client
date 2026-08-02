@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **DNS diagnostics**: `dnsOSConfig()` (nameservers, search + split-DNS match domains), `dnsQuery(name:type:)` (resolves through tailscaled's forwarder — the MagicDNS path — returning the raw RFC 1035 answer plus the chosen resolvers), and `checkIPForwarding()` (subnet-router/exit-node preflight with an `isReady` convenience).
+- **Lookups**: `peer(byID:)` fetches a peer's full `tailcfg.Node` by numeric ID (reusing `WhoIsNode`, which gains `homeDERP`); `userProfile(byID:)` resolves numeric `UserID` references (`UserProfile` gains `groups`). For both, 404 means "not in the netmap" — deliberately not `endpointUnavailable`.
+- **Experimental namespace debuts** (`client.experimental`, exempt from SemVer per the stability tiers): `bugreport(note:diagnose:record:)`, `goroutines()`, and streaming `logtap()` (`AsyncThrowingStream<LogtapEntry, Error>`, non-JSON lines tolerated).
+- CLI: `dns status`, `dns query <name> [--type]`, and `check-forwarding` subcommands (all with `--json`; `check-forwarding` exits non-zero when the host is not ready).
+- CI now reports the CLI's footprint (binary size and peak RSS) in the self-hosted integration job.
+
+### Fixed
+
+- Coverage matrix: `routecheck` is not a standalone LocalAPI endpoint — route probing is the `?probe=true` hook behind `suggest-exit-node`, already wrapped by `suggestExitNode(forceProbe:)`.
+
 ## [0.6.0] - 2026-08-02
 
 ### Added

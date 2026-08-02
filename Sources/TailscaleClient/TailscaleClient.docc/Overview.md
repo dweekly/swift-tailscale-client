@@ -86,6 +86,16 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``Netcheck``
 - ``NetcheckReport``
 
+### DNS & Routing Diagnostics
+- ``DNSOSConfig``
+- ``DNSQueryResponse``
+- ``DNSResolver``
+- ``IPForwardingCheck``
+
+### Experimental (SemVer-Exempt)
+- ``ExperimentalClient``
+- ``LogtapEntry``
+
 ### Network Interface Discovery
 - ``NetworkInterfaceDiscovery``
 

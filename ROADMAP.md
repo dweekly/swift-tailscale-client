@@ -151,16 +151,16 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 ## v0.7.0 — DNS & Routing Diagnostics; Experimental Debut
 
 ### Library
-- [ ] `dnsOSConfig()`, `dnsQuery(name:type:)` — DNS diagnostics
-- [ ] `checkIPForwarding()`, `routeCheck(probe:)` — subnet-router and reachability diagnostics
-- [ ] `peer(byID:)`, `userProfile(byID:)` — detail lookups
-- [ ] `client.experimental` namespace lands, opening with `bugreport()`, `goroutines()`, and streaming `logtap()` (the second streaming consumer — proves the v0.4 stream machinery generalizes)
+- [x] `dnsOSConfig()`, `dnsQuery(name:type:)` — DNS diagnostics
+- [x] `checkIPForwarding()` — subnet-router preflight (upstream has no standalone `routecheck` endpoint; route probing is the `?probe=true` hook behind `suggest-exit-node`, wrapped since v0.6.0)
+- [x] `peer(byID:)`, `userProfile(byID:)` — detail lookups
+- [x] `client.experimental` namespace lands, opening with `bugreport()`, `goroutines()`, and streaming `logtap()` (the second streaming consumer — proves the v0.4 stream machinery generalizes)
 
 ### CLI
-- [ ] `dns status`, `dns query <name>`, `routecheck`
+- [x] `dns status`, `dns query <name>`, `check-forwarding`
 
 ### Testing
-- [ ] `logtap` streaming tests reuse the scripted-stream harness; DNS fixtures for wire-format responses
+- [x] `logtap` streaming tests reuse the scripted-stream harness; DNS fixtures for wire-format responses
 
 ### Docs
 - [ ] DocC article: *Experimental APIs & Stability Tiers*

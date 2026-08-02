@@ -56,6 +56,10 @@ let derp   = try await client.derpMap()             // DERP relay regions/nodes 
 let exit   = try await client.suggestExitNode()     // recommended exit node (v0.6.0+)
 let net    = try await client.netcheck()            // client-side STUN probe: region latency,
                                                     // public IP, NAT hardness (v0.6.0+)
+let dns    = try await client.dnsOSConfig()         // OS DNS config (v0.7.0+)
+let ans    = try await client.dnsQuery(name: "peer.ts.net")  // MagicDNS-path query (v0.7.0+)
+let node   = try await client.peer(byID: whois.node!.id)     // numeric-ID lookups (v0.7.0+)
+// client.experimental.{bugreport,goroutines,logtap} — SemVer-exempt debug tier (v0.7.0+)
 
 // Real-time updates (preferred over polling)
 for try await notify in try await client.watchIPNBus(options: [.initialState, .initialHealthState]) {
@@ -113,8 +117,8 @@ own stub to the public `TailscaleTransport` protocol instead.
   (discovery), `Transport/` (URLSession + unix socket), `Models/`, `Platform/` (macOS discovery,
   interface detection)
 - `Sources/tailscale-swift/` — CLI executable product (`status`, `whois`, `prefs`, `ping`, `health`,
-  `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`; `--json` on
-  structured commands)
+  `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns`,
+  `check-forwarding`; `--json` on structured commands)
 - `ROADMAP.md` — version plan and stability tiers; `Documentation/LOCALAPI-COVERAGE.md` — status of
   every LocalAPI endpoint; `Documentation/TESTING.md` — spike-first workflow and harness;
   `CLAUDE.md` — build/test commands and architecture conventions

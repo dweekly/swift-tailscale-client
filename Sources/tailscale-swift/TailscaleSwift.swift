@@ -22,6 +22,8 @@ struct TailscaleSwift: AsyncParsableCommand {
       DERPMapCommand.self,
       SuggestExitCommand.self,
       NetcheckCommand.self,
+      DNSCommand.self,
+      CheckForwardingCommand.self,
     ]
   )
 }

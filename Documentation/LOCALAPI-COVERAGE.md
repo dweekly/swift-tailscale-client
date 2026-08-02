@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 10 |
+| Implemented | 15 (+ 3 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -46,6 +46,12 @@ Three upstream facts shape everything below:
 | `derpmap` | GET | `derpMap()` | v0.6.0 — typed `DERPMap`/`DERPRegion`/`DERPNode` |
 | `suggest-exit-node` | GET, POST | `suggestExitNode(forceProbe:)` | v0.6.0 — GET by default (works on older daemons); `forceProbe: true` POSTs `?probe=true` (1.86+) |
 | `usermetrics` | GET | `userMetrics()` | v0.6.0 — stable Prometheus user metrics; 404/501 → `endpointUnavailable` |
+| `dns-osconfig` | GET | `dnsOSConfig()` | v0.7.0 — nameservers, search + split-DNS match domains |
+| `dns-query` | GET | `dnsQuery(name:type:)` | v0.7.0 — raw RFC 1035 answer + chosen resolvers |
+| `check-ip-forwarding` | GET | `checkIPForwarding()` | v0.7.0 — subnet-router/exit-node preflight |
+| `peer-by-id` | GET | `peer(byID:)` | v0.7.0 — full `tailcfg.Node` via `WhoIsNode`; 404 = not in netmap |
+| `user-profile` | GET | `userProfile(byID:)` | v0.7.0 — resolves numeric `UserID` references |
+| `bugreport` / `goroutines` / `logtap` | POST / GET / stream | `experimental.*` | v0.7.0 — SemVer-exempt debug tier |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -61,8 +67,8 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 |----------|-----------|--------|------|--------|-----------|
 | `status` | GET | core | Stable | **v0.3.1** | `status(query:)` |
 | `whois` | GET | core | Stable | **v0.3.1** | `whois(address:)` |
-| `peer-by-id` | GET | core | Stable | v0.7.0 | `peer(byID:)` |
-| `user-profile` | GET | core | Stable | v0.7.0 | `userProfile(byID:)` |
+| `peer-by-id` | GET | core | Stable | **v0.7.0** | `peer(byID:)` — 404 = not in netmap |
+| `user-profile` | GET | core | Stable | **v0.7.0** | `userProfile(byID:)` |
 | `services` | GET | core | Stable | v1.0.0 | `services()` |
 | `id-token` | GET | `HasDebug` | Stable | v0.9.0 | `idToken(audience:)` |
 
@@ -87,11 +93,11 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | `suggest-exit-node` | GET, POST | `HasUseExitNode` | Stable | **v0.6.0** | `suggestExitNode(forceProbe:)`, `forceProbe` = POST `?probe=true` |
 | `metrics` | GET | `HasClientMetrics`/`HasDebug` | Stable | **v0.3.1** | `metrics()` |
 | `usermetrics` | GET | `HasUserMetrics` | Stable | **v0.6.0** | `userMetrics()` |
-| `dns-osconfig` | GET | `HasDNS` | Stable | v0.7.0 | `dnsOSConfig()` |
-| `dns-query` | GET | `HasDNS` | Stable | v0.7.0 | `dnsQuery(name:type:)` — returns DNS wire bytes + resolvers |
+| `dns-osconfig` | GET | `HasDNS` | Stable | **v0.7.0** | `dnsOSConfig()` |
+| `dns-query` | GET | `HasDNS` | Stable | **v0.7.0** | `dnsQuery(name:type:)` — returns DNS wire bytes + resolvers |
 | `dns-config` | GET | core | Stable | v0.7.0 | `dnsConfig()` — netmap `tailcfg.DNSConfig` |
-| `check-ip-forwarding` | GET | `HasAdvertiseRoutes` | Stable | v0.7.0 | `checkIPForwarding()` |
-| `routecheck` | POST | `HasRouteCheck` | Stable | v0.7.0 | `routeCheck(probe:)` (new May 2026) |
+| `check-ip-forwarding` | GET | `HasAdvertiseRoutes` | Stable | **v0.7.0** | `checkIPForwarding()` |
+| ~~`routecheck`~~ | — | — | — | not an endpoint | Route probing is the `?probe=true` hook behind `suggest-exit-node` (wrapped by `suggestExitNode(forceProbe:)` since v0.6.0); no standalone `routecheck` handler exists upstream |
 | `check-udp-gro-forwarding` / `set-udp-gro-forwarding` | GET | `HasAdvertiseRoutes` | Experimental | on demand | Linux subnet-router perf preflight |
 | `debug-derp-region` | POST | debug | Experimental | on demand | probe a DERP region |
 
@@ -100,7 +106,7 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
 | `watch-ipn-bus` | GET (stream) | `HasIPNBus` | Stable | **v0.3.1** (hardening v0.4.0) | `watchIPNBus(options:)` |
-| `logtap` | GET (stream) | `HasLogTail` | Experimental | v0.7.0 | `experimental.logtap()` |
+| `logtap` | GET (stream) | `HasLogTail` | Experimental | **v0.7.0** | `experimental.logtap()` — `AsyncThrowingStream<LogtapEntry, Error>` |
 | `debug-bus-events` | GET (stream) | debug | Experimental | on demand | eventbus events (new 2026) |
 | `debug-portmap` | GET (stream) | `HasDebugPortmapper` | Experimental | on demand | UPnP/PMP/PCP probe log |
 
@@ -170,8 +176,8 @@ Note: the official CLI's `tailscale update` does *not* use these — it runs the
 | Endpoint | Method(s) | Tier | Status | Notes |
 |----------|-----------|------|--------|-------|
 | `debug-optional-features` | POST | **Stable** | **implemented (v0.4.0)** | `daemonFeatures()`; the capability-discovery endpoint this package's probing strategy is built on |
-| `bugreport` | POST | Experimental | v0.7.0 | `experimental.bugreport()` |
-| `goroutines` | GET | Experimental | v0.7.0 | `experimental.goroutines()` |
+| `bugreport` | POST | Experimental | **v0.7.0** | `experimental.bugreport(note:diagnose:record:)` |
+| `goroutines` | GET | Experimental | **v0.7.0** | `experimental.goroutines()` |
 | `debug` (`?action=`) | POST | Experimental | on demand | actions: `notify`, `rebind`, `restun`, `break-tcp-conns`, `break-derp-conns`, `force-netmap-update`, `control-knobs`, `pick-new-derp`, `force-prefer-derp`, `derp-set-homeless`, `derp-unset-homeless`, `peer-relay-servers`, `peer-disco-keys`, `rotate-disco-key`, `statedir`, `clear-netmap-cache`, `current-netmap` |
 | `pprof` | GET | Experimental | on demand | |
 | `component-debug-logging` | POST | Experimental | on demand | verbose logging per component for N seconds |
