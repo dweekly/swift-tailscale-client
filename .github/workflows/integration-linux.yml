@@ -1,0 +1,99 @@
+name: Integration (Linux, headscale)
+
+# Hermetic integration testing: a throwaway headscale control plane plus a
+# real tailscaled (userspace networking, no TUN) inside the job container.
+# No secrets, no real tailnet — this is the environment where write-API
+# mutation tests will run (Documentation/TESTING.md).
+#
+# Nightly signal, not a merge gate: a failure here usually means upstream
+# drift (new tailscaled or headscale behavior), which is exactly what it
+# exists to detect.
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+jobs:
+  headscale:
+    name: Hermetic integration (headscale + tailscaled)
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install headscale and tailscale
+        run: |
+          apt-get update
+          apt-get install -y curl ca-certificates
+          HEADSCALE_VERSION=0.26.1
+          curl -fsSL -o /tmp/headscale.deb \
+            "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_amd64.deb"
+          apt-get install -y /tmp/headscale.deb
+          curl -fsSL https://tailscale.com/install.sh | sh
+          headscale version
+          tailscale version
+
+      - name: Start headscale control plane
+        run: |
+          mkdir -p /etc/headscale /var/lib/headscale
+          cat > /etc/headscale/config.yaml <<'EOF'
+          server_url: http://127.0.0.1:8080
+          listen_addr: 127.0.0.1:8080
+          metrics_listen_addr: 127.0.0.1:9090
+          grpc_listen_addr: 127.0.0.1:50443
+          private_key_path: /var/lib/headscale/private.key
+          noise:
+            private_key_path: /var/lib/headscale/noise_private.key
+          prefixes:
+            v4: 100.64.0.0/10
+            v6: fd7a:115c:a1e0::/48
+          database:
+            type: sqlite
+            sqlite:
+              path: /var/lib/headscale/db.sqlite
+          derp:
+            server:
+              enabled: false
+            urls:
+              - https://controlplane.tailscale.com/derpmap/default
+          dns:
+            magic_dns: true
+            base_domain: ci.internal
+            nameservers:
+              global: ["1.1.1.1"]
+          EOF
+          headscale serve > /tmp/headscale.log 2>&1 &
+          for i in $(seq 1 20); do
+            headscale users list >/dev/null 2>&1 && break
+            sleep 1
+          done
+          headscale users create ci
+
+      - name: Start tailscaled and join the throwaway tailnet
+        run: |
+          mkdir -p /var/run/tailscale
+          tailscaled --tun=userspace-networking \
+            --statedir=/tmp/tailscaled \
+            --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &
+          sleep 2
+          KEY=$(headscale preauthkeys create --user 1 --reusable --expiration 1h | tail -1)
+          tailscale --socket=/var/run/tailscale/tailscaled.sock up \
+            --login-server http://127.0.0.1:8080 \
+            --auth-key "$KEY" \
+            --hostname ci-node
+          tailscale --socket=/var/run/tailscale/tailscaled.sock status || true
+
+      - name: Run integration suite over the unix socket
+        env:
+          TAILSCALE_INTEGRATION: "1"
+          TAILSCALE_LOCALAPI_SOCKET: /var/run/tailscale/tailscaled.sock
+          TAILSCALE_DISCOVERY_DEBUG: "1"
+        run: swift test --filter TailscaleClientIntegrationTests
+
+      - name: Dump daemon logs on failure
+        if: failure()
+        run: |
+          echo "--- headscale ---"; tail -50 /tmp/headscale.log || true
+          echo "--- tailscaled ---"; tail -50 /tmp/tailscaled.log || true

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-import Darwin
 import Foundation
+
+#if os(macOS)
+  import Darwin
+#endif
 
 #if os(macOS)
   struct MacClientInfo: Sendable {

@@ -111,15 +111,16 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 **Goal:** Linux support is a feature-enabler, not a courtesy. The self-hosted macOS runner already provides real-daemon integration CI against one live Tailscale install; headscale on Linux runners adds what it can't — a hermetic environment safe for write-API mutation tests and a matrix across tailscaled versions.
 
 ### Library
-- [ ] Rewrite the Unix socket transport on raw POSIX sockets shared across Darwin and Linux (drop CFSocket). No new dependencies — staying zero-dependency is a selling point; swift-nio is not worth the tree for one socket.
-- [ ] Extract HTTP response parsing and chunked-transfer decoding into internal pure types (`HTTPResponseParser`, `ChunkedTransferDecoder`) that are unit-testable without a socket
+- [x] Unix socket transport runs on raw POSIX sockets shared across Darwin and Linux, with poll-based reads so cancellation works against a silent daemon. No new dependencies — staying zero-dependency is a selling point; swift-nio is not worth the tree for one socket.
+- [x] HTTP response parsing and chunked-transfer decoding extracted into internal pure types (`HTTPWireFormat`, `HTTPHeadBuffer`, `NewlineFramer`, `ChunkedTransferDecoder`) that are unit-testable without a socket
 
 ### CLI
-- [ ] CLI builds and runs on Linux
+- [x] CLI builds and runs on Linux (unix socket endpoints; loopback streaming stays Darwin-only)
 
 ### Testing
-- [ ] Parser corner-case suite: chunk-size header split across reads, trailers, missing Content-Length, oversized (>1 MB) NetMap lines, UTF-8 sequences split across read boundaries
-- [ ] `integration.yml`: nightly + on-demand workflow on ubuntu runners — headscale control plane + real tailscaled (`--tun=userspace-networking`), pre-auth key minted locally. Hermetic, secret-free, safe for fork PRs. Matrix over tailscaled versions {current stable, previous stable, unstable}.
+- [x] Parser corner-case suite: chunk-size lines split across reads, trailers, chunk extensions, oversized (>1 MB) payloads, UTF-8 sequences split across read boundaries, oversized heads
+- [x] `integration-linux.yml`: nightly + on-demand hermetic workflow — headscale control plane + real tailscaled (`--tun=userspace-networking`), pre-auth key minted locally, no secrets
+- [ ] Matrix over tailscaled versions {current stable, previous stable, unstable} in the headscale workflow
 
 ### Docs
 - [ ] [`Documentation/TESTING.md`](Documentation/TESTING.md) is the reference for the harness and fixture process

@@ -3,6 +3,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 /// Represents an HTTP request against the LocalAPI.
 public struct TailscaleRequest: Sendable {
   /// HTTP method (e.g., "GET", "POST").
@@ -200,50 +204,49 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
   private func streamViaURLSession(
     request: TailscaleRequest, configuration: TailscaleClientConfiguration
   ) async throws -> AsyncThrowingStream<Data, Error> {
-    let urlRequest = try buildURLRequest(
-      for: enrich(request: request, configuration: configuration), configuration: configuration)
+    #if canImport(FoundationNetworking)
+      // swift-corelibs-foundation does not provide URLSession.bytes(for:).
+      // On Linux, streaming is served by the Unix socket transport; loopback
+      // streaming would only matter for the GUI-token flow, which is
+      // Darwin-only anyway.
+      throw TailscaleTransportError.unimplemented
+    #else
+      let urlRequest = try buildURLRequest(
+        for: enrich(request: request, configuration: configuration), configuration: configuration)
 
-    let (bytes, response) = try await session.bytes(for: urlRequest)
-    guard let http = response as? HTTPURLResponse else {
-      throw TailscaleTransportError.networkFailure(underlying: URLError(.badServerResponse))
-    }
-    guard http.statusCode == 200 else {
-      throw TailscaleTransportError.malformedResponse(
-        detail: "Streaming endpoint returned status \(http.statusCode)")
-    }
+      let (bytes, response) = try await session.bytes(for: urlRequest)
+      guard let http = response as? HTTPURLResponse else {
+        throw TailscaleTransportError.networkFailure(underlying: URLError(.badServerResponse))
+      }
+      guard http.statusCode == 200 else {
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Streaming endpoint returned status \(http.statusCode)")
+      }
 
-    return AsyncThrowingStream { continuation in
-      let task = Task {
-        var buffer = Data()
-        do {
-          for try await byte in bytes {
-            buffer.append(byte)
-            // Check for newline - each JSON object is on its own line
-            if byte == UInt8(ascii: "\n") {
-              if !buffer.isEmpty {
-                // Trim the newline and send the line
-                let line = buffer.dropLast()
-                if !line.isEmpty {
-                  continuation.yield(Data(line))
-                }
-                buffer.removeAll(keepingCapacity: true)
+      return AsyncThrowingStream { continuation in
+        let task = Task {
+          var framer = NewlineFramer()
+          do {
+            for try await byte in bytes {
+              for line in framer.feed(Data([byte])) {
+                continuation.yield(line)
               }
             }
+            if let remainder = framer.flushRemainder() {
+              continuation.yield(remainder)
+            }
+            continuation.finish()
+          } catch {
+            continuation.finish(
+              throwing: TailscaleTransportError.networkFailure(underlying: error))
           }
-          // Handle any remaining data without trailing newline
-          if !buffer.isEmpty {
-            continuation.yield(buffer)
-          }
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: TailscaleTransportError.networkFailure(underlying: error))
+        }
+
+        continuation.onTermination = { _ in
+          task.cancel()
         }
       }
-
-      continuation.onTermination = { _ in
-        task.cancel()
-      }
-    }
+    #endif
   }
 
   private func sendViaURLSession(

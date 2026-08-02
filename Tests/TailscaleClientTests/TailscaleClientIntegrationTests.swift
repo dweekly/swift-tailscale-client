@@ -5,7 +5,7 @@ import XCTest
 
 @testable import TailscaleClient
 
-#if canImport(Darwin)
+#if canImport(Darwin) || os(Linux)
   final class TailscaleClientIntegrationTests: XCTestCase {
 
     // MARK: - Setup
@@ -284,6 +284,9 @@ import XCTest
     // MARK: - Interface Discovery Tests
 
     func testInterfaceDiscovery() async throws {
+      #if !canImport(Darwin)
+        throw XCTSkip("Interface discovery is Darwin-only (userspace tailscaled has no TUN)")
+      #endif
       let status = try await client.status()
 
       // Should have at least one Tailscale IP
@@ -305,6 +308,9 @@ import XCTest
     }
 
     func testInterfaceInfo() async throws {
+      #if !canImport(Darwin)
+        throw XCTSkip("Interface discovery is Darwin-only (userspace tailscaled has no TUN)")
+      #endif
       let status = try await client.status()
 
       guard !status.tailscaleIPs.isEmpty else {

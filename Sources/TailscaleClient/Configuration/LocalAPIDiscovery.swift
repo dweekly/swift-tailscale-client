@@ -3,6 +3,12 @@
 
 import Foundation
 
+#if canImport(Darwin)
+  import Darwin
+#elseif canImport(Glibc)
+  import Glibc
+#endif
+
 /// Captures how the client should connect to the Tailscale daemon.
 public enum TailscaleEndpoint: Sendable, Equatable {
   /// Connect via a Unix domain socket at the supplied path.
@@ -70,7 +76,7 @@ public struct LocalAPIDiscovery {
     if let urlString = environment["TAILSCALE_LOCALAPI_URL"],
       let url = URL(string: urlString)
     {
-      if debug { fputs("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_URL: \(urlString)\n", stderr) }
+      if debug { Self.debugLog("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_URL: \(urlString)") }
       return .init(
         endpoint: .url(url), authToken: environment["TAILSCALE_LOCALAPI_AUTHKEY"],
         capabilityVersion: capability)
@@ -80,7 +86,7 @@ public struct LocalAPIDiscovery {
     if let socketPath = environment["TAILSCALE_LOCALAPI_SOCKET"], !socketPath.isEmpty {
       let expanded = Self.expandPath(socketPath)
       if debug {
-        fputs("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_SOCKET: \(expanded)\n", stderr)
+        Self.debugLog("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_SOCKET: \(expanded)")
       }
       return .init(
         endpoint: .unixSocket(path: expanded),
@@ -94,7 +100,7 @@ public struct LocalAPIDiscovery {
     {
       let host = environment["TAILSCALE_LOCALAPI_HOST"] ?? "127.0.0.1"
       if debug {
-        fputs("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_PORT: \(host):\(portValue)\n", stderr)
+        Self.debugLog("[LocalAPIDiscovery] using TAILSCALE_LOCALAPI_PORT: \(host):\(portValue)")
       }
       return .init(
         endpoint: .loopback(host: host, port: portValue),
@@ -106,7 +112,7 @@ public struct LocalAPIDiscovery {
     for candidate in Self.candidateSockets {
       let expanded = Self.expandPath(candidate.path)
       if fileExists(expanded) {
-        if debug { fputs("[LocalAPIDiscovery] using Unix socket: \(expanded)\n", stderr) }
+        if debug { Self.debugLog("[LocalAPIDiscovery] using Unix socket: \(expanded)") }
         return .init(
           endpoint: .unixSocket(path: expanded),
           authToken: candidate.authToken,
@@ -118,16 +124,14 @@ public struct LocalAPIDiscovery {
     #if os(macOS)
       if allowMacOSAppStoreDiscovery {
         if debug {
-          fputs(
-            "[LocalAPIDiscovery] attempting macOS App Store discovery (TCC popup may appear)\n",
-            stderr)
+          Self.debugLog(
+            "[LocalAPIDiscovery] attempting macOS App Store discovery (TCC popup may appear)")
         }
         if let mac = MacClientInfo().locateSameUserProof() {
           if debug {
             let tokenPreview = mac.token.prefix(8)
-            fputs(
-              "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) token=\(tokenPreview)…\n",
-              stderr)
+            Self.debugLog(
+              "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) token=\(tokenPreview)…")
           }
           return .init(
             endpoint: .loopback(host: "127.0.0.1", port: mac.port),
@@ -135,16 +139,15 @@ public struct LocalAPIDiscovery {
             capabilityVersion: capability)
         }
       } else if debug {
-        fputs(
-          "[LocalAPIDiscovery] skipping macOS App Store discovery (allowMacOSAppStoreDiscovery=false)\n",
-          stderr)
+        Self.debugLog(
+          "[LocalAPIDiscovery] skipping macOS App Store discovery (opt-in flag disabled)")
       }
     #endif
 
     // 6. Final fallback to default socket path
     if debug {
-      fputs(
-        "[LocalAPIDiscovery] falling back to default socket: \(Self.defaultSocketPath)\n", stderr)
+      Self.debugLog(
+        "[LocalAPIDiscovery] falling back to default socket: \(Self.defaultSocketPath)")
     }
     return .init(
       endpoint: .unixSocket(path: Self.expandPath(Self.defaultSocketPath)),
@@ -160,6 +163,15 @@ public struct LocalAPIDiscovery {
       }
     }
     return (Self.expandPath(Self.defaultSocketPath), nil)
+  }
+
+  /// Writes to stderr via fd 2 directly: the C `stderr` global is not
+  /// concurrency-safe under Swift 6 strict concurrency on Glibc.
+  private static func debugLog(_ message: String) {
+    let bytes = Array((message + "\n").utf8)
+    bytes.withUnsafeBufferPointer { buffer in
+      _ = write(2, buffer.baseAddress, buffer.count)
+    }
   }
 
   private static func expandPath(_ path: String) -> String {

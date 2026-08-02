@@ -3,6 +3,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 /// Primary entry point for interacting with the Tailscale LocalAPI.
 ///
 /// `TailscaleClient` provides async/await access to the Tailscale daemon's LocalAPI,

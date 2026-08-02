@@ -127,7 +127,7 @@ Write endpoints (prefs PATCH etc.) get apply → verify → revert integration t
 
 | Suite | PRs | Push to main | Nightly | Notes |
 |-------|-----|--------------|---------|-------|
-| Unit (mock-backed) | macOS (Linux at v0.5.0) | ✓ | ✓ | hermetic, no daemon |
+| Unit (mock-backed) | macOS + Linux | ✓ | ✓ | hermetic, no daemon |
 | Platform build checks (iOS/tvOS/watchOS) | build-only | ✓ | — | declared platforms must compile |
 | swift-format lint | ✓ | ✓ | — | against checked-in `.swift-format` |
 | Integration (self-hosted macOS, real tailscaled) | same-repo PRs only | ✓ | — | read-only tests; fork-guarded |
