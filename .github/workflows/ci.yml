@@ -35,8 +35,10 @@ jobs:
 
       - name: Check code coverage
         run: |
-          PROFDATA=".build/debug/codecov/default.profdata"
-          XCTEST_BIN=$(find .build/debug -maxdepth 2 -name '*PackageTests.xctest' | head -1)
+          # .build/debug is a symlink; resolve the real bin dir so find works.
+          BIN_DIR=$(swift build --show-bin-path)
+          PROFDATA="$BIN_DIR/codecov/default.profdata"
+          XCTEST_BIN=$(find "$BIN_DIR" -maxdepth 1 -name '*PackageTests.xctest' | head -1)
           BIN="$XCTEST_BIN/Contents/MacOS/$(basename "$XCTEST_BIN" .xctest)"
           PERCENT=$(xcrun llvm-cov export -summary-only "$BIN" \
             -instr-profile "$PROFDATA" \
