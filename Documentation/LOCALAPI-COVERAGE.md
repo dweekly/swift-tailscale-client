@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 15 (+ 3 experimental) |
+| Implemented | 17 (+ 3 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -38,7 +38,7 @@ Three upstream facts shape everything below:
 |----------|--------|-----------|-------|
 | `status` | GET | `status(query:)` | `?peers=false` supported via `StatusQuery` |
 | `whois` | GET | `whois(address:)` | `?addr=`; `?proto=` not yet exposed |
-| `prefs` | GET | `prefs()` | PATCH planned v0.8.0 |
+| `prefs` | GET, PATCH | `prefs()`, `editPrefs(_:)` | PATCH since v0.8.0 via typed `MaskedPrefs` |
 | `ping` | POST | `ping(ip:type:size:)` | disco/TSMP/ICMP/peerAPI |
 | `metrics` | GET | `metrics()` | Prometheus text; feature-gated upstream (`HasClientMetrics`/`HasDebug`) |
 | `watch-ipn-bus` | GET (streaming) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | `AsyncThrowingStream<IPNNotify, Error>`; skip-and-report + opt-in reconnect since v0.4.0 |
@@ -52,6 +52,8 @@ Three upstream facts shape everything below:
 | `peer-by-id` | GET | `peer(byID:)` | v0.7.0 — full `tailcfg.Node` via `WhoIsNode`; 404 = not in netmap |
 | `user-profile` | GET | `userProfile(byID:)` | v0.7.0 — resolves numeric `UserID` references |
 | `bugreport` / `goroutines` / `logtap` | POST / GET / stream | `experimental.*` | v0.7.0 — SemVer-exempt debug tier |
+| `check-prefs` | POST | `checkPrefs(_:)` | v0.8.0 — validate without applying |
+| `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | v0.8.0 — toggle without forgetting the selection |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -76,9 +78,9 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
-| `prefs` | GET, HEAD, PATCH | core | Stable | GET **v0.3.1**; PATCH v0.8.0 | `prefs()`, `editPrefs(_:)` (typed `MaskedPrefs`) |
-| `check-prefs` | POST | core | Stable | v0.8.0 | `checkPrefs(_:)` |
-| `set-use-exit-node-enabled` | POST | `HasUseExitNode` | Stable | v0.8.0 | `setUseExitNode(enabled:)` |
+| `prefs` | GET, HEAD, PATCH | core | Stable | GET **v0.3.1**; PATCH **v0.8.0** | `prefs()`, `editPrefs(_:)` (typed `MaskedPrefs`) |
+| `check-prefs` | POST | core | Stable | **v0.8.0** | `checkPrefs(_:)` |
+| `set-use-exit-node-enabled` | POST | `HasUseExitNode` | Stable | **v0.8.0** | `setUseExitNode(enabled:)` |
 | `set-expiry-sooner` | POST | core | Stable | v0.8.0 | `setExpirySooner(_:)` |
 | `reload-config` | POST | core | Stable | v0.8.0 | `reloadConfig()` |
 | `start` | POST | core | Stable | v0.8.0 | `start(options:)` |

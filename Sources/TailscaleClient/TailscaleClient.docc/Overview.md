@@ -77,6 +77,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 
 ### Preferences
 - ``Prefs``
+- ``MaskedPrefs``
 - ``AutoUpdatePrefs``
 - ``AppConnectorPrefs``
 
