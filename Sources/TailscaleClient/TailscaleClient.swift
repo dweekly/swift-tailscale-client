@@ -135,6 +135,57 @@ public actor TailscaleClient {
     return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
   }
 
+  /// Applies a partial preferences update and returns the resulting prefs.
+  ///
+  /// This is the first **write** API: it changes daemon state (the same
+  /// mechanism behind `tailscale set`). Only the fields set on `masked` are
+  /// touched; everything else is preserved. Validate risky changes first
+  /// with ``checkPrefs(_:)``.
+  ///
+  /// - Parameter masked: The fields to change; see ``MaskedPrefs``.
+  /// - Returns: The daemon's full updated ``Prefs``.
+  /// - Throws: `TailscaleClientError` if the request fails —
+  ///   `.unexpectedStatus(400, …)` carries the daemon's validation message.
+  public func editPrefs(_ masked: MaskedPrefs) async throws -> Prefs {
+    let endpoint = "/localapi/v0/prefs"
+    let body = try JSONEncoder().encode(masked)
+    let request = TailscaleRequest(method: "PATCH", path: endpoint, body: body)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Asks the daemon whether a full preferences object would be valid,
+  /// without applying it.
+  ///
+  /// - Parameter prefs: The complete preferences to validate.
+  /// - Throws: ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` with the
+  ///   daemon's explanation when the prefs are invalid; nothing on success.
+  public func checkPrefs(_ prefs: Prefs) async throws {
+    let endpoint = "/localapi/v0/check-prefs"
+    let body = try JSONEncoder().encode(prefs)
+    let request = TailscaleRequest(method: "POST", path: endpoint, body: body)
+    _ = try await performRawRequest(request, endpoint: endpoint)
+  }
+
+  /// Toggles use of the currently-selected exit node without forgetting
+  /// which node was selected — the daemon remembers the prior choice when
+  /// re-enabling.
+  ///
+  /// - Parameter enabled: Whether traffic should flow through the exit node.
+  /// - Returns: The daemon's full updated ``Prefs``.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without exit-node support; other
+  ///   `TailscaleClientError` cases on failure (including 400 when no exit
+  ///   node was ever selected).
+  public func setUseExitNode(enabled: Bool) async throws -> Prefs {
+    let endpoint = "/localapi/v0/set-use-exit-node-enabled"
+    let request = TailscaleRequest(
+      method: "POST",
+      path: endpoint,
+      queryItems: [URLQueryItem(name: "enabled", value: enabled ? "true" : "false")])
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "use-exit-node")
+  }
+
   /// Fetches the full netmap record for a peer by its numeric node ID.
   ///
   /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the

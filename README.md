@@ -145,6 +145,9 @@ for try await notification in try await client.watchIPNBus() {
 | `checkIPForwarding()` | Subnet-router / exit-node readiness preflight |
 | `peer(byID:)` / `userProfile(byID:)` | Resolve numeric node and user IDs to full records |
 | `experimental.bugreport()` / `.goroutines()` / `.logtap()` | SemVer-exempt debug surfaces (markers, stack dumps, live log stream) |
+| `editPrefs(_:)` | Apply a partial preferences change (typed `MaskedPrefs`; the `tailscale set` mechanism) |
+| `checkPrefs(_:)` | Validate a full preferences object without applying it |
+| `setUseExitNode(enabled:)` | Toggle the selected exit node on/off |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
 | `daemonFeatures()` | Probe which optional features the daemon was compiled with (`debug-optional-features`) |
 

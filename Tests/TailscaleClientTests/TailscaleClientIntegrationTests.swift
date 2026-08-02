@@ -256,6 +256,41 @@ import XCTest
       }
     }
 
+    // MARK: - Write API Tests (hermetic daemons ONLY)
+
+    /// Write tests mutate daemon state, so they carry their own gate on top
+    /// of TAILSCALE_INTEGRATION: only the hermetic headscale environment
+    /// sets TAILSCALE_INTEGRATION_WRITE=1. Never enable it against a real
+    /// tailnet.
+    private func requireWriteTesting() throws {
+      guard ProcessInfo.processInfo.environment["TAILSCALE_INTEGRATION_WRITE"] == "1" else {
+        throw XCTSkip("Write tests run only against hermetic daemons (TAILSCALE_INTEGRATION_WRITE=1)")
+      }
+    }
+
+    func testEditPrefsShieldsUpRoundTrip() async throws {
+      try requireWriteTesting()
+      let original = try await client.prefs()
+      let flipped = !(original.shieldsUp ?? false)
+
+      var change = MaskedPrefs()
+      change.shieldsUp = flipped
+      let updated = try await client.editPrefs(change)
+      XCTAssertEqual(updated.shieldsUp, flipped, "editPrefs should apply the masked field")
+
+      var revert = MaskedPrefs()
+      revert.shieldsUp = !flipped
+      let restored = try await client.editPrefs(revert)
+      XCTAssertEqual(restored.shieldsUp, !flipped, "editPrefs should restore the original value")
+    }
+
+    func testCheckPrefsAcceptsCurrentPrefs() async throws {
+      try requireWriteTesting()
+      let current = try await client.prefs()
+      // The daemon's own current prefs must validate.
+      try await client.checkPrefs(current)
+    }
+
     // MARK: - Peer/User Lookup Tests
 
     func testPeerAndUserProfileLookupAgainstLiveDaemon() async throws {

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **First write APIs**: `editPrefs(_:)` applies a partial preferences update via `PATCH /localapi/v0/prefs` using the new typed `MaskedPrefs` builder — setting a property encodes both the value and its `<Name>Set` mask flag, so partial updates cannot be malformed; `checkPrefs(_:)` validates a full `Prefs` without applying; `setUseExitNode(enabled:)` toggles the selected exit node without forgetting it.
+- Write-API integration tests are double-gated: `TAILSCALE_INTEGRATION_WRITE=1` is set only in the hermetic headscale workflow, never on the self-hosted runner's real tailnet.
+
 ## [0.7.0] - 2026-08-02
 
 ### Added

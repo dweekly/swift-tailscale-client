@@ -168,17 +168,17 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 ## v0.8.0 — Configuration (First Write APIs)
 
 ### Library
-- [ ] `editPrefs(_:)` — `PATCH /localapi/v0/prefs` with a typed `MaskedPrefs` builder (only fields you set are sent, mirroring upstream's mask semantics)
-- [ ] `checkPrefs(_:)` — validate without applying
-- [ ] `setUseExitNode(enabled:)`, `setExpirySooner(_:)`, `reloadConfig()`, `start(options:)`
-- [ ] First real use of `TailscaleRequest.body` plumbing
+- [x] `editPrefs(_:)` — `PATCH /localapi/v0/prefs` with a typed `MaskedPrefs` builder (only fields you set are sent, mirroring upstream's mask semantics)
+- [x] `checkPrefs(_:)` — validate without applying
+- [x] `setUseExitNode(enabled:)`; still open: `setExpirySooner(_:)`, `reloadConfig()`, `start(options:)` (need live spikes for their exact request shapes)
+- [x] First real use of `TailscaleRequest.body` plumbing
 
 ### CLI
 - [ ] `set exit-node <node>`, `set shields-up`, `set accept-routes`
 
 ### Testing
-- [ ] Mutation tests in the integration suite: apply → verify → revert, in an isolated headscale tailnet
-- [ ] Unit tests assert exact PATCH bodies (mask correctness is the whole game)
+- [x] Mutation tests in the integration suite: apply → verify → revert — double-gated behind `TAILSCALE_INTEGRATION_WRITE=1`, set only in the hermetic headscale workflow
+- [x] Unit tests assert exact PATCH bodies (mask correctness is the whole game)
 
 ### Docs
 - [ ] DocC article: *Writing Safely* (check-prefs first, mask semantics, how to avoid clobbering user config)
