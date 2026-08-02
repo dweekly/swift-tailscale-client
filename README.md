@@ -115,6 +115,9 @@ for try await notification in try await client.watchIPNBus() {
 | `prefs()` | Get current node preferences and configuration |
 | `ping(ip:type:size:)` | Ping a peer to test connectivity and measure latency |
 | `metrics()` | Fetch internal metrics in Prometheus exposition format |
+| `userMetrics()` | Fetch stable user-facing metrics (Prometheus format, `tailscale metrics print` equivalent) |
+| `derpMap()` | Fetch the DERP relay map (regions, nodes, STUN/DERP ports) |
+| `suggestExitNode(forceProbe:)` | Ask the daemon which exit node it would pick right now |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
 | `daemonFeatures()` | Probe which optional features the daemon was compiled with (`debug-optional-features`) |
 

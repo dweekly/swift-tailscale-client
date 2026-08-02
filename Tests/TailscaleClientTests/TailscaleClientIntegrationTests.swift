@@ -189,6 +189,55 @@ import XCTest
       XCTAssertGreaterThan(foundCount, 0, "Expected to find some standard Tailscale metrics")
     }
 
+    // MARK: - Network Diagnostics Tests
+
+    func testDERPMapAgainstLiveDaemon() async throws {
+      let map = try await client.derpMap()
+      XCTAssertFalse(map.regions.isEmpty, "Expected at least one DERP region")
+
+      // Every region should be internally consistent.
+      for (id, region) in map.regions {
+        XCTAssertEqual(id, region.regionID, "Region key should match RegionID")
+        XCTAssertFalse(region.nodes.isEmpty, "Region \(id) should have nodes")
+        for node in region.nodes {
+          XCTAssertFalse(node.hostName.isEmpty, "Node in region \(id) should have a hostname")
+          XCTAssertEqual(node.regionID, id)
+        }
+      }
+    }
+
+    func testSuggestExitNodeAgainstLiveDaemon() async throws {
+      do {
+        let suggestion = try await client.suggestExitNode()
+        XCTAssertFalse(
+          suggestion.id?.isEmpty ?? true, "A returned suggestion should carry a node ID")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without exit-node support; skipping")
+        case .unexpectedStatus:
+          // Expected on tailnets with no exit nodes: the daemon reports the
+          // absence of candidates as an HTTP error, not an empty suggestion.
+          throw XCTSkip("No exit node candidates on this tailnet: \(error.description)")
+        default:
+          throw error
+        }
+      }
+    }
+
+    func testUserMetricsAgainstLiveDaemon() async throws {
+      do {
+        let metrics = try await client.userMetrics()
+        XCTAssertFalse(metrics.isEmpty, "Expected non-empty usermetrics response")
+        XCTAssertTrue(
+          metrics.contains("tailscaled_"),
+          "Expected tailscaled_-prefixed user metrics")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon predates usermetrics; skipping")
+      }
+    }
+
     // MARK: - Transport Layer Tests
 
     func testTransportHeaderInjection() async throws {

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **DERP map**: `derpMap()` wraps `GET /localapi/v0/derpmap` with typed `DERPMap`/`DERPHomeParams`/`DERPRegion`/`DERPNode` models (int-keyed region map, Go port conventions exposed via `effectiveSTUNPort`/`effectiveDERPPort`).
+- **Exit node suggestion**: `suggestExitNode(forceProbe:)` wraps `/localapi/v0/suggest-exit-node` (`ExitNodeSuggestion` + `NodeLocation` models). Defaults to GET for compatibility with older daemons; `forceProbe: true` POSTs `?probe=true` (Tailscale 1.86+) to re-measure before answering.
+- **User metrics**: `userMetrics()` wraps `GET /localapi/v0/usermetrics` — the stable, documented Prometheus metrics behind `tailscale metrics print`, distinct from the internal `metrics()` counters.
+- Optional endpoints now also map HTTP 501 (feature compiled out of the daemon build) to `TailscaleClientError.endpointUnavailable`, alongside 404.
+
 ## [0.5.0] - 2026-08-02
 
 ### Added

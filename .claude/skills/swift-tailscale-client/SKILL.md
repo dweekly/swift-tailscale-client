@@ -50,7 +50,10 @@ let status = try await client.status()              // nodes, peers, health, bac
 let whois  = try await client.whois(address: "100.64.0.5")
 let prefs  = try await client.prefs()               // exit node, shields, routes...
 let ping   = try await client.ping(ip: "100.64.0.5")
-let text   = try await client.metrics()             // Prometheus exposition format
+let text   = try await client.metrics()             // internal Prometheus counters
+let user   = try await client.userMetrics()         // stable user metrics (v0.6.0+)
+let derp   = try await client.derpMap()             // DERP relay regions/nodes (v0.6.0+)
+let exit   = try await client.suggestExitNode()     // recommended exit node (v0.6.0+)
 
 // Real-time updates (preferred over polling)
 for try await notify in try await client.watchIPNBus(options: [.initialState, .initialHealthState]) {

@@ -1,0 +1,77 @@
+{
+  "HomeParams": {
+    "RegionScore": {
+      "1": 0.95,
+      "10": 1.05
+    }
+  },
+  "Regions": {
+    "1": {
+      "RegionID": 1,
+      "RegionCode": "nyc",
+      "RegionName": "New York City",
+      "Latitude": 40.712775,
+      "Longitude": -74.005973,
+      "Nodes": [
+        {
+          "Name": "1f",
+          "RegionID": 1,
+          "HostName": "derp1f.tailscale.com",
+          "IPv4": "104.248.1.160",
+          "IPv6": "2604:a880:400:d1::828:b001",
+          "CanPort80": true
+        },
+        {
+          "Name": "1g",
+          "RegionID": 1,
+          "HostName": "derp1g.tailscale.com",
+          "IPv4": "209.97.148.22",
+          "IPv6": "2604:a880:400:d1::827:d001",
+          "CanPort80": true
+        }
+      ]
+    },
+    "2": {
+      "RegionID": 2,
+      "RegionCode": "sfo",
+      "RegionName": "San Francisco",
+      "Latitude": 37.774929,
+      "Longitude": -122.419416,
+      "Nodes": [
+        {
+          "Name": "2d",
+          "RegionID": 2,
+          "HostName": "derp2d.tailscale.com",
+          "IPv4": "192.73.252.65",
+          "IPv6": "2607:f740:0:3f::287",
+          "CanPort80": true
+        }
+      ]
+    },
+    "900": {
+      "RegionID": 900,
+      "RegionCode": "custom",
+      "RegionName": "Self-Hosted",
+      "Avoid": true,
+      "NoMeasureNoHome": true,
+      "Nodes": [
+        {
+          "Name": "900a",
+          "RegionID": 900,
+          "HostName": "derp.example.com",
+          "CertName": "derp-cert.example.com",
+          "IPv4": "203.0.113.10",
+          "STUNPort": 3479,
+          "DERPPort": 8443
+        },
+        {
+          "Name": "900stun",
+          "RegionID": 900,
+          "HostName": "stunless.example.com",
+          "STUNPort": -1
+        }
+      ]
+    }
+  },
+  "omitDefaultRegions": true
+}

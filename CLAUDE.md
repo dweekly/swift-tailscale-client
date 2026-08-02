@@ -154,6 +154,8 @@ Sources/TailscaleClient/
     PrefsResponse.swift
     PingResult.swift
     IPNNotify.swift              # IPN bus streaming models
+    DERPMap.swift                # DERP relay map models
+    ExitNodeSuggestion.swift     # Exit node suggestion + location models
   Platform/                      # Platform-specific helpers
     MacClientInfo.swift          # macOS loopback discovery (libproc)
     NetworkInterfaceDiscovery.swift  # TUN interface detection

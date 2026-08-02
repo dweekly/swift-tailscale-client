@@ -76,6 +76,14 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``PingResult``
 - ``PingType``
 
+### Network Diagnostics
+- ``DERPMap``
+- ``DERPHomeParams``
+- ``DERPRegion``
+- ``DERPNode``
+- ``ExitNodeSuggestion``
+- ``NodeLocation``
+
 ### Network Interface Discovery
 - ``NetworkInterfaceDiscovery``
 
