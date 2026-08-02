@@ -41,26 +41,38 @@ jobs:
             fi
           done
 
-          # GUI app (App Store / standalone): loopback port + token from the
-          # sameuserproof file in its Group Container. Requires the runner to
-          # have disk access to that container (grant once via Full Disk Access).
-          shopt -s nullglob
-          for proof in "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macos/sameuserproof-* \
-                       "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macsys/sameuserproof-*; do
+          # GUI app (App Store / standalone): loopback port + token from a
+          # sameuserproof file in its Group Container. Stale files from earlier
+          # app launches can linger, so probe candidates newest-first and use
+          # the first port that actually answers.
+          marker="$RUNNER_TEMP/localapi-port"
+          rm -f "$marker"
+          ls -t "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macos/sameuserproof-* \
+                "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macsys/sameuserproof-* 2>/dev/null |
+          while IFS= read -r proof; do
             name=$(basename "$proof")
             port=$(echo "$name" | cut -d- -f2)
             token=$(echo "$name" | cut -d- -f3-)
             echo "::add-mask::$token"
-            echo "Using GUI loopback LocalAPI on port $port"
-            {
-              echo "TAILSCALE_LOCALAPI_HOST=127.0.0.1"
-              echo "TAILSCALE_LOCALAPI_PORT=$port"
-              echo "TAILSCALE_LOCALAPI_AUTHKEY=$token"
-            } >> "$GITHUB_ENV"
-            exit 0
+            if curl -fsS -m 3 -u ":$token" "http://127.0.0.1:$port/localapi/v0/status?peers=false" >/dev/null 2>&1; then
+              echo "Using GUI loopback LocalAPI on port $port"
+              {
+                echo "TAILSCALE_LOCALAPI_HOST=127.0.0.1"
+                echo "TAILSCALE_LOCALAPI_PORT=$port"
+                echo "TAILSCALE_LOCALAPI_AUTHKEY=$token"
+              } >> "$GITHUB_ENV"
+              echo "$port" > "$marker"
+              break
+            fi
+            echo "Skipping sameuserproof for port $port (not answering)"
           done
 
-          echo "::error::No Tailscale LocalAPI found: no unix socket at known paths and no readable sameuserproof file. If the GUI app is installed, grant the runner Full Disk Access (TCC) or install Homebrew tailscaled."
+          if [ -s "$marker" ]; then
+            rm -f "$marker"
+            exit 0
+          fi
+
+          echo "::error::No live Tailscale LocalAPI found: no unix socket at known paths, and no sameuserproof port answered. Is the Tailscale app running on the runner? (If files were unreadable, grant the runner Full Disk Access.)"
           exit 1
 
       - name: Run integration suite
