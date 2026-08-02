@@ -14,9 +14,17 @@ struct PrefsCommand: AsyncParsableCommand {
   @Flag(name: .shortAndLong, help: "Show all preference fields")
   var verbose = false
 
+  @Flag(name: [.short, .long], help: "Output raw JSON.")
+  var json = false
+
   func run() async throws {
     let client = TailscaleClient()
     let prefs = try await client.prefs()
+
+    if json {
+      try printJSON(prefs)
+      return
+    }
 
     print("=== Tailscale Preferences ===")
 

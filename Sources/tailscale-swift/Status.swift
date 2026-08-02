@@ -27,9 +27,17 @@ struct Status: AsyncParsableCommand {
   @Flag(name: .shortAndLong, help: "Include detailed peer information")
   var verbose = false
 
+  @Flag(name: [.short, .long], help: "Output raw JSON.")
+  var json = false
+
   func run() async throws {
     let client = TailscaleClient()
     let status = try await client.status()
+
+    if json {
+      try printJSON(status)
+      return
+    }
 
     print("=== Tailscale Status ===")
     if let backendState = status.backendState {

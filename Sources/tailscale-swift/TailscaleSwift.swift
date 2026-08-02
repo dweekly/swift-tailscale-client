@@ -8,7 +8,7 @@ import Foundation
 struct TailscaleSwift: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "tailscale-swift",
-    abstract: "Development CLI for swift-tailscale-client",
+    abstract: "Inspect a local Tailscale daemon (built on swift-tailscale-client)",
     subcommands: [
       Status.self,
       WhoIs.self,
@@ -16,8 +16,12 @@ struct TailscaleSwift: AsyncParsableCommand {
       PingCommand.self,
       HealthCommand.self,
       MetricsCommand.self,
+      UserMetricsCommand.self,
       WatchCommand.self,
       FeaturesCommand.self,
+      DERPMapCommand.self,
+      SuggestExitCommand.self,
+      NetcheckCommand.self,
     ]
   )
 }
