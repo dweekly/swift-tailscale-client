@@ -186,6 +186,50 @@ public actor TailscaleClient {
       request, endpoint: endpoint, optionalEndpoint: true, feature: "use-exit-node")
   }
 
+  /// Asks the control plane to expire this node's key sooner than scheduled
+  /// — the mechanism behind `tailscale logout`-adjacent key hygiene.
+  ///
+  /// - Parameter expiry: The new expiry time; must be earlier than the
+  ///   current one (the daemon rejects extensions).
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func setExpirySooner(_ expiry: Date) async throws {
+    let endpoint = "/localapi/v0/set-expiry-sooner"
+    let request = TailscaleRequest(
+      method: "POST",
+      path: endpoint,
+      queryItems: [
+        URLQueryItem(name: "expiry", value: String(Int(expiry.timeIntervalSince1970)))
+      ])
+    _ = try await performRawRequest(request, endpoint: endpoint)
+  }
+
+  /// Asks a config-file-driven daemon to reload its configuration file.
+  ///
+  /// - Returns: The reload outcome; ``ReloadConfigResult/reloaded`` is
+  ///   `false` when the daemon is not in config-file mode.
+  /// - Throws: `TailscaleClientError` if the request fails; a failed reload
+  ///   is reported in ``ReloadConfigResult/error`` rather than thrown.
+  public func reloadConfig() async throws -> ReloadConfigResult {
+    let endpoint = "/localapi/v0/reload-config"
+    let request = TailscaleRequest(method: "POST", path: endpoint)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Starts (or restarts) the backend with the given options — required
+  /// once after connecting to a daemon that has never been configured, and
+  /// the vehicle for headless auth-key bring-up.
+  ///
+  /// - Parameter options: Start options; the default starts with stored
+  ///   preferences.
+  /// - Throws: `TailscaleClientError` if the request fails (500 when the
+  ///   daemon's state store is unhealthy).
+  public func start(options: StartOptions = StartOptions()) async throws {
+    let endpoint = "/localapi/v0/start"
+    let body = try JSONEncoder().encode(options)
+    let request = TailscaleRequest(method: "POST", path: endpoint, body: body)
+    _ = try await performRawRequest(request, endpoint: endpoint)
+  }
+
   /// Fetches the full netmap record for a peer by its numeric node ID.
   ///
   /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the
@@ -464,7 +508,8 @@ public actor TailscaleClient {
     if optionalEndpoint, response.statusCode == 404 || response.statusCode == 501 {
       throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: feature)
     }
-    guard response.statusCode == 200 else {
+    // Write endpoints answer with other 2xx codes too (start returns 204).
+    guard (200..<300).contains(response.statusCode) else {
       throw TailscaleClientError.unexpectedStatus(
         code: response.statusCode, body: response.data, endpoint: endpoint)
     }

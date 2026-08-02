@@ -148,6 +148,7 @@ for try await notification in try await client.watchIPNBus() {
 | `editPrefs(_:)` | Apply a partial preferences change (typed `MaskedPrefs`; the `tailscale set` mechanism) |
 | `checkPrefs(_:)` | Validate a full preferences object without applying it |
 | `setUseExitNode(enabled:)` | Toggle the selected exit node on/off |
+| `setExpirySooner(_:)` / `reloadConfig()` / `start(options:)` | Key hygiene, config reload, backend start (headless auth-key bring-up) |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
 | `daemonFeatures()` | Probe which optional features the daemon was compiled with (`debug-optional-features`) |
 

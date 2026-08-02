@@ -172,6 +172,74 @@ final class PrefsWriteTests: XCTestCase {
       captured.first?.queryItems, [URLQueryItem(name: "enabled", value: "true")])
   }
 
+  // MARK: - Daemon control
+
+  func testSetExpirySoonerSendsUnixTimestamp() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 200, data: Data("done\n".utf8))
+    }
+    let client = makeClient(transport: transport)
+    try await client.setExpirySooner(Date(timeIntervalSince1970: 1_800_000_000))
+
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.method, "POST")
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/set-expiry-sooner")
+    XCTAssertEqual(
+      captured.first?.queryItems, [URLQueryItem(name: "expiry", value: "1800000000")])
+  }
+
+  func testReloadConfigDecodesOutcome() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data(#"{"Reloaded": true}"#.utf8))
+    }
+    let client = makeClient(transport: transport)
+    let result = try await client.reloadConfig()
+    XCTAssertTrue(result.reloaded)
+    XCTAssertNil(result.error)
+  }
+
+  func testReloadConfigCarriesDaemonError() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(
+        statusCode: 200, data: Data(#"{"Reloaded": false, "Err": "parse error"}"#.utf8))
+    }
+    let client = makeClient(transport: transport)
+    let result = try await client.reloadConfig()
+    XCTAssertFalse(result.reloaded)
+    XCTAssertEqual(result.error, "parse error")
+  }
+
+  func testStartPOSTsOptionsAndAccepts204() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 204, data: Data())
+    }
+    let client = makeClient(transport: transport)
+    try await client.start(options: StartOptions(authKey: "tskey-auth-xyz"))
+
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.method, "POST")
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/start")
+    let body = try jsonObject(captured.first?.body)
+    XCTAssertEqual(body["AuthKey"] as? String, "tskey-auth-xyz")
+  }
+
+  func testStartWithDefaultsSendsEmptyObject() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 204, data: Data())
+    }
+    let client = makeClient(transport: transport)
+    try await client.start()
+
+    let body = try jsonObject((await recorder.requests).first?.body)
+    XCTAssertTrue(body.isEmpty)
+  }
+
   func testSetUseExitNodeMaps501ToEndpointUnavailable() async {
     let transport = MockTransport { _, _ in
       TailscaleResponse(statusCode: 501, data: Data("feature not available".utf8))

@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 17 (+ 3 experimental) |
+| Implemented | 20 (+ 3 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -54,6 +54,9 @@ Three upstream facts shape everything below:
 | `bugreport` / `goroutines` / `logtap` | POST / GET / stream | `experimental.*` | v0.7.0 — SemVer-exempt debug tier |
 | `check-prefs` | POST | `checkPrefs(_:)` | v0.8.0 — validate without applying |
 | `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | v0.8.0 — toggle without forgetting the selection |
+| `set-expiry-sooner` | POST | `setExpirySooner(_:)` | v0.8.0 — key hygiene |
+| `reload-config` | POST | `reloadConfig()` | v0.8.0 — config-file daemons |
+| `start` | POST | `start(options:)` | v0.8.0 — backend start / headless auth-key bring-up |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -81,9 +84,9 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | `prefs` | GET, HEAD, PATCH | core | Stable | GET **v0.3.1**; PATCH **v0.8.0** | `prefs()`, `editPrefs(_:)` (typed `MaskedPrefs`) |
 | `check-prefs` | POST | core | Stable | **v0.8.0** | `checkPrefs(_:)` |
 | `set-use-exit-node-enabled` | POST | `HasUseExitNode` | Stable | **v0.8.0** | `setUseExitNode(enabled:)` |
-| `set-expiry-sooner` | POST | core | Stable | v0.8.0 | `setExpirySooner(_:)` |
-| `reload-config` | POST | core | Stable | v0.8.0 | `reloadConfig()` |
-| `start` | POST | core | Stable | v0.8.0 | `start(options:)` |
+| `set-expiry-sooner` | POST | core | Stable | **v0.8.0** | `setExpirySooner(_:)` — `?expiry=<unix ts>` |
+| `reload-config` | POST | core | Stable | **v0.8.0** | `reloadConfig()` → `ReloadConfigResult` |
+| `start` | POST | core | Stable | **v0.8.0** | `start(options:)` — minimal `StartOptions` (auth key); 204 on success |
 | `prefs/service-clients` | GET, POST | `HasServiceClientPrefs` | Experimental | on demand | — (new Jul 2026) |
 
 ### Diagnostics & networking
