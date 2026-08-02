@@ -1,0 +1,13 @@
+{
+  "ID": "nExitNodeStable123",
+  "Name": "us-sfo-wg-101.mullvad.ts.net.",
+  "Location": {
+    "Country": "USA",
+    "CountryCode": "US",
+    "City": "San Francisco, CA",
+    "CityCode": "SFO",
+    "Latitude": 37.774929,
+    "Longitude": -122.419416,
+    "Priority": 100
+  }
+}

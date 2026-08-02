@@ -30,7 +30,7 @@ embedded node.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.5.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.6.0")
 // target dependency:
 .product(name: "TailscaleClient", package: "swift-tailscale-client")
 ```
@@ -50,7 +50,12 @@ let status = try await client.status()              // nodes, peers, health, bac
 let whois  = try await client.whois(address: "100.64.0.5")
 let prefs  = try await client.prefs()               // exit node, shields, routes...
 let ping   = try await client.ping(ip: "100.64.0.5")
-let text   = try await client.metrics()             // Prometheus exposition format
+let text   = try await client.metrics()             // internal Prometheus counters
+let user   = try await client.userMetrics()         // stable user metrics (v0.6.0+)
+let derp   = try await client.derpMap()             // DERP relay regions/nodes (v0.6.0+)
+let exit   = try await client.suggestExitNode()     // recommended exit node (v0.6.0+)
+let net    = try await client.netcheck()            // client-side STUN probe: region latency,
+                                                    // public IP, NAT hardness (v0.6.0+)
 
 // Real-time updates (preferred over polling)
 for try await notify in try await client.watchIPNBus(options: [.initialState, .initialHealthState]) {
@@ -107,7 +112,9 @@ own stub to the public `TailscaleTransport` protocol instead.
 - `Sources/TailscaleClient/` — library: `TailscaleClient.swift` (actor + errors), `Configuration/`
   (discovery), `Transport/` (URLSession + unix socket), `Models/`, `Platform/` (macOS discovery,
   interface detection)
-- `Sources/tailscale-swift/` — dev CLI (`status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`)
+- `Sources/tailscale-swift/` — CLI executable product (`status`, `whois`, `prefs`, `ping`, `health`,
+  `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`; `--json` on
+  structured commands)
 - `ROADMAP.md` — version plan and stability tiers; `Documentation/LOCALAPI-COVERAGE.md` — status of
   every LocalAPI endpoint; `Documentation/TESTING.md` — spike-first workflow and harness;
   `CLAUDE.md` — build/test commands and architecture conventions

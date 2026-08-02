@@ -17,6 +17,10 @@ let package = Package(
         .library(
             name: "TailscaleClientMocks",
             targets: ["TailscaleClientMocks"]
+        ),
+        .executable(
+            name: "tailscale-swift",
+            targets: ["tailscale-swift"]
         )
     ],
     dependencies: [

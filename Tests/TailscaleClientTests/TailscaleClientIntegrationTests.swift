@@ -189,6 +189,73 @@ import XCTest
       XCTAssertGreaterThan(foundCount, 0, "Expected to find some standard Tailscale metrics")
     }
 
+    // MARK: - Network Diagnostics Tests
+
+    func testDERPMapAgainstLiveDaemon() async throws {
+      let map = try await client.derpMap()
+      XCTAssertFalse(map.regions.isEmpty, "Expected at least one DERP region")
+
+      // Every region should be internally consistent.
+      for (id, region) in map.regions {
+        XCTAssertEqual(id, region.regionID, "Region key should match RegionID")
+        XCTAssertFalse(region.nodes.isEmpty, "Region \(id) should have nodes")
+        for node in region.nodes {
+          XCTAssertFalse(node.hostName.isEmpty, "Node in region \(id) should have a hostname")
+          XCTAssertEqual(node.regionID, id)
+        }
+      }
+    }
+
+    func testSuggestExitNodeAgainstLiveDaemon() async throws {
+      do {
+        let suggestion = try await client.suggestExitNode()
+        XCTAssertFalse(
+          suggestion.id?.isEmpty ?? true, "A returned suggestion should carry a node ID")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without exit-node support; skipping")
+        case .unexpectedStatus:
+          // Expected on tailnets with no exit nodes: the daemon reports the
+          // absence of candidates as an HTTP error, not an empty suggestion.
+          throw XCTSkip("No exit node candidates on this tailnet: \(error.description)")
+        default:
+          throw error
+        }
+      }
+    }
+
+    func testUserMetricsAgainstLiveDaemon() async throws {
+      do {
+        let metrics = try await client.userMetrics()
+        XCTAssertFalse(metrics.isEmpty, "Expected non-empty usermetrics response")
+        XCTAssertTrue(
+          metrics.contains("tailscaled_"),
+          "Expected tailscaled_-prefixed user metrics")
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon predates usermetrics; skipping")
+      }
+    }
+
+    func testNetcheckAgainstLiveDERPMap() async throws {
+      let report = try await client.netcheck(options: Netcheck.Options(timeout: .seconds(5)))
+      guard report.udpWorking else {
+        // CI sandboxes may block outbound UDP entirely; that's a valid
+        // report, not a client bug.
+        throw XCTSkip("No STUN responses (UDP blocked or empty DERP map); skipping")
+      }
+      XCTAssertFalse(report.regionLatencySeconds.isEmpty)
+      XCTAssertNotNil(report.preferredDERPRegionID, "UDP works, so some region should be preferred")
+      if report.ipv4Working {
+        XCTAssertNotNil(report.globalV4, "IPv4 STUN worked, so a mapped address should be known")
+      }
+      for (region, latency) in report.regionLatencySeconds {
+        XCTAssertGreaterThan(latency, 0, "Region \(region) latency should be positive")
+        XCTAssertLessThan(latency, 5.5, "Region \(region) latency should respect the timeout")
+      }
+    }
+
     // MARK: - Transport Layer Tests
 
     func testTransportHeaderInjection() async throws {

@@ -33,9 +33,9 @@ Keep-a-Changelog format (already in place):
    - verifies tag ↔ CHANGELOG entry match and that the tag is annotated
    - runs the full test suite
    - creates the GitHub Release with notes extracted from the CHANGELOG section
-   - builds and attaches CLI binaries: macOS universal (arm64 + x86_64), Linux x86_64 and arm64 (once the CLI is a product, v0.6.0)
-   - opens a version-bump PR against `dweekly/homebrew-tap` (v0.6.0+)
-5. Verify Swift Package Index picked up the release and built docs (usually within hours; `.spi.yml` controls platforms and documentation targets)
+   - builds and attaches CLI binaries: macOS universal (arm64 + x86_64) and Linux x86_64 (since v0.6.0)
+5. Bump the Homebrew formula (`dweekly/homebrew-tap`) manually — new tag URL + tarball sha256; steps and formula template in [`HOMEBREW.md`](HOMEBREW.md). (The workflow token cannot write to other repositories, so this stays manual.)
+6. Verify Swift Package Index picked up the release and built docs (usually within hours; `.spi.yml` controls platforms and documentation targets)
 
 ## Distribution channels
 
@@ -43,8 +43,8 @@ Keep-a-Changelog format (already in place):
 |---------|-----------|--------|
 | Swift Package Manager | git tags; `.package(url:from:)` | live |
 | Swift Package Index | automatic from tags; `.spi.yml` for platforms + hosted docs | `.spi.yml` added, SPI is the canonical docs host per release |
-| GitHub Releases | `release.yml` automation | planned v0.4.0 |
-| Homebrew | tap `dweekly/homebrew-tap`, formula `tailscale-swift` building the CLI from the release tag | planned v0.6.0 (requires CLI to be an executable product). homebrew-core: post-1.0 aspiration once notability criteria are met |
+| GitHub Releases | `release.yml` automation (notes from CHANGELOG, CLI binaries attached) | live |
+| Homebrew | tap `dweekly/homebrew-tap`, formula `tailscale-swift` building the CLI from the release tag | CLI is an executable product and the formula template is ready ([`HOMEBREW.md`](HOMEBREW.md)); tap repo + sha256 land with the v0.6.0 release. homebrew-core: post-1.0 aspiration once notability criteria are met |
 | DocC | SPI (canonical, per-release) + GitHub Pages (bleeding-edge `main` snapshot) | Pages live |
 
 ## Announcement cadence

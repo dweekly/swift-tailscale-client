@@ -4,7 +4,7 @@
 import Foundation
 
 /// The type of ping to perform.
-public enum PingType: String, Sendable {
+public enum PingType: String, Sendable, Codable {
   /// Disco ping - uses Tailscale's disco protocol.
   case disco = "disco"
   /// TSMP ping - Tailscale Message Protocol.
@@ -16,7 +16,7 @@ public enum PingType: String, Sendable {
 }
 
 /// Result of a ping operation from `/localapi/v0/ping`.
-public struct PingResult: Sendable, Decodable, Equatable {
+public struct PingResult: Sendable, Codable, Equatable {
   /// The IP address that was pinged.
   public let ip: String?
 

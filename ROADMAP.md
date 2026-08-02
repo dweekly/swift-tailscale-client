@@ -130,19 +130,20 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 **Goal:** the NWX feature wave: DERP visibility, exit node optimization, and a native netcheck.
 
 ### Library
-- [ ] `derpMap()` — `GET /localapi/v0/derpmap`; `DERPMap`/`DERPRegion`/`DERPNode` models
-- [ ] `suggestExitNode()` / `suggestExitNode(forceProbe: true)` — GET + POST variants
-- [ ] `userMetrics()` — `GET /localapi/v0/usermetrics`
-- [ ] **Native STUN netcheck** (pure Swift; there is no LocalAPI netcheck endpoint — the official CLI does client-side STUN): enumerate STUN endpoints from the DERP map, measure per-region latency, detect NAT type from mapped-address variation, report UDP/IPv4/IPv6 capability
+- [x] `derpMap()` — `GET /localapi/v0/derpmap`; `DERPMap`/`DERPRegion`/`DERPNode` models
+- [x] `suggestExitNode()` / `suggestExitNode(forceProbe: true)` — GET + POST variants
+- [x] `userMetrics()` — `GET /localapi/v0/usermetrics`
+- [x] **Native STUN netcheck** (pure Swift; there is no LocalAPI netcheck endpoint — the official CLI does client-side STUN): enumerate STUN endpoints from the DERP map, measure per-region latency, detect NAT type from mapped-address variation, report UDP/IPv4/IPv6 capability
+- [x] Response models are fully `Codable` (encode side added for `--json`, caching, snapshots)
 
 ### CLI
-- [ ] `derpmap`, `netcheck`, `suggest-exit` subcommands
-- [ ] CLI promoted to an **executable product** in `Package.swift`
-- [ ] `--json` output on **every** subcommand; man pages generated via ArgumentParser's `generate-manual`
-- [ ] Homebrew tap `dweekly/homebrew-tap` with a `tailscale-swift` formula built from the release tag
+- [x] `derpmap`, `netcheck`, `suggest-exit` (+ `usermetrics`) subcommands
+- [x] CLI promoted to an **executable product** in `Package.swift`
+- [x] `--json` output on every subcommand with a structured result (`metrics`/`usermetrics` stay Prometheus text, already machine-readable); man pages available via ArgumentParser's `generate-manual` plugin (see `Documentation/HOMEBREW.md`)
+- [ ] Homebrew tap `dweekly/homebrew-tap` with a `tailscale-swift` formula built from the release tag — formula template ready in [`Documentation/HOMEBREW.md`](Documentation/HOMEBREW.md); tap repo + sha256 happen at release time
 
 ### Testing
-- [ ] STUN unit tests against recorded binding responses; netcheck integration test in the headscale matrix
+- [x] STUN unit tests against recorded binding responses; live netcheck integration test (skips where CI blocks UDP)
 
 ### Docs
 - [ ] Announcement wave: awesome-tailscale PR, r/Tailscale, Swift Forums (this is the first demo-able `brew install` moment)

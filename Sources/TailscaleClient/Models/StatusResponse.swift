@@ -4,7 +4,7 @@
 import Foundation
 
 /// Represents the payload returned from `/localapi/v0/status`.
-public struct StatusResponse: Sendable, Decodable, Equatable {
+public struct StatusResponse: Sendable, Codable, Equatable {
   public let version: String?
   public let isTunEnabled: Bool?
   public let backendState: BackendState?
@@ -121,7 +121,7 @@ public struct StatusResponse: Sendable, Decodable, Equatable {
   }
 }
 
-public enum BackendState: String, Sendable, Decodable {
+public enum BackendState: String, Sendable, Codable {
   case running = "Running"
   case stopped = "Stopped"
   case needsLogin = "NeedsLogin"
@@ -149,7 +149,7 @@ public enum BackendState: String, Sendable, Decodable {
   }
 }
 
-public struct NodeStatus: Sendable, Decodable, Equatable {
+public struct NodeStatus: Sendable, Codable, Equatable {
   public let id: String
   public let publicKey: String
   public let hostName: String
@@ -339,7 +339,7 @@ public struct NodeStatus: Sendable, Decodable, Equatable {
 /// the typed cases; anything else (booleans mixed with strings, objects, etc.)
 /// decodes into ``raw(_:)`` so that unfamiliar capability values never cause
 /// a status or whois response to fail decoding.
-public enum CapabilityValue: Sendable, Decodable, Equatable {
+public enum CapabilityValue: Sendable, Codable, Equatable {
   case null
   case integers([Int])
   case strings([String])
@@ -372,9 +372,25 @@ public enum CapabilityValue: Sendable, Decodable, Equatable {
     throw DecodingError.dataCorruptedError(
       in: container, debugDescription: "Capability value is not null or a JSON array")
   }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .null:
+      try container.encodeNil()
+    case .integers(let values):
+      try container.encode(values)
+    case .strings(let values):
+      try container.encode(values)
+    case .booleans(let values):
+      try container.encode(values)
+    case .raw(let values):
+      try container.encode(values)
+    }
+  }
 }
 
-public struct TailnetStatus: Sendable, Decodable, Equatable {
+public struct TailnetStatus: Sendable, Codable, Equatable {
   public let name: String?
   public let magicDNSSuffix: String?
   public let magicDNSEnabled: Bool?
@@ -397,7 +413,7 @@ public struct TailnetStatus: Sendable, Decodable, Equatable {
   }
 }
 
-public struct UserProfile: Sendable, Decodable, Equatable {
+public struct UserProfile: Sendable, Codable, Equatable {
   public let id: UInt64
   public let loginName: String?
   public let displayName: String?
@@ -438,7 +454,7 @@ public struct UserProfile: Sendable, Decodable, Equatable {
   }
 }
 
-public struct ClientVersionStatus: Sendable, Decodable, Equatable {
+public struct ClientVersionStatus: Sendable, Codable, Equatable {
   public let runningLatest: Bool?
 
   /// Creates an instance for tests, previews, or fixtures.

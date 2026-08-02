@@ -2,9 +2,9 @@
 
 Complete inventory of the Tailscale LocalAPI surface and this package's position on every endpoint: implemented, planned (with target version), experimental, or deliberately unsupported (with the reason).
 
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-02
 **Upstream reference:** `tailscale/tailscale` `main` (July 2026), `ipn/localapi/` + `client/local/`
-**swift-tailscale-client version:** 0.5.0
+**swift-tailscale-client version:** 0.6.0
 
 Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
 
@@ -24,15 +24,15 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 7 |
+| Implemented | 10 |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
-| No LocalAPI equivalent (client-side features) | netcheck, captive portal detection |
+| No LocalAPI equivalent (client-side features) | netcheck (implemented client-side in v0.6.0 as `Netcheck`), captive portal detection |
 
 ---
 
-## Implemented (v0.3.1)
+## Implemented
 
 | Endpoint | Method | Swift API | Notes |
 |----------|--------|-----------|-------|
@@ -43,6 +43,9 @@ Three upstream facts shape everything below:
 | `metrics` | GET | `metrics()` | Prometheus text; feature-gated upstream (`HasClientMetrics`/`HasDebug`) |
 | `watch-ipn-bus` | GET (streaming) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | `AsyncThrowingStream<IPNNotify, Error>`; skip-and-report + opt-in reconnect since v0.4.0 |
 | `debug-optional-features` | POST | `daemonFeatures()` | v0.4.0 — the capability-probing foundation |
+| `derpmap` | GET | `derpMap()` | v0.6.0 — typed `DERPMap`/`DERPRegion`/`DERPNode` |
+| `suggest-exit-node` | GET, POST | `suggestExitNode(forceProbe:)` | v0.6.0 — GET by default (works on older daemons); `forceProbe: true` POSTs `?probe=true` (1.86+) |
+| `usermetrics` | GET | `userMetrics()` | v0.6.0 — stable Prometheus user metrics; 404/501 → `endpointUnavailable` |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -80,10 +83,10 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
 | `ping` | POST | core | Stable | **v0.3.1** | `ping(ip:type:size:)` |
-| `derpmap` | GET | core | Stable | v0.6.0 | `derpMap()` |
-| `suggest-exit-node` | GET, POST | `HasUseExitNode` | Stable | v0.6.0 | `suggestExitNode()`, POST = force-probe |
+| `derpmap` | GET | core | Stable | **v0.6.0** | `derpMap()` |
+| `suggest-exit-node` | GET, POST | `HasUseExitNode` | Stable | **v0.6.0** | `suggestExitNode(forceProbe:)`, `forceProbe` = POST `?probe=true` |
 | `metrics` | GET | `HasClientMetrics`/`HasDebug` | Stable | **v0.3.1** | `metrics()` |
-| `usermetrics` | GET | `HasUserMetrics` | Stable | v0.6.0 | `userMetrics()` |
+| `usermetrics` | GET | `HasUserMetrics` | Stable | **v0.6.0** | `userMetrics()` |
 | `dns-osconfig` | GET | `HasDNS` | Stable | v0.7.0 | `dnsOSConfig()` |
 | `dns-query` | GET | `HasDNS` | Stable | v0.7.0 | `dnsQuery(name:type:)` — returns DNS wire bytes + resolvers |
 | `dns-config` | GET | core | Stable | v0.7.0 | `dnsConfig()` — netmap `tailcfg.DNSConfig` |

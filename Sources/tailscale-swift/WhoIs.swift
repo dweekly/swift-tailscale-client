@@ -17,9 +17,17 @@ struct WhoIs: AsyncParsableCommand {
   @Flag(name: .shortAndLong, help: "Show detailed node information")
   var verbose = false
 
+  @Flag(name: [.short, .long], help: "Output raw JSON.")
+  var json = false
+
   func run() async throws {
     let client = TailscaleClient()
     let response = try await client.whois(address: address)
+
+    if json {
+      try printJSON(response)
+      return
+    }
 
     if let node = response.node {
       print("=== Node ===")

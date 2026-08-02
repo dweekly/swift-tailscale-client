@@ -45,6 +45,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 > **Note:** The LocalAPI is not a formally stable interface — Tailscale namespaces it `/localapi/v0/` for a reason. This package tracks upstream, states which Tailscale versions each release was tested against, and uses tolerant decoding so upstream additions don't break your app. See the [stability policy](ROADMAP.md#stability--support-tiers).
 
 ## Status
+- **v0.6.0:** Network diagnostics - `derpMap()`, `suggestExitNode(forceProbe:)`, `userMetrics()`, and a native pure-Swift STUN `netcheck()` (per-region DERP latency, public IP, NAT hardness, UDP reachability). CLI became an installable product with `--json` everywhere; models are fully `Codable`; release binaries attached automatically.
 - **v0.5.0:** Linux support (POSIX socket transport), unit-tested HTTP wire-format parsers, Linux CI, and nightly hermetic integration against headscale + real tailscaled.
 - **v0.4.0:** Reliability foundations - shipped `TailscaleClientMocks` product, IPN stream hardening (skip-and-report + opt-in reconnect), `daemonFeatures()` capability probing, request timeouts, public inits and `Equatable` on all models.
 - **v0.3.1:** Unix socket discovery takes priority (avoids TCC popups); macOS App Store discovery now opt-in; chunked HTTP support for Homebrew tailscaled.
@@ -59,12 +60,31 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 Add the package to your `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.5.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.6.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
 
+### CLI
+
+The package ships `tailscale-swift`, a CLI for inspecting a local daemon — every library feature, scriptable via `--json`:
+
+```bash
+# From a checkout
+swift run tailscale-swift status
+
+# Or install the release build
+swift build -c release --product tailscale-swift
+
+# Homebrew (tap goes live with the v0.6.0 release)
+brew tap dweekly/tap && brew install tailscale-swift
+```
+
+Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`. All structured commands accept `--json`.
+
 > **Using an AI coding agent?** This repo ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md) that teaches agents what the package offers and how to integrate it correctly.
+
+Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS and Linux and runs it against a real daemon.
 
 ## Quickstart
 ```swift
@@ -115,6 +135,10 @@ for try await notification in try await client.watchIPNBus() {
 | `prefs()` | Get current node preferences and configuration |
 | `ping(ip:type:size:)` | Ping a peer to test connectivity and measure latency |
 | `metrics()` | Fetch internal metrics in Prometheus exposition format |
+| `userMetrics()` | Fetch stable user-facing metrics (Prometheus format, `tailscale metrics print` equivalent) |
+| `derpMap()` | Fetch the DERP relay map (regions, nodes, STUN/DERP ports) |
+| `suggestExitNode(forceProbe:)` | Ask the daemon which exit node it would pick right now |
+| `netcheck(options:)` | Client-side STUN probe of every DERP region: latency, public IP, NAT hardness, UDP reachability |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
 | `daemonFeatures()` | Probe which optional features the daemon was compiled with (`debug-optional-features`) |
 
@@ -175,7 +199,7 @@ When enabled, the library scans Group Containers to find `sameuserproof-<port>-<
   TAILSCALE_INTEGRATION=1 swift test --filter TailscaleClientIntegrationTests
   ```
   You can also override socket or loopback settings using the environment variables above.
-- GitHub Actions will execute only the mock-backed suites to keep CI hermetic.
+- CI runs the mock-backed suites on hosted macOS and Linux runners, the real-daemon integration suite on a self-hosted Mac, and a nightly hermetic integration run against headscale + real tailscaled. See [`Documentation/TESTING.md`](Documentation/TESTING.md).
 
 ## Contributing
 Community contributions are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines on coding style, testing, and documentation expectations. By participating you agree to abide by the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).

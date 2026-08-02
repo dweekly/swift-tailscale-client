@@ -20,6 +20,9 @@ struct PingCommand: AsyncParsableCommand {
   @Option(name: .shortAndLong, help: "Ping type: disco, tsmp, icmp, or peerAPI")
   var type: String = "disco"
 
+  @Flag(name: [.short, .long], help: "Output raw JSON (an array of ping results).")
+  var json = false
+
   func run() async throws {
     let client = TailscaleClient()
 
@@ -36,6 +39,18 @@ struct PingCommand: AsyncParsableCommand {
     default:
       print("Unknown ping type: \(type). Using disco.")
       pingType = .disco
+    }
+
+    if json {
+      var results: [PingResult] = []
+      for i in 0..<count {
+        results.append(try await client.ping(ip: ip, type: pingType))
+        if i < count - 1 {
+          try await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+        }
+      }
+      try printJSON(results)
+      return
     }
 
     print("PING \(ip) using \(pingType.rawValue)...")

@@ -56,6 +56,9 @@ jobs:
       - name: Check formatting
         run: swift format lint --strict --recursive Sources Tests
 
+      - name: Build example (links the library as an external consumer)
+        run: swift build --package-path Examples/StatusDemo
+
   test-linux:
     name: Test on Linux
     runs-on: ubuntu-24.04
@@ -71,6 +74,9 @@ jobs:
 
       - name: Run tests
         run: swift test -v
+
+      - name: Build example (links the library as an external consumer)
+        run: swift build --package-path Examples/StatusDemo
 
   build-platforms:
     name: Build (${{ matrix.platform }})

@@ -142,3 +142,8 @@ jobs:
 
       - name: Run unit suite (sanity on runner toolchain)
         run: swift test --skip TailscaleClientIntegrationTests
+
+      - name: Run example against the live daemon (end-to-end)
+        # Inherits the LocalAPI env vars exported by the discovery step; the
+        # example exits non-zero if it cannot reach tailscaled.
+        run: swift run --package-path Examples/StatusDemo StatusDemo

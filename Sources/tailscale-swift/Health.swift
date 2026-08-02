@@ -11,9 +11,17 @@ struct HealthCommand: AsyncParsableCommand {
     abstract: "Display Tailscale health warnings"
   )
 
+  @Flag(name: [.short, .long], help: "Output raw JSON.")
+  var json = false
+
   func run() async throws {
     let client = TailscaleClient()
     let status = try await client.status()
+
+    if json {
+      try printJSON(["health": status.health])
+      return
+    }
 
     if status.health.isEmpty {
       print("✓ No health warnings")
