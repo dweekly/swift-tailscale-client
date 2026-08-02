@@ -48,3 +48,49 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --verify-tag
+
+      - name: Build and attach universal macOS CLI binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          swift build -c release --arch arm64 --arch x86_64 --product tailscale-swift
+          BIN_DIR=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
+          ARCHIVE="$RUNNER_TEMP/tailscale-swift-${GITHUB_REF_NAME}-macos-universal.tar.gz"
+          tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
+          shasum -a 256 "$ARCHIVE"
+          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE"
+
+  linux-binary:
+    name: Attach Linux CLI binary
+    needs: release
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build CLI
+        run: |
+          swift build -c release --product tailscale-swift
+          BIN_DIR=$(swift build -c release --show-bin-path)
+          ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
+          tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
+          sha256sum "$ARCHIVE"
+
+      - name: Upload asset
+        # The swift container has no gh CLI; the Releases asset API only
+        # needs curl and the workflow token.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
+          RELEASE_ID=$(curl -sf \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            | grep -m1 '"id":' | tr -dc '0-9')
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/gzip" \
+            --data-binary "@$ARCHIVE" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ARCHIVE" \
+            > /dev/null
+          echo "Attached $ARCHIVE to release $RELEASE_ID"

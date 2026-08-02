@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file. The format 
 - **User metrics**: `userMetrics()` wraps `GET /localapi/v0/usermetrics` — the stable, documented Prometheus metrics behind `tailscale metrics print`, distinct from the internal `metrics()` counters.
 - Optional endpoints now also map HTTP 501 (feature compiled out of the daemon build) to `TailscaleClientError.endpointUnavailable`, alongside 404.
 - **Native Swift netcheck**: `client.netcheck()` (and the standalone `Netcheck` runner) STUN-probes every region in the DERP map over UDP — no daemon involvement beyond fetching the map — and reports per-region latency, the preferred DERP region, this machine's public IPv4/IPv6 endpoints, whether UDP works at all, and whether the NAT mapping varies by destination (the "hard NAT" signature). Includes a pure-Swift RFC 8489 STUN binding codec (XOR-MAPPED-ADDRESS incl. legacy 0x8020 and plain MAPPED-ADDRESS fallback), unit-tested without a network.
+- **CLI as a product**: `tailscale-swift` is now an executable product (`swift build --product tailscale-swift`), with new `derpmap`, `suggest-exit`, `netcheck`, and `usermetrics` subcommands and `--json` on every subcommand with a structured result. A Homebrew tap formula template ships in `Documentation/HOMEBREW.md`.
+- **Models are fully `Codable`**: the status/whois/ping families gained the encode side (synthesized from existing `CodingKeys`; `CapabilityValue` writes its wire form by hand), so responses can be re-serialized for `--json` output, caching, or snapshots.
 
 ## [0.5.0] - 2026-08-02
 

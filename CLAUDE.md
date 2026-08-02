@@ -121,7 +121,7 @@ swift run tailscale-swift status
 - v0.4.0: Reliability foundations — `TailscaleClientMocks` product, streaming skip-and-report + reconnect, `daemonFeatures()` capability probing, request timeouts, public model inits
 - v0.3.1: Unix socket priority (avoids TCC popups), opt-in App Store discovery, chunked HTTP support
 
-**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`, `features`
+**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck` — all structured commands take `--json`; the CLI is an executable product
 
 **Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
 - v0.6.0 (next): Network diagnostics — DERP map, exit node suggestions, usermetrics, native STUN netcheck; CLI becomes a product + Homebrew tap
@@ -156,6 +156,10 @@ Sources/TailscaleClient/
     IPNNotify.swift              # IPN bus streaming models
     DERPMap.swift                # DERP relay map models
     ExitNodeSuggestion.swift     # Exit node suggestion + location models
+  Netcheck/                      # Client-side STUN netcheck
+    STUN.swift                   # RFC 8489 binding codec (pure functions)
+    NetcheckProbe.swift          # Candidate planning + UDP probe loop
+    Netcheck.swift               # Public runner + NetcheckReport
   Platform/                      # Platform-specific helpers
     MacClientInfo.swift          # macOS loopback discovery (libproc)
     NetworkInterfaceDiscovery.swift  # TUN interface detection

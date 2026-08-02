@@ -112,7 +112,9 @@ own stub to the public `TailscaleTransport` protocol instead.
 - `Sources/TailscaleClient/` — library: `TailscaleClient.swift` (actor + errors), `Configuration/`
   (discovery), `Transport/` (URLSession + unix socket), `Models/`, `Platform/` (macOS discovery,
   interface detection)
-- `Sources/tailscale-swift/` — dev CLI (`status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `watch`)
+- `Sources/tailscale-swift/` — CLI executable product (`status`, `whois`, `prefs`, `ping`, `health`,
+  `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`; `--json` on
+  structured commands)
 - `ROADMAP.md` — version plan and stability tiers; `Documentation/LOCALAPI-COVERAGE.md` — status of
   every LocalAPI endpoint; `Documentation/TESTING.md` — spike-first workflow and harness;
   `CLAUDE.md` — build/test commands and architecture conventions

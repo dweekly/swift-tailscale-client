@@ -64,6 +64,23 @@ Add the package to your `Package.swift` dependencies:
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
 
+### CLI
+
+The package ships `tailscale-swift`, a CLI for inspecting a local daemon — every library feature, scriptable via `--json`:
+
+```bash
+# From a checkout
+swift run tailscale-swift status
+
+# Or install the release build
+swift build -c release --product tailscale-swift
+
+# Homebrew (tap goes live with the v0.6.0 release)
+brew tap dweekly/tap && brew install tailscale-swift
+```
+
+Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`. All structured commands accept `--json`.
+
 > **Using an AI coding agent?** This repo ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md) that teaches agents what the package offers and how to integrate it correctly.
 
 ## Quickstart
