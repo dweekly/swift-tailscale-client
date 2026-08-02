@@ -20,4 +20,42 @@ final class StatusResponseDecodingTests: XCTestCase {
     XCTAssertNotNil(response.users["1234567890123456"])
     XCTAssertEqual(response.clientVersion?.runningLatest, true)
   }
+
+  /// Tailscale 1.98.9 sends CapMap values that are arrays of JSON objects
+  /// (e.g. "default-auto-update"); these must decode as .unsupported rather
+  /// than failing the whole status response.
+  func testDecodesNodeWithObjectCapabilityValues() throws {
+    let json = """
+      {
+        "ID": "n1",
+        "PublicKey": "nodekey:abc",
+        "HostName": "example",
+        "DNSName": "example.tail.ts.net.",
+        "CapMap": {
+          "default-auto-update": [{"Apply": true}],
+          "https://tailscale.com/cap/is-admin": null,
+          "example-ints": [1, 2],
+          "example-strings": ["a"],
+          "example-mixed": [true, 3.5]
+        }
+      }
+      """
+    let node = try JSONDecoder.tailscale().decode(NodeStatus.self, from: Data(json.utf8))
+
+    guard case .unsupported = node.capabilityMap?["default-auto-update"] else {
+      return XCTFail("expected .unsupported for object payload")
+    }
+    guard case .null = node.capabilityMap?["https://tailscale.com/cap/is-admin"] else {
+      return XCTFail("expected .null")
+    }
+    guard case .integers([1, 2]) = node.capabilityMap?["example-ints"] else {
+      return XCTFail("expected .integers")
+    }
+    guard case .strings(["a"]) = node.capabilityMap?["example-strings"] else {
+      return XCTFail("expected .strings")
+    }
+    guard case .unsupported = node.capabilityMap?["example-mixed"] else {
+      return XCTFail("expected .unsupported for mixed array")
+    }
+  }
 }

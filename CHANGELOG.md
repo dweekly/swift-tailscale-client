@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Fixed
+
+- `CapabilityValue` no longer fails decoding on capability payloads it doesn't model (e.g. the object payloads Tailscale 1.98+ sends for `default-auto-update`); unmodeled shapes now decode as `.unsupported` instead of failing the entire `status()` response. Found by the first self-hosted integration CI run against a live daemon.
+
+### Added
+
+- CI: iOS/tvOS/watchOS build checks, SPM caching, strict format linting
+- CI: real-daemon integration workflow on a self-hosted macOS runner (fork-guarded; discovers the LocalAPI via `tailscale debug local-creds` with socket and sameuserproof fallbacks)
+
 ## [0.3.1] - 2025-01-14
 
 ### Changed

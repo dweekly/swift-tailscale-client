@@ -267,6 +267,11 @@ public enum CapabilityValue: Sendable, Decodable {
   case null
   case integers([Int])
   case strings([String])
+  /// A payload shape this version doesn't model. Upstream defines cap-map
+  /// values as arrays of arbitrary JSON (e.g. `default-auto-update` carries
+  /// objects), so decoding must degrade gracefully instead of failing the
+  /// entire status response.
+  case unsupported
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
@@ -282,8 +287,7 @@ public enum CapabilityValue: Sendable, Decodable {
       self = .strings(strings)
       return
     }
-    throw DecodingError.dataCorruptedError(
-      in: container, debugDescription: "Unsupported capability value")
+    self = .unsupported
   }
 }
 
