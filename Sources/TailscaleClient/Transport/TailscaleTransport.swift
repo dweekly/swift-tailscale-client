@@ -299,17 +299,25 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
     var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = request.method
     urlRequest.httpBody = request.body
+    if let timeout = configuration.requestTimeout {
+      urlRequest.timeoutInterval =
+        Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
+    }
     for (key, value) in request.additionalHeaders {
       urlRequest.setValue(value, forHTTPHeaderField: key)
     }
     return urlRequest
   }
 
-  private func enrich(request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+  // Internal for testing.
+  func enrich(request: TailscaleRequest, configuration: TailscaleClientConfiguration)
     -> TailscaleRequest
   {
     var request = request
     var headers = request.additionalHeaders
+    // The daemon's validHost check accepts an empty Host or this sentinel;
+    // a bare loopback Host is only accepted when token auth is configured.
+    headers["Host"] = "local-tailscaled.sock"
     headers["Tailscale-Cap"] = String(configuration.capabilityVersion)
     if let token = configuration.authToken, !token.isEmpty,
       let data = ":\(token)".data(using: .utf8)

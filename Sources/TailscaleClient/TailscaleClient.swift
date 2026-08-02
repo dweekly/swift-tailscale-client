@@ -70,6 +70,27 @@ public actor TailscaleClient {
     return try await performRawRequest(request, endpoint: endpoint)
   }
 
+  /// Reports which optional features the connected daemon was compiled with.
+  ///
+  /// Modern tailscaled builds are modular: endpoint availability depends on the
+  /// build, not just the version. Probe this before relying on optional
+  /// surfaces (metrics, serve, Taildrop, ...) instead of treating a 404 as an
+  /// error.
+  ///
+  /// ```swift
+  /// let features = try await client.daemonFeatures()
+  /// if features.isEnabled("serve") { /* safe to query serve-config */ }
+  /// ```
+  ///
+  /// - Returns: The daemon's optional-feature map.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon predates this endpoint; other `TailscaleClientError` cases on failure.
+  public func daemonFeatures() async throws -> OptionalFeatures {
+    let endpoint = "/localapi/v0/debug-optional-features"
+    let request = TailscaleRequest(method: "POST", path: endpoint)
+    return try await performRequest(request, endpoint: endpoint, optionalEndpoint: true)
+  }
+
   /// Pings a Tailscale IP address to test connectivity.
   ///
   /// - Parameters:
@@ -110,54 +131,110 @@ public actor TailscaleClient {
   /// }
   /// ```
   ///
-  /// - Parameter options: Watch options controlling what notifications to receive.
-  ///   Defaults to `.default` which includes initial state, health, and engine updates.
+  /// An undecodable line never terminates the stream: it is skipped and, when
+  /// provided, reported through `onUndecodableLine` — daemons routinely add
+  /// notification fields this package hasn't modeled yet. A dropped connection
+  /// terminates the stream with an error unless a `reconnect` policy is given,
+  /// in which case the client re-dials with exponential backoff and the stream
+  /// continues transparently (the daemon re-sends initial state per the watch
+  /// options on each connection).
+  ///
+  /// - Parameters:
+  ///   - options: Watch options controlling what notifications to receive.
+  ///     Defaults to `.default` which includes initial state, health, and engine updates.
+  ///   - reconnect: Opt-in automatic reconnection policy. `nil` (the default)
+  ///     ends the stream on the first connection failure.
+  ///   - onUndecodableLine: Called with the raw line and the decoding error for
+  ///     each line that could not be decoded as an ``IPNNotify``.
   /// - Returns: An async stream of IPN notifications.
-  /// - Throws: `TailscaleClientError` if the connection fails.
-  public func watchIPNBus(options: NotifyWatchOpt = .default) async throws
-    -> AsyncThrowingStream<IPNNotify, Error>
-  {
+  /// - Throws: `TailscaleClientError` if the initial connection fails.
+  public func watchIPNBus(
+    options: NotifyWatchOpt = .default,
+    reconnect: IPNBusReconnectPolicy? = nil,
+    onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
+  ) async throws -> AsyncThrowingStream<IPNNotify, Error> {
     let endpoint = "/localapi/v0/watch-ipn-bus"
     let request = TailscaleRequest(
       path: endpoint,
       queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
     )
 
-    let dataStream: AsyncThrowingStream<Data, Error>
+    let configuration = self.configuration
+    let open: @Sendable () async throws -> AsyncThrowingStream<Data, Error> = {
+      try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
+        try await configuration.transport.sendStreaming(request, configuration: configuration)
+      }
+    }
+
+    // Establish the first connection before returning so callers get a thrown
+    // error (not a poisoned stream) when the daemon is unreachable.
+    let initialStream: AsyncThrowingStream<Data, Error>
     do {
-      dataStream = try await configuration.transport.sendStreaming(
-        request, configuration: configuration)
+      initialStream = try await open()
     } catch let transportError as TailscaleTransportError {
       throw TailscaleClientError.transport(transportError)
     }
 
     return AsyncThrowingStream { continuation in
       let task = Task {
-        do {
-          for try await lineData in dataStream {
-            do {
-              let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
-              continuation.yield(notify)
-            } catch let decodingError as DecodingError {
-              // Log decoding errors but continue - some messages may have unknown fields
-              // In production, you might want to handle this differently
-              #if DEBUG
-                print("IPN bus decode error: \(decodingError)")
-              #endif
-              continuation.finish(
-                throwing: TailscaleClientError.decoding(
-                  decodingError, body: lineData, endpoint: endpoint))
+        var stream: AsyncThrowingStream<Data, Error>? = initialStream
+        var attempt = 0
+        var lastError: (any Error)? = nil
+
+        while true {
+          if stream == nil {
+            guard let policy = reconnect else {
+              // Unreachable: stream is only cleared when a policy exists.
+              continuation.finish()
               return
             }
+            if let maxAttempts = policy.maxAttempts, attempt >= maxAttempts {
+              continuation.finish(throwing: lastError.map(Self.mapStreamError))
+              return
+            }
+            attempt += 1
+            do {
+              try await Task.sleep(for: policy.delay(forAttempt: attempt))
+              stream = try await open()
+            } catch is CancellationError {
+              continuation.finish()
+              return
+            } catch {
+              lastError = error
+              stream = nil
+              continue
+            }
           }
-          continuation.finish()
-        } catch {
-          if let clientError = error as? TailscaleClientError {
-            continuation.finish(throwing: clientError)
-          } else if let transportError = error as? TailscaleTransportError {
-            continuation.finish(throwing: TailscaleClientError.transport(transportError))
-          } else {
-            continuation.finish(throwing: error)
+
+          do {
+            for try await lineData in stream! {
+              do {
+                let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
+                attempt = 0
+                continuation.yield(notify)
+              } catch let decodingError as DecodingError {
+                onUndecodableLine?(
+                  lineData,
+                  .decoding(decodingError, body: lineData, endpoint: endpoint))
+              }
+            }
+            // Server closed the stream (e.g. daemon restart).
+            if reconnect == nil {
+              continuation.finish()
+              return
+            }
+            stream = nil
+            lastError = nil
+          } catch is CancellationError {
+            continuation.finish()
+            return
+          } catch {
+            if reconnect == nil {
+              continuation.finish(throwing: Self.mapStreamError(error))
+              return
+            }
+            stream = nil
+            lastError = error
           }
         }
       }
@@ -173,12 +250,7 @@ public actor TailscaleClient {
   private func performRawRequest(_ request: TailscaleRequest, endpoint: String) async throws
     -> String
   {
-    let response: TailscaleResponse
-    do {
-      response = try await configuration.transport.send(request, configuration: configuration)
-    } catch let transportError as TailscaleTransportError {
-      throw TailscaleClientError.transport(transportError)
-    }
+    let response = try await executeWithDeadline(request, endpoint: endpoint)
 
     guard response.statusCode == 200 else {
       throw TailscaleClientError.unexpectedStatus(
@@ -195,16 +267,17 @@ public actor TailscaleClient {
     return text
   }
 
-  private func performRequest<T: Decodable>(_ request: TailscaleRequest, endpoint: String)
-    async throws -> T
-  {
-    let response: TailscaleResponse
-    do {
-      response = try await configuration.transport.send(request, configuration: configuration)
-    } catch let transportError as TailscaleTransportError {
-      throw TailscaleClientError.transport(transportError)
-    }
+  private func performRequest<T: Decodable>(
+    _ request: TailscaleRequest,
+    endpoint: String,
+    optionalEndpoint: Bool = false,
+    feature: String? = nil
+  ) async throws -> T {
+    let response = try await executeWithDeadline(request, endpoint: endpoint)
 
+    if optionalEndpoint, response.statusCode == 404 {
+      throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: feature)
+    }
     guard response.statusCode == 200 else {
       throw TailscaleClientError.unexpectedStatus(
         code: response.statusCode, body: response.data, endpoint: endpoint)
@@ -216,6 +289,90 @@ public actor TailscaleClient {
       throw TailscaleClientError.decoding(decodingError, body: response.data, endpoint: endpoint)
     }
   }
+
+  private func executeWithDeadline(_ request: TailscaleRequest, endpoint: String) async throws
+    -> TailscaleResponse
+  {
+    let configuration = self.configuration
+    do {
+      return try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
+        try await configuration.transport.send(request, configuration: configuration)
+      }
+    } catch let transportError as TailscaleTransportError {
+      throw TailscaleClientError.transport(transportError)
+    }
+  }
+
+  /// Races `operation` against the configured deadline, throwing
+  /// `TailscaleClientError.timeout` if the deadline elapses first.
+  fileprivate static func withDeadline<T: Sendable>(
+    _ timeout: Duration?,
+    endpoint: String,
+    _ operation: @escaping @Sendable () async throws -> T
+  ) async throws -> T {
+    guard let timeout else { return try await operation() }
+    return try await withThrowingTaskGroup(of: T.self) { group in
+      group.addTask { try await operation() }
+      group.addTask {
+        try await Task.sleep(for: timeout)
+        throw TailscaleClientError.timeout(endpoint: endpoint)
+      }
+      guard let result = try await group.next() else {
+        throw TailscaleClientError.timeout(endpoint: endpoint)
+      }
+      group.cancelAll()
+      return result
+    }
+  }
+
+  fileprivate static func mapStreamError(_ error: any Error) -> any Error {
+    if let clientError = error as? TailscaleClientError {
+      return clientError
+    }
+    if let transportError = error as? TailscaleTransportError {
+      return TailscaleClientError.transport(transportError)
+    }
+    return error
+  }
+}
+
+/// Controls automatic re-dialing of the IPN bus after a dropped connection.
+///
+/// Delays grow exponentially from ``initialDelay`` (doubling per consecutive
+/// failed attempt) and are capped at ``maxDelay``. The attempt counter resets
+/// each time a notification is successfully received.
+public struct IPNBusReconnectPolicy: Sendable, Equatable {
+  /// Consecutive failed attempts before the stream gives up and throws the
+  /// last error. `nil` retries indefinitely.
+  public var maxAttempts: Int?
+  /// Delay before the first reconnection attempt.
+  public var initialDelay: Duration
+  /// Upper bound on the backoff delay.
+  public var maxDelay: Duration
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    maxAttempts: Int? = nil,
+    initialDelay: Duration = .milliseconds(500),
+    maxDelay: Duration = .seconds(30)
+  ) {
+    self.maxAttempts = maxAttempts
+    self.initialDelay = initialDelay
+    self.maxDelay = maxDelay
+  }
+
+  /// Indefinite retries, starting at 500 ms and capped at 30 s.
+  public static let `default` = IPNBusReconnectPolicy()
+
+  func delay(forAttempt attempt: Int) -> Duration {
+    var delay = initialDelay
+    var step = 1
+    while step < attempt, delay < maxDelay {
+      delay = delay * 2
+      step += 1
+    }
+    return min(delay, maxDelay)
+  }
 }
 
 /// Error namespace for the Swift Tailscale client.
@@ -226,12 +383,18 @@ public enum TailscaleClientError: Error, Sendable {
   case unexpectedStatus(code: Int, body: Data, endpoint: String)
   /// LocalAPI responded successfully but the payload could not be decoded.
   case decoding(DecodingError, body: Data, endpoint: String)
+  /// The endpoint is not available on this daemon — it was compiled without the
+  /// optional feature, or predates the endpoint entirely. `feature` names the
+  /// upstream build feature when known.
+  case endpointUnavailable(endpoint: String, feature: String?)
+  /// The configured `requestTimeout` elapsed before the daemon responded.
+  case timeout(endpoint: String)
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
     let data: Data
     switch self {
-    case .transport:
+    case .transport, .endpointUnavailable, .timeout:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -258,6 +421,13 @@ extension TailscaleClientError: CustomStringConvertible {
       return "LocalAPI returned HTTP \(code) (\(statusMessage)) for \(endpoint)"
     case .decoding(let error, _, let endpoint):
       return "Failed to decode response from \(endpoint): \(Self.decodingErrorSummary(error))"
+    case .endpointUnavailable(let endpoint, let feature):
+      if let feature, !feature.isEmpty {
+        return "Endpoint \(endpoint) is unavailable: daemon built without feature '\(feature)'"
+      }
+      return "Endpoint \(endpoint) is unavailable on this daemon"
+    case .timeout(let endpoint):
+      return "Request to \(endpoint) timed out"
     }
   }
 
@@ -318,6 +488,12 @@ extension TailscaleClientError: LocalizedError {
     case .decoding:
       return
         "This may indicate a Tailscale API change. Please report this issue at https://github.com/dweekly/swift-tailscale-client/issues with the response body."
+    case .endpointUnavailable:
+      return
+        "Probe daemonFeatures() before calling optional endpoints, or update Tailscale to a build that includes this feature."
+    case .timeout:
+      return
+        "The daemon did not respond in time. Check that tailscaled is responsive, or raise/disable TailscaleClientConfiguration.requestTimeout."
     }
   }
 }

@@ -9,10 +9,24 @@ public struct TailscaleClientConfiguration: Sendable {
   public var endpoint: TailscaleEndpoint
   /// Optional authentication token (macOS GUI variants typically require this when using TCP fallback).
   public var authToken: String?
-  /// Capability version advertised to the daemon. This should track `tailcfg.CurrentCapabilityVersion`.
+  /// Capability version sent as the `Tailscale-Cap` header on every request.
+  ///
+  /// This advertises which LocalAPI capability level the client understands
+  /// (upstream: `tailcfg.CurrentCapabilityVersion`). The default of
+  /// ``defaultCapabilityVersion`` is intentionally conservative — claiming a
+  /// higher version than the client actually handles can change response
+  /// shapes. Override via this property or the `TAILSCALE_LOCALAPI_CAPABILITY`
+  /// environment variable if you need daemon behavior gated on a newer version.
   public var capabilityVersion: Int
+  /// Deadline applied to each unary request and to establishing a streaming
+  /// connection (not to the lifetime of an established stream). `nil` disables
+  /// the client-side deadline. Defaults to 30 seconds.
+  public var requestTimeout: Duration?
   /// Transport responsible for executing HTTP requests. Defaults to the built-in implementation.
   public var transport: any TailscaleTransport
+
+  /// The conservative default for ``capabilityVersion``.
+  public static let defaultCapabilityVersion = 1
 
   /// Creates a new configuration with explicit settings.
   ///
@@ -20,16 +34,19 @@ public struct TailscaleClientConfiguration: Sendable {
   ///   - endpoint: The connection endpoint (Unix socket, TCP loopback, or custom URL).
   ///   - authToken: Optional authentication token for TCP connections.
   ///   - capabilityVersion: Capability version to advertise to the daemon (defaults to 1).
+  ///   - requestTimeout: Per-request deadline (defaults to 30 seconds; nil disables).
   ///   - transport: Transport implementation for executing requests (defaults to URLSessionTailscaleTransport).
   public init(
     endpoint: TailscaleEndpoint,
     authToken: String?,
-    capabilityVersion: Int,
+    capabilityVersion: Int = TailscaleClientConfiguration.defaultCapabilityVersion,
+    requestTimeout: Duration? = .seconds(30),
     transport: any TailscaleTransport = URLSessionTailscaleTransport()
   ) {
     self.endpoint = endpoint
     self.authToken = authToken
     self.capabilityVersion = capabilityVersion
+    self.requestTimeout = requestTimeout
     self.transport = transport
   }
 

@@ -13,11 +13,29 @@ public enum TailscaleEndpoint: Sendable, Equatable {
   case url(URL)
 }
 
-struct LocalAPIDiscovery {
-  struct Result: Sendable, Equatable {
-    var endpoint: TailscaleEndpoint
-    var authToken: String?
-    var capabilityVersion: Int
+/// Locates the LocalAPI endpoint for the current machine.
+///
+/// `TailscaleClientConfiguration.default` runs this automatically; use it
+/// directly when an app needs to report *how* the daemon was found (which
+/// socket path, loopback port, or environment override) or to drive discovery
+/// with a custom environment.
+///
+/// ```swift
+/// let result = LocalAPIDiscovery().discover()
+/// print("Connecting via \(result.endpoint)")
+/// ```
+///
+/// Set `TAILSCALE_DISCOVERY_DEBUG=1` to log each decision to stderr.
+public struct LocalAPIDiscovery {
+  /// The outcome of a discovery pass.
+  public struct Result: Sendable, Equatable {
+    /// Where to connect.
+    public var endpoint: TailscaleEndpoint
+    /// Auth token for loopback connections, when discovery found one.
+    public var authToken: String?
+    /// Capability version to advertise (from `TAILSCALE_LOCALAPI_CAPABILITY`
+    /// or the default).
+    public var capabilityVersion: Int
   }
 
   private let environment: [String: String]
@@ -31,7 +49,7 @@ struct LocalAPIDiscovery {
   ///   - fileExists: Function to check file existence (defaults to FileManager).
   ///   - allowMacOSAppStoreDiscovery: If `true`, enables scanning Group Containers for the
   ///     macOS App Store GUI's loopback API. This triggers a TCC permission popup. Defaults to `false`.
-  init(
+  public init(
     environment: [String: String] = ProcessInfo.processInfo.environment,
     fileExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
     allowMacOSAppStoreDiscovery: Bool = false
@@ -41,7 +59,9 @@ struct LocalAPIDiscovery {
     self.allowMacOSAppStoreDiscovery = allowMacOSAppStoreDiscovery
   }
 
-  func discover() -> Result {
+  /// Runs discovery: environment overrides first, then known socket paths,
+  /// then (opt-in) macOS App Store GUI discovery, then the default socket path.
+  public func discover() -> Result {
     let capability =
       environment["TAILSCALE_LOCALAPI_CAPABILITY"].flatMap(Int.init) ?? Self.defaultCapability
     let debug = environment["TAILSCALE_DISCOVERY_DEBUG"] == "1"
