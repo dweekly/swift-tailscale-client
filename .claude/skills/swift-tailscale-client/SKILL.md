@@ -30,7 +30,7 @@ embedded node.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.5.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.6.0")
 // target dependency:
 .product(name: "TailscaleClient", package: "swift-tailscale-client")
 ```

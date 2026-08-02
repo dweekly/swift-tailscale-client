@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-02
+
 ### Added
 
 - **DERP map**: `derpMap()` wraps `GET /localapi/v0/derpmap` with typed `DERPMap`/`DERPHomeParams`/`DERPRegion`/`DERPNode` models (int-keyed region map, Go port conventions exposed via `effectiveSTUNPort`/`effectiveDERPPort`).
@@ -13,6 +15,12 @@ All notable changes to this project will be documented in this file. The format 
 - **Native Swift netcheck**: `client.netcheck()` (and the standalone `Netcheck` runner) STUN-probes every region in the DERP map over UDP — no daemon involvement beyond fetching the map — and reports per-region latency, the preferred DERP region, this machine's public IPv4/IPv6 endpoints, whether UDP works at all, and whether the NAT mapping varies by destination (the "hard NAT" signature). Includes a pure-Swift RFC 8489 STUN binding codec (XOR-MAPPED-ADDRESS incl. legacy 0x8020 and plain MAPPED-ADDRESS fallback), unit-tested without a network.
 - **CLI as a product**: `tailscale-swift` is now an executable product (`swift build --product tailscale-swift`), with new `derpmap`, `suggest-exit`, `netcheck`, and `usermetrics` subcommands and `--json` on every subcommand with a structured result. A Homebrew tap formula template ships in `Documentation/HOMEBREW.md`.
 - **Models are fully `Codable`**: the status/whois/ping families gained the encode side (synthesized from existing `CodingKeys`; `CapabilityValue` writes its wire form by hand), so responses can be re-serialized for `--json` output, caching, or snapshots.
+- **`Examples/StatusDemo`**: a standalone SPM package consuming the library via a path dependency — built on macOS and Linux CI and *run* against a real daemon in the self-hosted integration workflow.
+- Release automation now attaches CLI binaries (macOS universal, Linux x86_64) to each GitHub Release.
+
+### Changed
+
+- Tested against Tailscale 1.98 (macOS) and the current stable tailscaled on Linux (headscale hermetic CI).
 
 ## [0.5.0] - 2026-08-02
 

@@ -4,7 +4,7 @@ Complete inventory of the Tailscale LocalAPI surface and this package's position
 
 **Last updated:** 2026-08-02
 **Upstream reference:** `tailscale/tailscale` `main` (July 2026), `ipn/localapi/` + `client/local/`
-**swift-tailscale-client version:** 0.6.0-dev
+**swift-tailscale-client version:** 0.6.0
 
 Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
 
