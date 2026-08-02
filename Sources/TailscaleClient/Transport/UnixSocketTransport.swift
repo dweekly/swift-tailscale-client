@@ -56,9 +56,9 @@ struct UnixSocketTransport {
     let fd = try connectSocket()
     defer { closeSocket(fd) }
 
-    try writeAll(
-      fd, HTTPWireFormat.requestData(
-        for: request, capabilityVersion: capabilityVersion, keepAlive: false))
+    let requestData = HTTPWireFormat.requestData(
+      for: request, capabilityVersion: capabilityVersion, keepAlive: false)
+    try writeAll(fd, requestData)
 
     // Connection: close — read the entire response to EOF.
     var responseData = Data()
@@ -94,9 +94,9 @@ struct UnixSocketTransport {
     let fd = try connectSocket()
     defer { closeSocket(fd) }
 
-    try writeAll(
-      fd, HTTPWireFormat.requestData(
-        for: request, capabilityVersion: capabilityVersion, keepAlive: true))
+    let requestData = HTTPWireFormat.requestData(
+      for: request, capabilityVersion: capabilityVersion, keepAlive: true)
+    try writeAll(fd, requestData)
 
     var headBuffer = HTTPHeadBuffer()
     var framer = NewlineFramer()

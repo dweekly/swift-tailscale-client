@@ -91,8 +91,8 @@ final class HTTPParsingTests: XCTestCase {
     var payload = Data()
     var index = wireData.startIndex
     while index < wireData.endIndex {
-      let end = wireData.index(index, offsetBy: 4096, limitedBy: wireData.endIndex)
-        ?? wireData.endIndex
+      let end =
+        wireData.index(index, offsetBy: 4096, limitedBy: wireData.endIndex) ?? wireData.endIndex
       payload.append(try decoder.feed(Data(wireData[index..<end])))
       index = end
     }

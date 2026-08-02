@@ -12,7 +12,6 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
     #endif
   }
 
-
   // MARK: - allInterfaces Tests
 
   func testAllInterfacesReturnsNonEmpty() {
