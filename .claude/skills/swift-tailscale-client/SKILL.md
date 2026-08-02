@@ -54,6 +54,8 @@ let text   = try await client.metrics()             // internal Prometheus count
 let user   = try await client.userMetrics()         // stable user metrics (v0.6.0+)
 let derp   = try await client.derpMap()             // DERP relay regions/nodes (v0.6.0+)
 let exit   = try await client.suggestExitNode()     // recommended exit node (v0.6.0+)
+let net    = try await client.netcheck()            // client-side STUN probe: region latency,
+                                                    // public IP, NAT hardness (v0.6.0+)
 
 // Real-time updates (preferred over polling)
 for try await notify in try await client.watchIPNBus(options: [.initialState, .initialHealthState]) {

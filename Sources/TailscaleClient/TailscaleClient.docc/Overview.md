@@ -83,6 +83,8 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``DERPNode``
 - ``ExitNodeSuggestion``
 - ``NodeLocation``
+- ``Netcheck``
+- ``NetcheckReport``
 
 ### Network Interface Discovery
 - ``NetworkInterfaceDiscovery``

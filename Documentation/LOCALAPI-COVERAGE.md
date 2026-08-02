@@ -28,7 +28,7 @@ Three upstream facts shape everything below:
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
-| No LocalAPI equivalent (client-side features) | netcheck, captive portal detection |
+| No LocalAPI equivalent (client-side features) | netcheck (implemented client-side in v0.6.0 as `Netcheck`), captive portal detection |
 
 ---
 

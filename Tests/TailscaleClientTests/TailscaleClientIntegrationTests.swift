@@ -238,6 +238,24 @@ import XCTest
       }
     }
 
+    func testNetcheckAgainstLiveDERPMap() async throws {
+      let report = try await client.netcheck(options: Netcheck.Options(timeout: .seconds(5)))
+      guard report.udpWorking else {
+        // CI sandboxes may block outbound UDP entirely; that's a valid
+        // report, not a client bug.
+        throw XCTSkip("No STUN responses (UDP blocked or empty DERP map); skipping")
+      }
+      XCTAssertFalse(report.regionLatencySeconds.isEmpty)
+      XCTAssertNotNil(report.preferredDERPRegionID, "UDP works, so some region should be preferred")
+      if report.ipv4Working {
+        XCTAssertNotNil(report.globalV4, "IPv4 STUN worked, so a mapped address should be known")
+      }
+      for (region, latency) in report.regionLatencySeconds {
+        XCTAssertGreaterThan(latency, 0, "Region \(region) latency should be positive")
+        XCTAssertLessThan(latency, 5.5, "Region \(region) latency should respect the timeout")
+      }
+    }
+
     // MARK: - Transport Layer Tests
 
     func testTransportHeaderInjection() async throws {

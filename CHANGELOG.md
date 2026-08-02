@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file. The format 
 - **Exit node suggestion**: `suggestExitNode(forceProbe:)` wraps `/localapi/v0/suggest-exit-node` (`ExitNodeSuggestion` + `NodeLocation` models). Defaults to GET for compatibility with older daemons; `forceProbe: true` POSTs `?probe=true` (Tailscale 1.86+) to re-measure before answering.
 - **User metrics**: `userMetrics()` wraps `GET /localapi/v0/usermetrics` — the stable, documented Prometheus metrics behind `tailscale metrics print`, distinct from the internal `metrics()` counters.
 - Optional endpoints now also map HTTP 501 (feature compiled out of the daemon build) to `TailscaleClientError.endpointUnavailable`, alongside 404.
+- **Native Swift netcheck**: `client.netcheck()` (and the standalone `Netcheck` runner) STUN-probes every region in the DERP map over UDP — no daemon involvement beyond fetching the map — and reports per-region latency, the preferred DERP region, this machine's public IPv4/IPv6 endpoints, whether UDP works at all, and whether the NAT mapping varies by destination (the "hard NAT" signature). Includes a pure-Swift RFC 8489 STUN binding codec (XOR-MAPPED-ADDRESS incl. legacy 0x8020 and plain MAPPED-ADDRESS fallback), unit-tested without a network.
 
 ## [0.5.0] - 2026-08-02
 
