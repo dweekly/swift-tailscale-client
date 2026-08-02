@@ -45,6 +45,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 > **Note:** The LocalAPI is not a formally stable interface — Tailscale namespaces it `/localapi/v0/` for a reason. This package tracks upstream, states which Tailscale versions each release was tested against, and uses tolerant decoding so upstream additions don't break your app. See the [stability policy](ROADMAP.md#stability--support-tiers).
 
 ## Status
+- **v0.7.0:** DNS & routing diagnostics (`dnsOSConfig()`, `dnsQuery()`, `checkIPForwarding()`), numeric-ID lookups (`peer(byID:)`, `userProfile(byID:)`), the SemVer-exempt `client.experimental` namespace (`bugreport`, `goroutines`, streaming `logtap`), `dns`/`check-forwarding` CLI commands, and a six-article DocC set.
 - **v0.6.0:** Network diagnostics - `derpMap()`, `suggestExitNode(forceProbe:)`, `userMetrics()`, and a native pure-Swift STUN `netcheck()` (per-region DERP latency, public IP, NAT hardness, UDP reachability). CLI became an installable product with `--json` everywhere; models are fully `Codable`; release binaries attached automatically.
 - **v0.5.0:** Linux support (POSIX socket transport), unit-tested HTTP wire-format parsers, Linux CI, and nightly hermetic integration against headscale + real tailscaled.
 - **v0.4.0:** Reliability foundations - shipped `TailscaleClientMocks` product, IPN stream hardening (skip-and-report + opt-in reconnect), `daemonFeatures()` capability probing, request timeouts, public inits and `Equatable` on all models.
@@ -60,7 +61,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 Add the package to your `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.6.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.7.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
@@ -76,11 +77,11 @@ swift run tailscale-swift status
 # Or install the release build
 swift build -c release --product tailscale-swift
 
-# Homebrew (tap goes live with the v0.6.0 release)
+# Homebrew
 brew tap dweekly/tap && brew install tailscale-swift
 ```
 
-Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`. All structured commands accept `--json`.
+Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding`. All structured commands accept `--json`.
 
 > **Using an AI coding agent?** This repo ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md) that teaches agents what the package offers and how to integrate it correctly.
 
