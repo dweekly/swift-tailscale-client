@@ -1,0 +1,35 @@
+{
+  "ID": 1234567890123456,
+  "StableID": "nPeerStable123",
+  "Name": "peer.example.ts.net.",
+  "User": 8646441643364,
+  "Key": "nodekey:aabbccddeeff00112233445566778899aabbccddeeff001122334455667788",
+  "KeyExpiry": "2027-01-15T00:00:00Z",
+  "Machine": "mkey:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+  "DiscoKey": "discokey:99887766554433221100ffeeddccbbaa99887766554433221100ffeeddccbbaa",
+  "Addresses": [
+    "100.64.0.9/32",
+    "fd7a:115c:a1e0::9/128"
+  ],
+  "AllowedIPs": [
+    "100.64.0.9/32",
+    "fd7a:115c:a1e0::9/128"
+  ],
+  "Endpoints": [
+    "203.0.113.9:41641",
+    "192.168.1.9:41641"
+  ],
+  "HomeDERP": 2,
+  "Hostinfo": {
+    "OS": "linux",
+    "Hostname": "peer"
+  },
+  "Created": "2025-06-01T12:00:00Z",
+  "Tags": [
+    "tag:server"
+  ],
+  "Online": true,
+  "MachineAuthorized": true,
+  "ComputedName": "peer",
+  "ComputedNameWithHost": "peer (peer)"
+}

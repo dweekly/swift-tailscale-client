@@ -418,18 +418,22 @@ public struct UserProfile: Sendable, Codable, Equatable {
   public let loginName: String?
   public let displayName: String?
   public let profilePicURL: URL?
+  /// SCIM/policy groups the user belongs to, when the tailnet uses them.
+  public let groups: [String]
 
   /// Creates an instance for tests, previews, or fixtures.
   public init(
     id: UInt64,
     loginName: String? = nil,
     displayName: String? = nil,
-    profilePicURL: URL? = nil
+    profilePicURL: URL? = nil,
+    groups: [String] = []
   ) {
     self.id = id
     self.loginName = loginName
     self.displayName = displayName
     self.profilePicURL = profilePicURL
+    self.groups = groups
   }
 
   enum CodingKeys: String, CodingKey {
@@ -437,6 +441,7 @@ public struct UserProfile: Sendable, Codable, Equatable {
     case loginName = "LoginName"
     case displayName = "DisplayName"
     case profilePicURL = "ProfilePicURL"
+    case groups = "Groups"
   }
 
   public init(from decoder: Decoder) throws {
@@ -451,6 +456,7 @@ public struct UserProfile: Sendable, Codable, Equatable {
     } else {
       profilePicURL = nil
     }
+    groups = try container.decodeIfPresent([String].self, forKey: .groups) ?? []
   }
 }
 

@@ -135,6 +135,39 @@ public actor TailscaleClient {
     return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
   }
 
+  /// Fetches the full netmap record for a peer by its numeric node ID.
+  ///
+  /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the
+  /// IPN bus) — not the stable string ID shown in `status`. A 404 surfaces as
+  /// ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` and means the
+  /// peer is not in the current netmap, not that the endpoint is missing.
+  ///
+  /// - Parameter id: The peer's numeric node ID.
+  /// - Returns: The peer's `tailcfg.Node` record decoded as ``WhoIsNode``.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func peer(byID id: UInt64) async throws -> WhoIsNode {
+    let endpoint = "/localapi/v0/peer-by-id"
+    let request = TailscaleRequest(
+      path: endpoint, queryItems: [URLQueryItem(name: "id", value: String(id))])
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Looks up a user profile by its numeric user ID.
+  ///
+  /// Useful for resolving the `UserID` references that appear on peer nodes
+  /// (e.g., from the IPN bus or ``peer(byID:)``) into names. A 404 means the
+  /// user is not known to the current netmap.
+  ///
+  /// - Parameter id: The numeric user ID.
+  /// - Returns: The ``UserProfile`` for that ID.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func userProfile(byID id: UInt64) async throws -> UserProfile {
+    let endpoint = "/localapi/v0/user-profile"
+    let request = TailscaleRequest(
+      path: endpoint, queryItems: [URLQueryItem(name: "id", value: String(id))])
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
   /// Fetches the OS-level DNS configuration tailscaled has installed.
   ///
   /// - Returns: The parsed response from `/localapi/v0/dns-osconfig`.

@@ -256,6 +256,42 @@ import XCTest
       }
     }
 
+    // MARK: - Peer/User Lookup Tests
+
+    func testPeerAndUserProfileLookupAgainstLiveDaemon() async throws {
+      // The numeric IDs come from whois; status carries only stable IDs.
+      let status = try await client.status()
+      guard let selfIP = status.tailscaleIPs.first else {
+        throw XCTSkip("No Tailscale IPs available")
+      }
+      let whoIs = try await client.whois(address: selfIP)
+      guard let node = whoIs.node else {
+        throw XCTSkip("whois returned no node for self")
+      }
+
+      let fetched = try await client.peer(byID: node.id)
+      XCTAssertEqual(fetched.id, node.id)
+      XCTAssertEqual(fetched.stableID, node.stableID)
+
+      if let userID = node.user {
+        let profile = try await client.userProfile(byID: userID)
+        XCTAssertEqual(profile.id, userID)
+        XCTAssertFalse(profile.loginName?.isEmpty ?? true, "Expected a login name")
+      }
+    }
+
+    func testPeerByIDNotFoundAgainstLiveDaemon() async throws {
+      await assertThrowsErrorAsync(try await client.peer(byID: 1)) { error in
+        guard let clientError = error as? TailscaleClientError,
+          case .unexpectedStatus(let code, _, _) = clientError
+        else {
+          XCTFail("Expected unexpectedStatus, got \(error)")
+          return
+        }
+        XCTAssertTrue(code == 404 || code == 400, "Expected not-found for bogus ID, got \(code)")
+      }
+    }
+
     // MARK: - DNS Diagnostics Tests
 
     func testDNSOSConfigAgainstLiveDaemon() async throws {
