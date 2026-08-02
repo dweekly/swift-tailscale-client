@@ -1,0 +1,58 @@
+name: Attach Binaries
+
+# Repair helper: build and attach missing CLI binary assets to an existing
+# GitHub Release. Normally release.yml does this on tag push; use this when
+# one of its binary jobs failed after the release was published (as the
+# Linux job did on v0.6.0). Safe to re-run — existing assets are skipped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag (e.g. v0.6.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux-binary:
+    name: Attach Linux CLI binary
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install curl
+        run: apt-get update -qq && apt-get install -y -qq curl ca-certificates
+
+      - name: Build CLI
+        run: swift build -c release --product tailscale-swift
+
+      - name: Upload asset unless present
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          ARCHIVE="tailscale-swift-${TAG}-linux-x86_64.tar.gz"
+          BIN_DIR=$(swift build -c release --show-bin-path)
+          tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
+          sha256sum "$ARCHIVE"
+
+          RELEASE=$(curl -sf \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
+          RELEASE_ID=$(echo "$RELEASE" | grep -m1 '"id":' | tr -dc '0-9')
+          if echo "$RELEASE" | grep -q "\"name\": \"$ARCHIVE\""; then
+            echo "$ARCHIVE already attached to release $RELEASE_ID; skipping"
+            exit 0
+          fi
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/gzip" \
+            --data-binary "@$ARCHIVE" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ARCHIVE" \
+            > /dev/null
+          echo "Attached $ARCHIVE to release $RELEASE_ID"
