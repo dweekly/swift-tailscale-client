@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Fixed
+
+- `CapabilityValue` now decodes any valid `CapMap` payload instead of failing the entire `status()`/`whois()` response. Upstream defines capability values as arrays of arbitrary JSON; boolean arrays (e.g. `"default-auto-update": [false]` on Tailscale 1.98) decode as the new `.booleans` case, and anything else (objects, mixed arrays) decodes losslessly as `.raw([JSONValue])`. Found by running the integration suite against a live daemon.
+
+### Added
+
+- CI: iOS/tvOS/watchOS build checks, SPM caching, strict format linting
+- CI: real-daemon integration workflow on a self-hosted macOS runner (fork-guarded; discovers the LocalAPI via `tailscale debug local-creds` with socket and sameuserproof fallbacks)
+
 ## [0.3.1] - 2025-01-14
 
 ### Changed

@@ -1,0 +1,138 @@
+name: Integration
+
+# Runs the real-daemon integration suite on a self-hosted macOS runner that
+# has Tailscale installed and logged in. Hosted runners can't do this.
+#
+# Self-hosted runner security: this repo is public, so this workflow must
+# never execute code from forks. It runs only on pushes to main, manual
+# dispatch, and pull requests whose head branch lives in this repository.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  integration-macos:
+    name: Integration tests (self-hosted macOS, real tailscaled)
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure LocalAPI access
+        run: |
+          swift --version
+
+          # Authoritative: ask the tailscale CLI how it reaches the LocalAPI.
+          # `debug local-creds` prints either a unix socket path or a
+          # localhost port + auth token, using Tailscale's own discovery.
+          TS=""
+          for cand in /Applications/Tailscale.app/Contents/MacOS/Tailscale tailscale; do
+            if command -v "$cand" >/dev/null 2>&1 || [ -x "$cand" ]; then TS="$cand"; break; fi
+          done
+          if [ -n "$TS" ]; then
+            "$TS" version || true
+            creds=$("$TS" debug local-creds 2>/dev/null || true)
+            echo "local-creds: ${creds//-u:*/-u:<masked>}"
+            sock=$(echo "$creds" | sed -n 's/.*--unix-socket \([^ ]*\).*/\1/p' | head -1)
+            token=$(echo "$creds" | sed -n 's/.*-u:\([^ ]*\).*/\1/p' | head -1)
+            port=$(echo "$creds" | sed -n 's#.*http://localhost:\([0-9]*\)/.*#\1#p' | head -1)
+            if [ -n "$sock" ] && [ -S "$sock" ]; then
+              echo "Using unix socket from local-creds: $sock"
+              echo "TAILSCALE_LOCALAPI_SOCKET=$sock" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            if [ -n "$token" ] && [ -n "$port" ]; then
+              echo "::add-mask::$token"
+              if curl -fsS -m 3 -u ":$token" "http://127.0.0.1:$port/localapi/v0/status?peers=false" >/dev/null 2>&1; then
+                echo "Using loopback LocalAPI from local-creds on port $port"
+                {
+                  echo "TAILSCALE_LOCALAPI_HOST=127.0.0.1"
+                  echo "TAILSCALE_LOCALAPI_PORT=$port"
+                  echo "TAILSCALE_LOCALAPI_AUTHKEY=$token"
+                } >> "$GITHUB_ENV"
+                exit 0
+              fi
+              echo "local-creds port $port did not answer; falling back"
+            fi
+          else
+            echo "::warning::No tailscale CLI found; continuing with LocalAPI probing"
+          fi
+
+          # Prefer a unix socket (Homebrew / standalone tailscaled).
+          for sock in /var/run/tailscaled.socket /Library/Tailscale/Data/tailscaled.sock /var/run/tailscale/tailscaled.sock; do
+            if [ -S "$sock" ]; then
+              echo "Using unix socket: $sock"
+              echo "TAILSCALE_LOCALAPI_SOCKET=$sock" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+
+          # Verify a loopback candidate answers an authenticated request
+          # before trusting it — sameuserproof files from a previously
+          # installed flavor linger after switching and would otherwise be
+          # used blindly.
+          use_loopback() {
+            local port="$1" token="$2" source="$3"
+            echo "::add-mask::$token"
+            if ! curl -fsS -m 3 -u ":$token" "http://127.0.0.1:$port/localapi/v0/status?peers=false" >/dev/null 2>&1; then
+              echo "$source advertises port $port but it did not answer (stale proof file?); skipping"
+              return 1
+            fi
+            echo "Using loopback LocalAPI on port $port ($source)"
+            {
+              echo "TAILSCALE_LOCALAPI_HOST=127.0.0.1"
+              echo "TAILSCALE_LOCALAPI_PORT=$port"
+              echo "TAILSCALE_LOCALAPI_AUTHKEY=$token"
+            } >> "$GITHUB_ENV"
+          }
+
+          # Standalone .pkg app ("macsys", runs as a system extension): the
+          # current port is the target of the /Library/Tailscale/ipnport
+          # symlink, and the token is the CONTENTS of the matching
+          # sameuserproof file (root:admin 0640 — the runner user must be in
+          # the admin group to read it).
+          if [ -L /Library/Tailscale/ipnport ]; then
+            port=$(readlink /Library/Tailscale/ipnport)
+            proof="/Library/Tailscale/sameuserproof-$port"
+            if [ -r "$proof" ]; then
+              if use_loopback "$port" "$(cat "$proof")" "standalone system extension"; then
+                exit 0
+              fi
+            else
+              echo "::warning::Found /Library/Tailscale/ipnport but cannot read $proof; add the runner user to the admin group"
+            fi
+          fi
+
+          # App Store app ("macos", runs as a network extension): port and
+          # token are both encoded in the sameuserproof FILENAME inside the
+          # app's Group Container. Requires the runner to have disk access to
+          # that container (grant once via Full Disk Access). Probe candidates
+          # newest-first.
+          while IFS= read -r proof; do
+            name=$(basename "$proof")
+            port=$(echo "$name" | cut -d- -f2)
+            token=$(echo "$name" | cut -d- -f3-)
+            if use_loopback "$port" "$token" "GUI app Group Container"; then
+              exit 0
+            fi
+          done < <(ls -t "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macos/sameuserproof-* \
+                         "$HOME/Library/Group Containers"/*.io.tailscale.ipn.macsys/sameuserproof-* 2>/dev/null)
+
+          echo "::error::No live Tailscale LocalAPI found: no unix socket at known paths, no readable /Library/Tailscale/ipnport, and no live sameuserproof file. Ensure Tailscale is running; for the App Store app grant the runner Full Disk Access (TCC), for the standalone app add the runner user to the admin group, or install Homebrew tailscaled."
+          exit 1
+
+      - name: Run integration suite
+        env:
+          TAILSCALE_INTEGRATION: "1"
+          TAILSCALE_DISCOVERY_DEBUG: "1"
+        run: swift test --filter TailscaleClientIntegrationTests
+
+      - name: Run unit suite (sanity on runner toolchain)
+        run: swift test --skip TailscaleClientIntegrationTests

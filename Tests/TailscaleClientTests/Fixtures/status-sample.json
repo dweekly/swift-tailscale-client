@@ -52,6 +52,19 @@
     "CapMap": {
       "tailnet.maxKeyDuration": [
         86400
+      ],
+      "default-auto-update": [
+        false
+      ],
+      "https://tailscale.com/cap/ssh": null,
+      "tailnet-display-name": [
+        "example.com"
+      ],
+      "example.com/cap/structured": [
+        {
+          "mode": "strict",
+          "retries": 3
+        }
       ]
     },
     "InNetworkMap": true,
