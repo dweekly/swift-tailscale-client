@@ -74,6 +74,67 @@ public actor TailscaleClient {
     return try await performRawRequest(request, endpoint: endpoint)
   }
 
+  /// Fetches the DERP relay map the daemon is currently using.
+  ///
+  /// DERP servers relay traffic between peers that cannot connect directly.
+  /// The map lists every region and relay node the daemon knows about; combine
+  /// it with `StatusResponse.selfNode?.relay` to identify the home region.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/derpmap`.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func derpMap() async throws -> DERPMap {
+    let endpoint = "/localapi/v0/derpmap"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRequest(request, endpoint: endpoint)
+  }
+
+  /// Asks the daemon which exit node it would recommend right now.
+  ///
+  /// The suggestion weighs measured DERP latency and location metadata — the
+  /// same logic behind `tailscale exit-node suggest`. The daemon reports an
+  /// error (surfaced as ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)``)
+  /// when the tailnet has no exit nodes to suggest.
+  ///
+  /// - Parameter forceProbe: When `true`, asks the daemon to re-probe the
+  ///   network before answering (slower, fresher; requires Tailscale 1.86+).
+  ///   The default reuses the daemon's most recent measurements and works on
+  ///   older daemons too.
+  /// - Returns: The suggested exit node.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without exit-node support; other `TailscaleClientError`
+  ///   cases on failure.
+  public func suggestExitNode(forceProbe: Bool = false) async throws -> ExitNodeSuggestion {
+    let endpoint = "/localapi/v0/suggest-exit-node"
+    let request: TailscaleRequest
+    if forceProbe {
+      request = TailscaleRequest(
+        method: "POST",
+        path: endpoint,
+        queryItems: [URLQueryItem(name: "probe", value: "true")]
+      )
+    } else {
+      request = TailscaleRequest(path: endpoint)
+    }
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "use-exit-node")
+  }
+
+  /// Fetches user-facing metrics in Prometheus exposition format.
+  ///
+  /// Unlike ``metrics()`` (internal implementation counters), these are the
+  /// stable, documented metrics behind `tailscale metrics print` — bytes
+  /// routed, health status, advertised routes, and so on.
+  ///
+  /// - Returns: Raw metrics text in Prometheus format.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon predates user metrics (Tailscale < 1.78); other
+  ///   `TailscaleClientError` cases on failure.
+  public func userMetrics() async throws -> String {
+    let endpoint = "/localapi/v0/usermetrics"
+    let request = TailscaleRequest(path: endpoint)
+    return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
+  }
+
   /// Reports which optional features the connected daemon was compiled with.
   ///
   /// Modern tailscaled builds are modular: endpoint availability depends on the
@@ -251,11 +312,19 @@ public actor TailscaleClient {
 
   // MARK: - Private Helpers
 
-  private func performRawRequest(_ request: TailscaleRequest, endpoint: String) async throws
+  private func performRawRequest(
+    _ request: TailscaleRequest,
+    endpoint: String,
+    optionalEndpoint: Bool = false,
+    feature: String? = nil
+  ) async throws
     -> String
   {
     let response = try await executeWithDeadline(request, endpoint: endpoint)
 
+    if optionalEndpoint, response.statusCode == 404 || response.statusCode == 501 {
+      throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: feature)
+    }
     guard response.statusCode == 200 else {
       throw TailscaleClientError.unexpectedStatus(
         code: response.statusCode, body: response.data, endpoint: endpoint)
@@ -279,7 +348,9 @@ public actor TailscaleClient {
   ) async throws -> T {
     let response = try await executeWithDeadline(request, endpoint: endpoint)
 
-    if optionalEndpoint, response.statusCode == 404 {
+    // Optional surfaces signal absence as 404 (endpoint not registered) or
+    // 501 (registered, but the feature was compiled out of this build).
+    if optionalEndpoint, response.statusCode == 404 || response.statusCode == 501 {
       throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: feature)
     }
     guard response.statusCode == 200 else {
