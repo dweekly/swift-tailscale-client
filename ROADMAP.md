@@ -170,7 +170,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 ### Library
 - [x] `editPrefs(_:)` — `PATCH /localapi/v0/prefs` with a typed `MaskedPrefs` builder (only fields you set are sent, mirroring upstream's mask semantics)
 - [x] `checkPrefs(_:)` — validate without applying
-- [x] `setUseExitNode(enabled:)`; still open: `setExpirySooner(_:)`, `reloadConfig()`, `start(options:)` (need live spikes for their exact request shapes)
+- [x] `setUseExitNode(enabled:)`, `setExpirySooner(_:)`, `reloadConfig()`, `start(options:)` (minimal `StartOptions`; full `ipn.Options` on demand)
 - [x] First real use of `TailscaleRequest.body` plumbing
 
 ### CLI
