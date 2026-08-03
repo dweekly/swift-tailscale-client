@@ -16,10 +16,14 @@ on:
 
 jobs:
   headscale:
-    name: Hermetic integration (headscale + tailscaled)
+    name: Hermetic integration (tailscaled ${{ matrix.track }})
     runs-on: ubuntu-24.04
     container: swift:6.1
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [stable, unstable]
     steps:
       - uses: actions/checkout@v7
 
@@ -31,7 +35,8 @@ jobs:
           curl -fsSL -o /tmp/headscale.deb \
             "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_amd64.deb"
           apt-get install -y /tmp/headscale.deb
-          curl -fsSL https://tailscale.com/install.sh | sh
+          # install.sh honors TRACK for the stable/unstable package repos.
+          curl -fsSL https://tailscale.com/install.sh | TRACK=${{ matrix.track }} sh
           headscale version
           tailscale version
 

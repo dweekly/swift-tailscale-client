@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 25 (+ 6 experimental) |
+| Implemented | 26 (+ 6 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -49,6 +49,7 @@ Three upstream facts shape everything below:
 | `dns-osconfig` | GET | `dnsOSConfig()` | v0.7.0 — nameservers, search + split-DNS match domains |
 | `dns-query` | GET | `dnsQuery(name:type:)` | v0.7.0 — raw RFC 1035 answer + chosen resolvers |
 | `check-ip-forwarding` | GET | `checkIPForwarding()` | v0.7.0 — subnet-router/exit-node preflight |
+| `dns-config` | GET | `dnsConfig()` | netmap DNS intent (vs installed `dns-osconfig`) |
 | `peer-by-id` | GET | `peer(byID:)` | v0.7.0 — full `tailcfg.Node` via `WhoIsNode`; 404 = not in netmap |
 | `user-profile` | GET | `userProfile(byID:)` | v0.7.0 — resolves numeric `UserID` references |
 | `bugreport` / `goroutines` / `logtap` | POST / GET / stream | `experimental.*` | v0.7.0 — SemVer-exempt debug tier |
@@ -104,7 +105,7 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | `usermetrics` | GET | `HasUserMetrics` | Stable | **v0.6.0** | `userMetrics()` |
 | `dns-osconfig` | GET | `HasDNS` | Stable | **v0.7.0** | `dnsOSConfig()` |
 | `dns-query` | GET | `HasDNS` | Stable | **v0.7.0** | `dnsQuery(name:type:)` — returns DNS wire bytes + resolvers |
-| `dns-config` | GET | core | Stable | v0.7.0 | `dnsConfig()` — netmap `tailcfg.DNSConfig` |
+| `dns-config` | GET | core | Stable | **v0.9.0+** | `dnsConfig()` — netmap `tailcfg.DNSConfig`; 503 when no netmap |
 | `check-ip-forwarding` | GET | `HasAdvertiseRoutes` | Stable | **v0.7.0** | `checkIPForwarding()` |
 | ~~`routecheck`~~ | — | — | — | not an endpoint | Route probing is the `?probe=true` hook behind `suggest-exit-node` (wrapped by `suggestExitNode(forceProbe:)` since v0.6.0); no standalone `routecheck` handler exists upstream |
 | `check-udp-gro-forwarding` / `set-udp-gro-forwarding` | GET | `HasAdvertiseRoutes` | Experimental | on demand | Linux subnet-router perf preflight |

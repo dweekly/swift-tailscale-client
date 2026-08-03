@@ -389,6 +389,18 @@ public actor TailscaleClient {
       request, endpoint: endpoint, optionalEndpoint: true, feature: "dns")
   }
 
+  /// Fetches the tailnet's DNS configuration from the current netmap —
+  /// what the control plane wants DNS to be, versus ``dnsOSConfig()``
+  /// which reports what is installed on the OS.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/dns-config`.
+  /// - Throws: `TailscaleClientError` if the request fails
+  ///   (`.unexpectedStatus(503, …)` when the daemon has no netmap yet).
+  public func dnsConfig() async throws -> DNSConfig {
+    let endpoint = "/localapi/v0/dns-config"
+    return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
+  }
+
   /// Checks whether the host is configured to forward IP traffic — the
   /// preflight for advertising subnet routes or acting as an exit node.
   ///

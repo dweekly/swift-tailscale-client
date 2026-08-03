@@ -381,6 +381,18 @@ import XCTest
       }
     }
 
+    func testDNSConfigAgainstLiveDaemon() async throws {
+      do {
+        let config = try await client.dnsConfig()
+        print("dns-config: proxied=\(config.proxied) domains=\(config.domains.count)")
+      } catch let error as TailscaleClientError {
+        if case .unexpectedStatus(503, _, _) = error {
+          throw XCTSkip("No netmap available yet; skipping")
+        }
+        throw error
+      }
+    }
+
     func testCheckIPForwardingAgainstLiveDaemon() async throws {
       do {
         let check = try await client.checkIPForwarding()

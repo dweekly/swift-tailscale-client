@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- `dnsConfig()` wraps `GET /localapi/v0/dns-config` — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
+- Hermetic headscale nightly now runs a tailscaled version matrix (stable and unstable tracks).
+
+### Changed
+
+- CI coverage floor ratcheted from 55% to 70% (measured: 73.7%).
+
 ## [0.9.0] - 2026-08-03
 
 ### Added

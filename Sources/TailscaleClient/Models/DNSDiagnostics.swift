@@ -119,6 +119,109 @@ public struct DNSResolver: Codable, Sendable, Equatable {
   }
 }
 
+/// The tailnet's DNS configuration from the current netmap, from
+/// `GET /localapi/v0/dns-config` — what the control plane *wants* DNS to be,
+/// as opposed to ``DNSOSConfig`` (what is installed on the OS).
+///
+/// Upstream: `tailcfg.DNSConfig`.
+public struct DNSConfig: Codable, Sendable, Equatable {
+  /// Global resolvers to use when not proxying through quad-100.
+  public var resolvers: [DNSResolver]
+
+  /// Split-DNS routes: domain suffix → resolvers for that suffix.
+  public var routes: [String: [DNSResolver]]
+
+  /// Resolvers to fall back to when `resolvers` is empty.
+  public var fallbackResolvers: [DNSResolver]
+
+  /// Search domains to add to the OS configuration.
+  public var domains: [String]
+
+  /// Whether MagicDNS proxying (100.100.100.100) is enabled.
+  public var proxied: Bool
+
+  /// Domains for which the daemon obtains TLS certificates.
+  public var certDomains: [String]
+
+  /// Extra DNS records the tailnet defines.
+  public var extraRecords: [DNSRecord]
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    resolvers: [DNSResolver] = [],
+    routes: [String: [DNSResolver]] = [:],
+    fallbackResolvers: [DNSResolver] = [],
+    domains: [String] = [],
+    proxied: Bool = false,
+    certDomains: [String] = [],
+    extraRecords: [DNSRecord] = []
+  ) {
+    self.resolvers = resolvers
+    self.routes = routes
+    self.fallbackResolvers = fallbackResolvers
+    self.domains = domains
+    self.proxied = proxied
+    self.certDomains = certDomains
+    self.extraRecords = extraRecords
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case resolvers = "Resolvers"
+    case routes = "Routes"
+    case fallbackResolvers = "FallbackResolvers"
+    case domains = "Domains"
+    case proxied = "Proxied"
+    case certDomains = "CertDomains"
+    case extraRecords = "ExtraRecords"
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    resolvers = try container.decodeIfPresent([DNSResolver].self, forKey: .resolvers) ?? []
+    routes = try container.decodeIfPresent([String: [DNSResolver]].self, forKey: .routes) ?? [:]
+    fallbackResolvers =
+      try container.decodeIfPresent([DNSResolver].self, forKey: .fallbackResolvers) ?? []
+    domains = try container.decodeIfPresent([String].self, forKey: .domains) ?? []
+    proxied = try container.decodeIfPresent(Bool.self, forKey: .proxied) ?? false
+    certDomains = try container.decodeIfPresent([String].self, forKey: .certDomains) ?? []
+    extraRecords = try container.decodeIfPresent([DNSRecord].self, forKey: .extraRecords) ?? []
+  }
+}
+
+/// One extra DNS record defined by the tailnet.
+///
+/// Upstream: `tailcfg.DNSRecord`.
+public struct DNSRecord: Codable, Sendable, Equatable {
+  /// Fully-qualified record name.
+  public var name: String
+
+  /// Record type (empty means A/AAAA inferred from the value).
+  public var type: String?
+
+  /// The record value (e.g., an IP address).
+  public var value: String?
+
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(name: String, type: String? = nil, value: String? = nil) {
+    self.name = name
+    self.type = type
+    self.value = value
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case name = "Name"
+    case type = "Type"
+    case value = "Value"
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+    type = try container.decodeIfPresent(String.self, forKey: .type)
+    value = try container.decodeIfPresent(String.self, forKey: .value)
+  }
+}
+
 /// The subnet-router preflight result from `GET /localapi/v0/check-ip-forwarding`.
 ///
 /// An empty warning means IP forwarding is configured correctly for
