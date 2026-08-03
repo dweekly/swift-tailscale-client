@@ -37,7 +37,8 @@ import XCTest
 
     func testInteractiveLoginLifecycleAgainstHeadscale() async throws {
       let before = try await client.status()
-      XCTAssertEqual(before.backendState, "Running", "precondition: the lane joins before testing")
+      XCTAssertEqual(
+        before.backendState, .running, "precondition: the lane joins before testing")
 
       let stream = try await client.watchIPNBus(options: [.initialState])
       let collector = NotifyCollector()
@@ -75,7 +76,7 @@ import XCTest
         $0.state == .running
       }
       let after = try await client.status()
-      XCTAssertEqual(after.backendState, "Running")
+      XCTAssertEqual(after.backendState, .running)
     }
 
     /// Runs the headscale CLI (same container as the daemon in the hermetic
