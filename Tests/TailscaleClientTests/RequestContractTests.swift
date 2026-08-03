@@ -158,15 +158,22 @@ final class RequestContractTests: XCTestCase {
     XCTAssertEqual(TailscaleClient.parseRetryAfter("42"), 42)
     XCTAssertEqual(TailscaleClient.parseRetryAfter("0"), 0)
     XCTAssertEqual(TailscaleClient.parseRetryAfter(" 7 "), 7)
+    // RFC 9110 delta-seconds is 1*DIGIT: no sign, decimal, or exponent.
     XCTAssertNil(TailscaleClient.parseRetryAfter("-5"), "negative delta is malformed")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("+5"), "signed delta is malformed")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("1.5"), "fractional delta is malformed")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("1e3"), "exponent form is malformed")
     XCTAssertNil(TailscaleClient.parseRetryAfter("inf"), "non-finite must not parse")
     XCTAssertNil(TailscaleClient.parseRetryAfter("nan"), "non-finite must not parse")
     XCTAssertNil(TailscaleClient.parseRetryAfter("1e999"), "overflow to inf must not parse")
+    XCTAssertNil(
+      TailscaleClient.parseRetryAfter(String(repeating: "9", count: 400)),
+      "digit runs that overflow Double must not surface a non-finite delay")
     XCTAssertNil(TailscaleClient.parseRetryAfter("soon"), "garbage must not parse")
     XCTAssertNil(TailscaleClient.parseRetryAfter(""), "empty must not parse")
   }
 
-  func testRetryAfterParsesHTTPDate() throws {
+  func testRetryAfterParsesAllThreeHTTPDateForms() throws {
     let now = Date(timeIntervalSince1970: 784_111_777)  // Sun, 06 Nov 1994 08:49:37 GMT
     let future = try XCTUnwrap(
       TailscaleClient.parseRetryAfter("Sun, 06 Nov 1994 08:50:37 GMT", now: now))
@@ -174,7 +181,16 @@ final class RequestContractTests: XCTestCase {
     let past = try XCTUnwrap(
       TailscaleClient.parseRetryAfter("Sun, 06 Nov 1994 08:00:00 GMT", now: now))
     XCTAssertEqual(past, 0, "a date in the past means retry now, never negative")
-    XCTAssertNil(TailscaleClient.parseRetryAfter("Sunday, 06-Nov-94 08:49:37 GMT"))
+    // RFC 9110 §5.6.7: recipients must also accept the obsolete forms.
+    let rfc850 = try XCTUnwrap(
+      TailscaleClient.parseRetryAfter("Sunday, 06-Nov-94 08:50:37 GMT", now: now),
+      "obsolete RFC 850 dates must parse")
+    XCTAssertEqual(rfc850, 60, accuracy: 1)
+    let asctime = try XCTUnwrap(
+      TailscaleClient.parseRetryAfter("Sun Nov  6 08:50:37 1994", now: now),
+      "obsolete asctime dates (space-padded day) must parse")
+    XCTAssertEqual(asctime, 60, accuracy: 1)
+    XCTAssertNil(TailscaleClient.parseRetryAfter("Sun, 32 Foo 1994 99:99:99 GMT"))
   }
 
   func testMalformedRetryAfterYieldsNilNotCrash() async throws {

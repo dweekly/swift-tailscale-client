@@ -797,24 +797,40 @@ public actor TailscaleClient {
     }
   }
 
-  /// Parses a `Retry-After` header value: either delta-seconds or an
-  /// HTTP-date (RFC 9110). Returns nil for anything malformed — including
-  /// negative, NaN, or infinite values — so a hostile or buggy header can
+  /// Parses a `Retry-After` header value per RFC 9110: delta-seconds
+  /// (digits only — the `1*DIGIT` grammar admits no sign, decimal point, or
+  /// exponent) or an HTTP-date in any of the three forms recipients must
+  /// accept (IMF-fixdate plus the obsolete RFC 850 and asctime formats).
+  /// Returns nil for anything malformed, so a hostile or buggy header can
   /// never produce a nonsensical delay or crash a formatter downstream.
   static func parseRetryAfter(_ value: String, now: Date = Date()) -> Double? {
     let trimmed = value.trimmingCharacters(in: .whitespaces)
-    if let seconds = Double(trimmed) {
-      guard seconds.isFinite, seconds >= 0 else { return nil }
+    if trimmed.range(of: "^[0-9]+$", options: .regularExpression) != nil {
+      // Absurdly long digit runs overflow Double to infinity; treat as
+      // malformed rather than surfacing a non-finite delay.
+      guard let seconds = Double(trimmed), seconds.isFinite else { return nil }
       return seconds
     }
-    // IMF-fixdate, the only HTTP-date format senders may generate.
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = TimeZone(identifier: "GMT")
-    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-    guard let date = formatter.date(from: trimmed) else { return nil }
-    // A date in the past means "retry now", not a negative delay.
-    return max(0, date.timeIntervalSince(now))
+    // asctime pads single-digit days with an extra space; collapse runs so
+    // one pattern per format suffices.
+    let normalized = trimmed.replacingOccurrences(
+      of: " +", with: " ", options: .regularExpression)
+    let httpDateFormats = [
+      "EEE, dd MMM yyyy HH:mm:ss zzz",  // IMF-fixdate (preferred)
+      "EEEE, dd-MMM-yy HH:mm:ss zzz",  // obsolete RFC 850
+      "EEE MMM d HH:mm:ss yyyy",  // obsolete asctime (zone implied GMT)
+    ]
+    for format in httpDateFormats {
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: "en_US_POSIX")
+      formatter.timeZone = TimeZone(identifier: "GMT")
+      formatter.dateFormat = format
+      if let date = formatter.date(from: normalized) {
+        // A date in the past means "retry now", not a negative delay.
+        return max(0, date.timeIntervalSince(now))
+      }
+    }
+    return nil
   }
 
   /// Races `operation` against the configured deadline, throwing

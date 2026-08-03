@@ -59,6 +59,12 @@ jobs:
       - name: Check formatting
         run: swift format lint --strict --recursive Sources Tests
 
+      # The release workflow runs this same script on a macOS runner whose
+      # system bash is 3.2; running it here too keeps that path exercised on
+      # every PR instead of discovering a bashism at tag time.
+      - name: Check release consistency (macOS bash)
+        run: ./Scripts/check-release-consistency.sh
+
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
 

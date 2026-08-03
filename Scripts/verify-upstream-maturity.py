@@ -17,6 +17,12 @@ Checks performed:
   3. ``upstream_provenance.capability_version`` matches
      ``tailcfg.CurrentCapabilityVersion`` at the pinned revision, and the
      Swift ``defaultCapabilityVersion`` constant matches both.
+  4. Each endpoint's ``gate`` matches the handler registration in
+     ``ipn/localapi/localapi.go`` at the pinned revision: entries in the
+     static handler map are ``core``; entries registered inside an
+     ``if buildfeatures.X { ... }`` block carry that build-tag expression
+     verbatim (e.g. ``HasDebug || HasAdvertiseRoutes``). Endpoints
+     registered from feature packages outside localapi.go are skipped.
 
 Usage:
   Scripts/verify-upstream-maturity.py                 # download at pinned SHA
@@ -44,6 +50,7 @@ SOURCE_FILES = [
     "client/local/cert.go",
     "client/local/serve.go",
     "tailcfg/tailcfg.go",
+    "ipn/localapi/localapi.go",
 ]
 
 RAW_URL = "https://raw.githubusercontent.com/tailscale/tailscale/{rev}/{path}"
@@ -108,6 +115,49 @@ def symbols(field):
     return [s.strip() for s in field.split("/") if s.strip()]
 
 
+CONDITION_TOKEN_RE = re.compile(
+    r'buildfeatures\.(Has[A-Za-z0-9]+)|runtime\.GOOS == "([a-z]+)"')
+STATIC_ENTRY_RE = re.compile(r'^\t"([^"]+)":\s+\(\*Handler\)\.')
+REGISTER_RE = re.compile(r'Register\("([^"]+)"')
+
+
+def derive_gates(localapi_text):
+    """Map registration name -> gate expression from ipn/localapi/localapi.go.
+
+    Static handler-map entries are "core"; Register() calls inside an
+    ``if <build conditions> {`` block carry the condition, with
+    ``buildfeatures.HasX`` rendered as ``HasX`` and GOOS comparisons as the
+    bare OS name, joined by ``||`` in source order.
+    """
+    gates = {}
+    in_static_map = False
+    condition = None
+    for line in localapi_text.splitlines():
+        if line.startswith("var handler = map[string]LocalAPIHandler{"):
+            in_static_map = True
+            continue
+        if in_static_map:
+            if line.startswith("}"):
+                in_static_map = False
+                continue
+            match = STATIC_ENTRY_RE.match(line)
+            if match:
+                gates[match.group(1)] = "core"
+            continue
+        stripped = line.strip()
+        if stripped.startswith("if ") and stripped.endswith("{"):
+            tokens = [a or b for a, b in CONDITION_TOKEN_RE.findall(stripped)]
+            condition = " || ".join(tokens) if tokens else None
+            continue
+        if stripped == "}":
+            condition = None
+            continue
+        match = REGISTER_RE.search(stripped)
+        if match and condition:
+            gates[match.group(1)] = condition
+    return gates
+
+
 def main():
     source_dir = None
     if "--source-dir" in sys.argv:
@@ -160,6 +210,22 @@ def main():
                     f"stable-gap ledger: {symbol} is upstream-{actual}, "
                     f"so it does not belong in the stable-parity ledger")
 
+    # 4. Gates: manifest gate == registration condition in localapi.go.
+    #    Endpoints registered from feature packages (serve-config, cert/,
+    #    debug-optional-features, ...) don't appear there and are skipped.
+    derived_gates = derive_gates(sources["ipn/localapi/localapi.go"])
+    skipped_gates = []
+    for entry in data["endpoints"]:
+        name = entry["endpoint"]
+        expected_gate = derived_gates.get(name)
+        if expected_gate is None:
+            skipped_gates.append(name)
+            continue
+        if entry.get("gate") != expected_gate:
+            problems.append(
+                f"{name}: gate is {entry.get('gate')!r}, but localapi.go at "
+                f"{revision[:12]} registers it under {expected_gate!r}")
+
     # 3. Capability version: upstream constant == provenance == Swift default.
     capability_match = re.search(
         r"CurrentCapabilityVersion CapabilityVersion = (\d+)",
@@ -187,8 +253,11 @@ def main():
         sys.exit(1)
     checked = sum(
         len(symbols(e.get("upstream_symbol", ""))) for e in data["endpoints"])
-    print(f"ok: {checked} endpoint symbols + stable-gap ledger + capability "
-          f"version verified against {revision[:12]}")
+    gates_checked = len(data["endpoints"]) - len(skipped_gates)
+    print(f"ok: {checked} endpoint symbols + {gates_checked} gates + "
+          f"stable-gap ledger + capability version verified against "
+          f"{revision[:12]} (gates skipped, registered outside localapi.go: "
+          f"{', '.join(skipped_gates) or 'none'})")
 
 
 if __name__ == "__main__":

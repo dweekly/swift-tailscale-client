@@ -3,12 +3,16 @@
 # when a tag is passed ($1 = vX.Y.Z, from the release workflow), with the
 # tag being released. This is the guard against the drift class where the
 # README says one version, DocC another, and the coverage matrix a third.
+#
+# Bash 3.2 compatible on purpose: the release workflow runs this on macOS
+# runners, whose system bash is 3.2 (no associative arrays, no mapfile).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 fail=0
-declare -A versions
+labels=()
+versions=()
 
 extract() {
   local label="$1" file="$2" pattern="$3"
@@ -19,7 +23,8 @@ extract() {
     fail=1
     return
   fi
-  versions["$label"]="$v"
+  labels+=("$label")
+  versions+=("$v")
   printf '%-22s %s\n' "$label:" "$v"
 }
 
@@ -34,12 +39,21 @@ extract "packageVersion const" Sources/TailscaleClient/Configuration/TailscaleCl
   'packageVersion = "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "CHANGELOG top entry" CHANGELOG.md '## \[[0-9]+\.[0-9]+\.[0-9]+\]'
 
-reference="${versions[CHANGELOG top entry]:-}"
-for label in "${!versions[@]}"; do
-  if [ "${versions[$label]}" != "$reference" ]; then
-    echo "DRIFT    $label (${versions[$label]}) != CHANGELOG top entry ($reference)"
+reference=""
+i=0
+while [ $i -lt ${#labels[@]} ]; do
+  if [ "${labels[$i]}" = "CHANGELOG top entry" ]; then
+    reference="${versions[$i]}"
+  fi
+  i=$((i + 1))
+done
+i=0
+while [ $i -lt ${#labels[@]} ]; do
+  if [ "${versions[$i]}" != "$reference" ]; then
+    echo "DRIFT    ${labels[$i]} (${versions[$i]}) != CHANGELOG top entry ($reference)"
     fail=1
   fi
+  i=$((i + 1))
 done
 
 if [ $# -ge 1 ]; then

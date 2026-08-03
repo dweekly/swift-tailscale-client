@@ -276,7 +276,7 @@ Summaries here; the operational detail lives in [`Documentation/TESTING.md`](Doc
 - **Embedded Tailscale** — creating new tailnet nodes belongs in [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift)
 - **CLI replacement** — `tailscale-swift` demonstrates the library; it does not compete with the official CLI
 - **Shelling out** — everything in pure Swift
-- **Wrapping everything** — `dial` (connection hijack with no clean Swift mapping), `conn25/state`, `alpha-set-device-attrs`, `disconnect-control`, `check-so-mark-in-use`, `upload-client-metrics`, and `debug-capture` stay unsupported until a real use case appears; each has its reason recorded in the coverage matrix
+- **Wrapping everything** — `dial` (connection hijack with no clean Swift mapping), `conn25/state`, `alpha-set-device-attrs`, `check-so-mark-in-use`, `upload-client-metrics`, and `debug-capture` stay unsupported until a real use case appears; each has its reason recorded in the coverage matrix. (`disconnect-control` graduated out of this list: it is upstream-stable and a stable-parity target in the coverage ledger.)
 - **Pre-1.0 API stability** — APIs may change before 1.0; from 1.0 the Stable tier follows SemVer strictly
 
 ## Contributing to the Roadmap

@@ -28,16 +28,20 @@ public struct TailscaleClientConfiguration: Sendable {
   /// The default for ``capabilityVersion``, pinned to a tested upstream
   /// revision — never bumped to "latest" without compatibility evidence.
   ///
-  /// Provenance: `tailcfg.CurrentCapabilityVersion` was **144** in
-  /// `tailscale/tailscale` `main` (verified 2026-08-03), the same revision
-  /// our wire models were spiked against. Compatibility evidence: the full
-  /// integration suite passes with this value against the hermetic daemon
-  /// matrix (current stable, previous stable 1.96.4, unstable) and a real
-  /// tailnet daemon.
+  /// Provenance: `tailcfg.CurrentCapabilityVersion` is **144** at the
+  /// immutable `tailscale/tailscale` commit recorded in
+  /// `Documentation/endpoints.json` (`upstream_provenance.revision`,
+  /// currently `4c4d1c35f83a…`), the same revision our wire models were
+  /// verified against; `Scripts/verify-upstream-maturity.py` re-checks the
+  /// constant against that exact commit in CI. Compatibility evidence: the
+  /// full integration suite passes with this value against the hermetic
+  /// daemon matrix (current stable, previous stable 1.96.4, unstable) and a
+  /// real tailnet daemon.
   ///
-  /// Update procedure: re-verify the upstream constant, re-check any
-  /// capability-gated LocalAPI behavior against our models, run the matrix,
-  /// and record the new provenance here — in that order.
+  /// Update procedure: advance the pinned commit in the manifest, re-verify
+  /// the upstream constant there, re-check any capability-gated LocalAPI
+  /// behavior against our models, run the matrix, and update this constant —
+  /// in that order (CI enforces the agreement).
   public static let defaultCapabilityVersion = 144
 
   /// This package's own release version, surfaced in
