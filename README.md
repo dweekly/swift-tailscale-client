@@ -36,7 +36,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 ## Installation
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.10.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.11.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
@@ -103,7 +103,7 @@ See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.
 
 ## Status
 
-**Current release: v0.10.0** — Serve, Funnel & certificates: `serveConfig()`/`setServeConfig(_:)` with ETag optimistic concurrency, `certDomains()`/`certPEM()`/`certPair()`, `setDNS(name:value:)` (ACME dns-01), `queryFeature(_:)`, CLI `serve status` + `cert domains`.
+**Current release: v0.11.0** — Upstream-readiness: secret redaction through print *and* reflection, task-scoped audit reasons (`withAuditReason`), typed `.permissionDenied`/`.rateLimited`/`.peerNotFound` errors, capability pinned to a verified upstream commit (144), stable-parity gap-fill (`whois` variants, `checkUpdate()`, `disconnectControl()`, `checkUDPGROForwarding()`, `bugReport(note:)`, `switchToEmptyProfile()`), and CI validators that verify endpoint maturity *and* feature gates against pinned upstream source.
 
 The full version-by-version history lives in [`CHANGELOG.md`](CHANGELOG.md). The path to 1.0 — API freeze, ≥85% coverage, complete DocC tree — is laid out in [`ROADMAP.md`](ROADMAP.md), with the endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
 

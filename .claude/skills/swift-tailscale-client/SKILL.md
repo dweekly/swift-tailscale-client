@@ -20,7 +20,7 @@ Facts you need before opening the guide:
 - **Right tool?** This package observes/controls an *existing* Tailscale install via its LocalAPI.
   If the app must BE its own tailnet node → TailscaleKit (tailscale/libtailscale). If managing the
   tailnet itself from a server → api.tailscale.com. No Tailscale installed → this package is useless.
-- **Dependency:** `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.10.0")`,
+- **Dependency:** `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.11.0")`,
   product `TailscaleClient`. macOS 13+/Linux connect to daemons; iOS/tvOS/watchOS compile only.
 - **Biggest gotcha:** macOS App Store Tailscale needs opt-in discovery
   (`TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`) and triggers a TCC

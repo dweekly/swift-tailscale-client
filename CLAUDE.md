@@ -110,13 +110,14 @@ swift run tailscale-swift status
   - `Documentation/` - Project documentation (markdown files, analysis docs, man pages). **Committed to git.**
   - `docs/` - Generated DocC output. **Gitignored.** Never put project docs here.
 
-## Project Status (v0.10.0)
+## Project Status (v0.11.0)
 
-**Current version**: v0.10.0 - Serve, Funnel & certificates (ETag-safe serve-config writes, cert fetching, ACME dns-01, feature probes)
+**Current version**: v0.11.0 - Upstream-readiness (secret redaction incl. reflection, task-local audit reasons, typed 403/429/404 errors, capability pinned to a verified upstream commit, stable-parity gap-fill, maturity+gate validators)
 
 **Primary use case**: Network Weather (NWX) macOS app for network diagnostics.
 
 **Recent releases**:
+- v0.11.0: withAuditReason (task-local X-Tailscale-Reason), .permissionDenied/.rateLimited/.peerNotFound, RFC 9110 Retry-After, CustomReflectable redaction, Tailscale-Cap 144 pinned to upstream commit 4c4d1c3 with CI validators for maturity AND registration gates, whois variants, checkUpdate(), disconnectControl(), checkUDPGROForwarding(), bugReport(note:), switchToEmptyProfile() (addProfile() deprecated), generated coverage counts/provenance
 - v0.10.0: serveConfig/setServeConfig with ETag optimistic concurrency (typed `.preconditionFailed` on stale writes, proven live in the write lane), certDomains/certPEM/certPair, setDNS, queryFeature, CLI serve/cert commands, Serve & Funnel article, TSan CI lane
 - v0.9.0: auth lifecycle + profiles CRUD + idToken, experimental GUI contract, CLI login/logout/switch, Login Flow article
 - v0.8.0: write APIs (editPrefs/checkPrefs/setUseExitNode/setExpirySooner/reloadConfig/start), CLI set commands, Writing Safely article
@@ -128,9 +129,10 @@ swift run tailscale-swift status
 **CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding`, `serve status`, `cert domains`, `set …`, `login`, `logout`, `switch` — all structured commands take `--json`; the CLI is an executable product
 
 **Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
-- v1.0.0 (next): API freeze — gap-fill (`shutdown`), coverage ≥85%, complete DocC tree + tutorial + examples, SemVer commitment
+- v0.12.0 (next): wrap `shutdown` + `services`, coverage floor to 85, the menu-bar tutorial
+- v1.0.0: API freeze — pre-freeze naming audit (incl. dropping deprecated `addProfile()`), complete DocC tree, SemVer commitment; BugReportWithOpts recording handle and DialTCP/UserDial stay post-1.0 (stable-gap ledger)
 - Post-1.0: Taildrop (v1.1), Taildrive (v1.2), Tailnet Lock (v1.3)
-- Open follow-ups: user-side tag pushes v0.7.0–v0.10.0 (env proxy blocks agent tag pushes); Homebrew tap formula bump after tags land; announcement wave
+- Open follow-ups: user-side tag push v0.11.0 once the release PR merges (env proxy blocks agent tag pushes; keep pushes to ≤3 tags so GitHub emits events); Homebrew tap bump after the tag lands; GitHub repo topics; Community Projects submission (maintainer-approval gated); announcement wave
 
 **Development practice**: Spike every new endpoint against a real tailscaled (curl over the unix socket) and cross-check `tailscale/tailscale` source (`ipn/localapi/`, `client/local/`) before implementing; capture fixtures from real responses. See `Documentation/TESTING.md`.
 
