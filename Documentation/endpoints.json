@@ -28,12 +28,12 @@
       "methods": [
         "GET"
       ],
-      "symbol": "whois(address:)",
+      "symbol": "whois(address:), whois(address:protocol:), whois(nodeKey:), whois(address:scopedToDestination:), whois(address:forService:)",
       "access": "read",
       "gate": "core",
       "upstream_maturity": "stable",
       "swift_support": "supported",
-      "upstream_symbol": "WhoIs",
+      "upstream_symbol": "WhoIs / WhoIsProto / WhoIsNodeKey / WhoIsForIP / WhoIsForService",
       "since": "0.2.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
@@ -42,7 +42,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "?proto= not yet exposed"
+      "notes": "all stable variants wrapped; a peer miss (404) throws typed .peerNotFound"
     },
     {
       "endpoint": "prefs",
@@ -158,7 +158,7 @@
       ],
       "symbol": "daemonFeatures()",
       "access": "read",
-      "gate": "core",
+      "gate": "HasDebug",
       "upstream_maturity": "unspecified",
       "swift_support": "supported",
       "upstream_symbol": "QueryOptionalFeatures",
@@ -276,6 +276,28 @@
       ],
       "upstream": "general",
       "notes": "subnet-router/exit-node preflight"
+    },
+    {
+      "endpoint": "check-udp-gro-forwarding",
+      "methods": [
+        "GET"
+      ],
+      "symbol": "checkUDPGROForwarding()",
+      "access": "read",
+      "gate": "HasAdvertiseRoutes",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "CheckUDPGROForwarding",
+      "since": "0.11.0",
+      "min_tailscaled": "old",
+      "tested": "matrix (non-Linux daemons -> endpointUnavailable skip)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "Linux subnet-router/exit-node performance preflight",
+      "upstream_notes": "annotated unstable upstream despite its diagnostic role - not a stable-parity item"
     },
     {
       "endpoint": "dns-config",
@@ -489,6 +511,48 @@
       "notes": "disconnects and expires the node key"
     },
     {
+      "endpoint": "update/check",
+      "methods": [
+        "GET"
+      ],
+      "symbol": "checkUpdate()",
+      "access": "read",
+      "gate": "HasClientUpdate",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "CheckUpdate",
+      "since": "0.11.0",
+      "min_tailscaled": "old",
+      "tested": "matrix (skips where the build omits clientupdate)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "reports update availability only; installs nothing"
+    },
+    {
+      "endpoint": "disconnect-control",
+      "methods": [
+        "POST"
+      ],
+      "symbol": "disconnectControl()",
+      "access": "write",
+      "gate": "HasDebug || HasAdvertiseRoutes",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "DisconnectControl",
+      "since": "0.11.0",
+      "min_tailscaled": "old",
+      "tested": "unit only (administrative: never exercised against live daemons)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "administrative: drains HA subnet-router/app-connector replicas before shutdown"
+    },
+    {
       "endpoint": "reset-auth",
       "methods": [
         "POST"
@@ -518,13 +582,13 @@
         "POST",
         "DELETE"
       ],
-      "symbol": "profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)",
+      "symbol": "profiles(), currentProfile(), switchToEmptyProfile(), switchProfile(_:), deleteProfile(_:)",
       "access": "write",
       "gate": "core",
       "upstream_maturity": "unspecified",
       "swift_support": "supported",
       "upstream_symbol": "ProfileStatus / SwitchProfile / SwitchToEmptyProfile / DeleteProfile",
-      "upstream_notes": "mixed per-symbol maturity; addProfile() performs the same PUT /profiles/ operation as upstream SwitchToEmptyProfile (stable)",
+      "upstream_notes": "mixed per-symbol maturity; switchToEmptyProfile() mirrors the upstream name (stable), with addProfile() kept as a deprecated alias",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "matrix (reads; mutations hermetic-only)",
@@ -675,13 +739,13 @@
       "methods": [
         "POST"
       ],
-      "symbol": "experimental.bugreport(note:)",
+      "symbol": "bugReport(note:) (supported), experimental.bugreport(note:diagnose:record:)",
       "access": "write",
       "gate": "HasDebug",
       "upstream_maturity": "stable",
-      "swift_support": "experimental",
-      "upstream_symbol": "BugReport / BugReportWithOpts",
-      "upstream_notes": "upstream-stable; our facade is still in the experimental namespace (promotion tracked in issue draft 04)",
+      "swift_support": "supported",
+      "upstream_symbol": "BugReport",
+      "upstream_notes": "upstream-stable; the supported facade wraps BugReport only - BugReportWithOpts (recording lifecycle) stays in the stable-parity ledger because a faithful recording handle must hold the request body open, which this client cannot do yet",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
@@ -810,19 +874,9 @@
   },
   "upstream_stable_unimplemented": [
     {
-      "go_symbol": "WhoIsForService / WhoIsForIP / WhoIsNodeKey / WhoIsProto",
-      "endpoint": "whois",
-      "note": "typed whois variants (protocol, node key, destination-IP, service scoped)"
-    },
-    {
-      "go_symbol": "CheckUpdate",
-      "endpoint": "update/check",
-      "note": "reports the daemon's update availability; does not install anything"
-    },
-    {
-      "go_symbol": "DisconnectControl",
-      "endpoint": "disconnect-control",
-      "note": "graceful removal of HA subnet-router/app-connector replicas before shutdown - administrative, not a test-harness tool"
+      "go_symbol": "BugReportWithOpts",
+      "endpoint": "bugreport",
+      "note": "recording lifecycle: upstream holds the POST body open until the caller ends the recording; needs a Swift recording handle whose cancellation closes the body (the experimental record: knob ends the window immediately and says so)"
     },
     {
       "go_symbol": "DialTCP / UserDial",

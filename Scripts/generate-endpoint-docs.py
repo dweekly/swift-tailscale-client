@@ -106,6 +106,40 @@ def maturity_phrase(e):
     return f"{upstream}; {swift}"
 
 
+def provenance_block(data):
+    """Header lines derived from the manifest so the pinned commit and
+    verification date can never drift from what the validator enforces."""
+    prov = data["upstream_provenance"]
+    return (
+        f"**Last updated:** {prov['verified']}\n"
+        f"**Upstream reference:** `{prov['repository']}` pinned commit "
+        f"`{prov['revision'][:12]}` (verified {prov['verified']}; full SHA and "
+        f"validation in [`endpoints.json`](endpoints.json)), "
+        f"`ipn/localapi/` + `client/local/`")
+
+
+def summary_table(data):
+    """Implemented counts computed from the manifest, never hand-maintained."""
+    counts = {}
+    for e in data["endpoints"]:
+        counts[e["swift_support"]] = counts.get(e["swift_support"], 0) + 1
+    parts = [f"{counts.get('supported', 0)} supported"]
+    if counts.get("preview"):
+        parts.append(f"{counts['preview']} preview")
+    parts.append(f"{counts.get('experimental', 0)} experimental")
+    lines = [
+        "| Category | Count |",
+        "|----------|-------|",
+        f"| Implemented (from `endpoints.json`) | {' + '.join(parts)} |",
+        "| Planned Stable (v0.4.0–v1.3) | ~40 |",
+        "| Planned Experimental | ~15 |",
+        "| Unsupported (documented, with reasons) | 6 |",
+        "| No LocalAPI equivalent (client-side features) | netcheck (implemented "
+        "client-side in v0.6.0 as `Netcheck`), captive portal detection |",
+    ]
+    return "\n".join(lines)
+
+
 def coverage_table(data):
     prov = data["upstream_provenance"]
     lines = [
@@ -180,6 +214,38 @@ def quick_reference(data):
     return "\n".join(lines)
 
 
+def check_hand_sections(data):
+    """Fail when hand-maintained coverage text contradicts the manifest.
+
+    Every endpoint in the manifest is implemented; a hand-maintained table
+    row that still calls it Planned/Unsupported/on-demand is the drift class
+    that has slipped through review before. Generated sections are excluded.
+    """
+    coverage = (ROOT / "Documentation" / "LOCALAPI-COVERAGE.md").read_text()
+    hand = []
+    inside_generated = False
+    for line in coverage.splitlines():
+        if "BEGIN GENERATED:" in line:
+            inside_generated = True
+        elif "END GENERATED:" in line:
+            inside_generated = False
+        elif not inside_generated:
+            hand.append(line)
+    problems = []
+    stale_markers = ("Planned", "Unsupported", "on demand")
+    for e in data["endpoints"]:
+        needle = f"| `{e['endpoint']}` |"
+        for line in hand:
+            if needle in line and any(m in line for m in stale_markers):
+                problems.append(
+                    f"{e['endpoint']}: implemented per the manifest, but a "
+                    f"hand-maintained row still says otherwise: {line.strip()}")
+    if problems:
+        for p in problems:
+            print(f"CONTRADICTION  {p}")
+        sys.exit(1)
+
+
 def inject(path, section, body, check):
     begin = MARKER_FMT.format("BEGIN", section)
     end = MARKER_FMT.format("END", section)
@@ -208,11 +274,14 @@ def main():
     validate(data)
     coverage = ROOT / "Documentation" / "LOCALAPI-COVERAGE.md"
     ok = True
+    ok &= inject(coverage, "coverage-provenance", provenance_block(data), check)
+    ok &= inject(coverage, "coverage-summary", summary_table(data), check)
     ok &= inject(coverage, "implemented-endpoints", coverage_table(data), check)
     ok &= inject(coverage, "upstream-stable-unimplemented", stable_gaps_table(data), check)
     ok &= inject(
         ROOT / "Documentation" / "INTEGRATING.md",
         "endpoint-quick-reference", quick_reference(data), check)
+    check_hand_sections(data)
     sys.exit(0 if ok else 1)
 
 

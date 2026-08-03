@@ -79,7 +79,7 @@ final class AuthProfilesTests: XCTestCase {
     let recorder = RequestRecorder()
     let client = recordedClient(status: 201, recorder: recorder)
 
-    try await client.addProfile()
+    try await client.switchToEmptyProfile()
     try await client.switchProfile("9f2c")
     try await client.deleteProfile("9f2c")
 

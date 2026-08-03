@@ -461,14 +461,60 @@ public struct UserProfile: Sendable, Codable, Equatable {
 }
 
 public struct ClientVersionStatus: Sendable, Codable, Equatable {
-  public let runningLatest: Bool?
+  /// Whether the client is running the latest build. Upstream marks every
+  /// boolean here `omitempty`, so `false` is simply absent on the wire —
+  /// absence decodes as `false`, never as "unknown".
+  public let runningLatest: Bool
+
+  /// Latest available client version, when the daemon knows one.
+  public let latestVersion: String?
+
+  /// Whether the available update carries an urgent security fix.
+  public let urgentSecurityUpdate: Bool
+
+  /// Whether the daemon suggests notifying the user about the update.
+  public let notify: Bool
+
+  /// URL to show the user alongside an update notification.
+  public let notifyURL: String?
+
+  /// Text to show the user alongside an update notification.
+  public let notifyText: String?
 
   /// Creates an instance for tests, previews, or fixtures.
-  public init(runningLatest: Bool? = nil) {
+  public init(
+    runningLatest: Bool = false,
+    latestVersion: String? = nil,
+    urgentSecurityUpdate: Bool = false,
+    notify: Bool = false,
+    notifyURL: String? = nil,
+    notifyText: String? = nil
+  ) {
     self.runningLatest = runningLatest
+    self.latestVersion = latestVersion
+    self.urgentSecurityUpdate = urgentSecurityUpdate
+    self.notify = notify
+    self.notifyURL = notifyURL
+    self.notifyText = notifyText
   }
 
   enum CodingKeys: String, CodingKey {
     case runningLatest = "RunningLatest"
+    case latestVersion = "LatestVersion"
+    case urgentSecurityUpdate = "UrgentSecurityUpdate"
+    case notify = "Notify"
+    case notifyURL = "NotifyURL"
+    case notifyText = "NotifyText"
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    runningLatest = try container.decodeIfPresent(Bool.self, forKey: .runningLatest) ?? false
+    latestVersion = try container.decodeIfPresent(String.self, forKey: .latestVersion)
+    urgentSecurityUpdate =
+      try container.decodeIfPresent(Bool.self, forKey: .urgentSecurityUpdate) ?? false
+    notify = try container.decodeIfPresent(Bool.self, forKey: .notify) ?? false
+    notifyURL = try container.decodeIfPresent(String.self, forKey: .notifyURL)
+    notifyText = try container.decodeIfPresent(String.self, forKey: .notifyText)
   }
 }

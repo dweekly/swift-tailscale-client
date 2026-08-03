@@ -340,12 +340,24 @@ public actor TailscaleClient {
     return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
   }
 
-  /// Creates a new (empty) login profile and switches to it; follow with
-  /// ``loginInteractive()`` or ``start(options:)`` to authenticate it.
-  public func addProfile() async throws {
+  /// Creates a new, empty login profile and switches to it — the "sign out
+  /// to a clean slate" move. Follow with ``loginInteractive()`` or
+  /// ``start(options:)`` to authenticate it; the previous profile remains
+  /// available via ``profiles()`` / ``switchProfile(_:)``.
+  ///
+  /// Mirrors upstream's stable `SwitchToEmptyProfile`
+  /// (`PUT /localapi/v0/profiles/`); the daemon answers `201 Created`.
+  public func switchToEmptyProfile() async throws {
     let endpoint = "/localapi/v0/profiles/"
     _ = try await performRawRequest(
       TailscaleRequest(method: "PUT", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Former name of ``switchToEmptyProfile()`` (same wire operation); the
+  /// upstream-aligned name is now canonical.
+  @available(*, deprecated, renamed: "switchToEmptyProfile()")
+  public func addProfile() async throws {
+    try await switchToEmptyProfile()
   }
 
   /// Switches to the profile with the given ID (see ``LoginProfile/id``).

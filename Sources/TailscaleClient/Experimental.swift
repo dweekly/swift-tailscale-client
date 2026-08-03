@@ -32,8 +32,12 @@ public struct ExperimentalClient: Sendable {
   ///   - note: Optional note logged alongside the marker.
   ///   - diagnose: Ask the daemon to run its self-diagnostics and log the
   ///     findings.
-  ///   - record: Enable verbose component debug logging for the next 12
-  ///     hours (a second marker is returned for the recording window).
+  ///   - record: Asks the daemon to start a bugreport recording. **Caveat:**
+  ///     upstream's contract keeps the POST body open until the caller ends
+  ///     the recording; this client sends a complete (empty) body, so the
+  ///     daemon sees EOF and closes the recording window almost immediately.
+  ///     A real recording handle is tracked in the stable-parity ledger
+  ///     (`BugReportWithOpts`).
   /// - Returns: The marker text (one marker per line).
   /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
   ///   daemon was built without debug support; other `TailscaleClientError`

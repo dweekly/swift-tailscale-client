@@ -42,7 +42,8 @@ choreography required.
 
 The `profiles/` family manages saved account/tailnet pairings:
 ``TailscaleClient/profiles()`` and ``TailscaleClient/currentProfile()`` are
-read-only; ``TailscaleClient/addProfile()`` creates-and-switches to an empty
+read-only; ``TailscaleClient/switchToEmptyProfile()`` (upstream's name;
+`addProfile()` remains as a deprecated alias) creates-and-switches to an empty
 profile (follow with a login), ``TailscaleClient/switchProfile(_:)`` changes
 the active identity, and ``TailscaleClient/deleteProfile(_:)`` removes one.
 Switching restarts the backend — expect a state dip on the IPN bus.
