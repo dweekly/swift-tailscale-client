@@ -43,10 +43,11 @@ jobs:
           PROFDATA="$BIN_DIR/codecov/default.profdata"
           XCTEST_BIN=$(find "$BIN_DIR" -maxdepth 1 -name '*PackageTests.xctest' | head -1)
           BIN="$XCTEST_BIN/Contents/MacOS/$(basename "$XCTEST_BIN" .xctest)"
-          PERCENT=$(xcrun llvm-cov export -summary-only "$BIN" \
+          xcrun llvm-cov export -summary-only "$BIN" \
             -instr-profile "$PROFDATA" \
             -ignore-filename-regex '(Tests/|\.build/|Sources/tailscale-swift/)' \
-            | python3 -c "import json,sys; print(round(json.load(sys.stdin)['data'][0]['totals']['lines']['percent'], 1))")
+            > coverage-summary.json
+          PERCENT=$(python3 -c "import json; print(round(json.load(open('coverage-summary.json'))['data'][0]['totals']['lines']['percent'], 1))")
           # Ratcheted to 70 at v0.9.0 (~79% measured since); raise as coverage
           # grows, never lower without a documented reason (see TESTING.md).
           MIN=70
@@ -54,6 +55,22 @@ jobs:
           # Surface the number as an annotation so it is fetchable from the
           # check-runs API without log spelunking (feeds the 85% ratchet).
           echo "::notice title=Coverage::Library line coverage ${PERCENT}% (floor ${MIN}%)"
+          # Name the worst-covered files so ratchet work aims at the actual
+          # gaps instead of guessing (one annotation; %0A = newline).
+          python3 - <<'EOF'
+          import json
+
+          data = json.load(open("coverage-summary.json"))["data"][0]
+          rows = sorted(
+              (f["summary"]["lines"]["percent"],
+               f["summary"]["lines"]["count"] - f["summary"]["lines"]["covered"],
+               f["filename"].split("Sources/", 1)[-1])
+              for f in data["files"])[:10]
+          lines = [f"{pct:5.1f}% ({missed} lines missed) {name}" for pct, missed, name in rows]
+          for line in lines:
+              print(line)
+          print("::notice title=Worst-covered files::" + "%0A".join(lines))
+          EOF
           if ! python3 -c "import sys; sys.exit(0 if float('$PERCENT') >= $MIN else 1)"; then
             echo "::error::Line coverage ${PERCENT}% is below the ${MIN}% floor (see Documentation/TESTING.md)"
             exit 1
