@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-03
+
 ### Added
 
 - **Auth & profiles**: `loginInteractive()` (BrowseToURL arrives on the IPN bus — see the new *Login Flow* article), `logout()` and `resetAuth()` (destructive; wire-shape unit tests only, never integration-tested), the `profiles/` family (`profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` with new `LoginProfile`/`NetworkProfile` models), and `idToken(audience:)` (OIDC token as raw control-plane JSON).
