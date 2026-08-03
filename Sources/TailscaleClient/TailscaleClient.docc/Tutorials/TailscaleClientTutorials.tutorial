@@ -1,0 +1,17 @@
+@Tutorials(name: "TailscaleClient") {
+  @Intro(title: "Building apps on the Tailscale LocalAPI") {
+    Learn how to build a real macOS app on `swift-tailscale-client`, the
+    unofficial Swift package for the Tailscale LocalAPI. You'll connect to
+    the daemon the user already runs, render live state without polling,
+    and ship something a menu bar deserves.
+  }
+
+  @Chapter(name: "Menu bar status") {
+    Build a SwiftUI menu bar app that shows the Tailscale backend state in
+    real time, driven by the IPN notification bus.
+
+    @Image(source: "tutorial-menubar-card", alt: "A stylized menu bar status card.")
+
+    @TutorialReference(tutorial: "doc:BuildAMenuBarApp")
+  }
+}

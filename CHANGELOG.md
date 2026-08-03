@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file. The format 
 - **Model-conformance gate**: `Scripts/check-model-conformance.py` enforces the API conventions mechanically in CI — every Codable struct must be Sendable + Equatable with a public init, and every raw-value wire enum must decode tolerantly. Its first run caught a real bug (see Fixed).
 - **Upstream drift automation** (issue draft 07): a weekly `upstream-drift` workflow re-derives maturity/gates/capability against *current* tailscale/tailscale main (`verify-upstream-maturity.py --against-revision`) and files/updates a re-pin issue describing exactly what moved. The pinned verification in regular CI is unchanged.
 - **Strict DocC lane**: PRs now build documentation with `--warnings-as-errors` (broken symbol links and malformed directives fail before deploy time) plus an informational documentation-coverage dump.
+- **DocC tutorial**: *Build a Tailscale menu bar app* — a step-by-step tutorial (observable model seeded from `status()`, live updates via `watchIPNBus` with reconnect, `MenuBarExtra` assembly) whose code mirrors the compiled `Examples/Recipes` menu-bar recipe.
+- Coverage: the CI gate surfaces the measured percentage as a check-run annotation, and a new edge-coverage suite exercises every error case's description/recovery/preview text, model encode paths, reconnect backoff growth, and redaction edge shapes — groundwork for the 85% floor ratchet.
 
 ### Fixed
 
