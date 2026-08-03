@@ -97,7 +97,7 @@ struct WatchCommand: AsyncParsableCommand {
     }
 
     // Login finished
-    if notify.loginFinished == true {
+    if notify.loginFinished != nil {
       print("[\(timestamp)] ✓ Login completed")
     }
 
