@@ -96,10 +96,16 @@ extension TailscaleClient {
   /// > Warning: This changes live daemon behavior for every user of the
   /// > machine. Never call it casually, and never in tests against a real
   /// > daemon (this package exercises it with wire-shape unit tests only).
+  ///
+  /// Upstream registers the endpoint only on builds with `HasDebug` or
+  /// `HasAdvertiseRoutes`; feature-minimal daemons surface
+  /// ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``.
   public func disconnectControl() async throws {
     let endpoint = "/localapi/v0/disconnect-control"
     let request = TailscaleRequest(method: "POST", path: endpoint)
-    _ = try await performRawRequest(request, endpoint: endpoint)
+    _ = try await performRawRequest(
+      request, endpoint: endpoint, optionalEndpoint: true,
+      feature: "debug or advertise-routes")
   }
 
   /// Subnet-router/exit-node performance preflight: checks whether UDP GRO
@@ -107,12 +113,14 @@ extension TailscaleClient {
   /// Upstream: `CheckUDPGROForwarding` — annotated **unstable** upstream;
   /// this wrapper is supported normalization, not a stable-parity item.
   ///
-  /// Non-Linux daemons and older builds surface
+  /// Registered only on builds with `HasAdvertiseRoutes` (like
+  /// ``checkIPForwarding()``); daemons without it, and older builds, surface
   /// ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``.
   public func checkUDPGROForwarding() async throws -> IPForwardingCheck {
     let endpoint = "/localapi/v0/check-udp-gro-forwarding"
     let request = TailscaleRequest(path: endpoint)
-    return try await performRequest(request, endpoint: endpoint, optionalEndpoint: true)
+    return try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "advertise-routes")
   }
 
   /// Logs a bug-report marker in the daemon log and returns the marker ID

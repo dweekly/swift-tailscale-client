@@ -742,11 +742,10 @@ import XCTest
       }
     }
 
-    // addProfile() (upstream SwitchToEmptyProfile) and disconnectControl()
-    // are deliberately NOT integration-tested: both disrupt the daemon for
-    // everything that runs after them (empty profile logs the node out;
-    // disconnect-control drops the control connection). Wire shapes are
-    // pinned in StableParityTests.
+    // switchToEmptyProfile() and disconnectControl() are deliberately NOT
+    // integration-tested: both disrupt the daemon for everything that runs
+    // after them (empty profile logs the node out; disconnect-control drops
+    // the control connection). Wire shapes are pinned in StableParityTests.
 
     func testQueryFeatureAgainstLiveDaemon() async throws {
       do {

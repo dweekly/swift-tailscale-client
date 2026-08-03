@@ -9,8 +9,8 @@ import XCTest
 private let whoisBody = Data(#"{"Node": {"ID": 1, "StableID": "n1"}}"#.utf8)
 
 /// Tests for the stable-parity surface (upstream-readiness issue 04): whois
-/// variants, checkUpdate, disconnectControl, the addProfile() 201 contract
-/// (upstream SwitchToEmptyProfile), checkUDPGROForwarding, and the supported
+/// variants, checkUpdate, disconnectControl, switchToEmptyProfile,
+/// checkUDPGROForwarding, and the supported
 /// bugReport facade.
 final class StableParityTests: XCTestCase {
 
@@ -116,8 +116,11 @@ final class StableParityTests: XCTestCase {
   // MARK: - checkUpdate
 
   func testCheckUpdateDecodesClientVersion() async throws {
+    // Realistic available-update wire shape: upstream marks every boolean
+    // omitempty, so RunningLatest is ABSENT (not false) when an update
+    // exists. Absent must decode as false.
     let json = #"""
-      {"RunningLatest": false, "LatestVersion": "1.99.2",
+      {"LatestVersion": "1.99.2",
        "UrgentSecurityUpdate": true, "Notify": true,
        "NotifyURL": "https://tailscale.com/changelog",
        "NotifyText": "Security update available"}
@@ -127,10 +130,24 @@ final class StableParityTests: XCTestCase {
       return TailscaleResponse(statusCode: 200, data: Data(json.utf8))
     }
     let version = try await makeClient(transport: transport).checkUpdate()
-    XCTAssertEqual(version.runningLatest, false)
+    XCTAssertFalse(
+      version.runningLatest, "Omitted RunningLatest (omitempty false) must decode as false")
     XCTAssertEqual(version.latestVersion, "1.99.2")
-    XCTAssertEqual(version.urgentSecurityUpdate, true)
+    XCTAssertTrue(version.urgentSecurityUpdate)
     XCTAssertEqual(version.notifyText, "Security update available")
+  }
+
+  func testCheckUpdateDecodesUpToDateShape() async throws {
+    // The up-to-date answer carries only RunningLatest; every omitempty
+    // boolean the daemon omits must land as false, not nil-masquerading.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data(#"{"RunningLatest": true}"#.utf8))
+    }
+    let version = try await makeClient(transport: transport).checkUpdate()
+    XCTAssertTrue(version.runningLatest)
+    XCTAssertFalse(version.urgentSecurityUpdate)
+    XCTAssertFalse(version.notify)
+    XCTAssertNil(version.latestVersion)
   }
 
   func testCheckUpdateMaps404ToEndpointUnavailable() async throws {
@@ -150,7 +167,7 @@ final class StableParityTests: XCTestCase {
     }
   }
 
-  // MARK: - disconnectControl / addProfile (upstream SwitchToEmptyProfile)
+  // MARK: - disconnectControl / switchToEmptyProfile
 
   func testDisconnectControlPostsAndAcceptsPlain200() async throws {
     let recorder = RequestRecorder()
@@ -166,15 +183,34 @@ final class StableParityTests: XCTestCase {
     XCTAssertEqual(request.path, "/localapi/v0/disconnect-control")
   }
 
-  func testAddProfileAccepts201Created() async throws {
-    // addProfile() is upstream's SwitchToEmptyProfile: same PUT /profiles/,
-    // and the daemon answers exactly 201 Created.
+  func testDisconnectControlMaps404ToEndpointUnavailable() async throws {
+    // Upstream registers the endpoint only when HasDebug or
+    // HasAdvertiseRoutes is compiled in; a feature-minimal daemon's 404 must
+    // surface as the typed unavailability, not a generic status error.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 404, data: Data("404 page not found".utf8))
+    }
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).disconnectControl()
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .endpointUnavailable = clientError
+      else {
+        XCTFail("Expected .endpointUnavailable, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testSwitchToEmptyProfileAccepts201Created() async throws {
+    // Mirrors upstream SwitchToEmptyProfile: PUT /profiles/, and the daemon
+    // answers exactly 201 Created.
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
       return TailscaleResponse(statusCode: 201, data: Data())
     }
-    try await makeClient(transport: transport).addProfile()
+    try await makeClient(transport: transport).switchToEmptyProfile()
 
     let requests = await recorder.requests
     let request = try XCTUnwrap(requests.first)

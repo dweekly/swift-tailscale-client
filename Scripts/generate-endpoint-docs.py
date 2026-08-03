@@ -180,6 +180,38 @@ def quick_reference(data):
     return "\n".join(lines)
 
 
+def check_hand_sections(data):
+    """Fail when hand-maintained coverage text contradicts the manifest.
+
+    Every endpoint in the manifest is implemented; a hand-maintained table
+    row that still calls it Planned/Unsupported/on-demand is the drift class
+    that has slipped through review before. Generated sections are excluded.
+    """
+    coverage = (ROOT / "Documentation" / "LOCALAPI-COVERAGE.md").read_text()
+    hand = []
+    inside_generated = False
+    for line in coverage.splitlines():
+        if "BEGIN GENERATED:" in line:
+            inside_generated = True
+        elif "END GENERATED:" in line:
+            inside_generated = False
+        elif not inside_generated:
+            hand.append(line)
+    problems = []
+    stale_markers = ("Planned", "Unsupported", "on demand")
+    for e in data["endpoints"]:
+        needle = f"| `{e['endpoint']}` |"
+        for line in hand:
+            if needle in line and any(m in line for m in stale_markers):
+                problems.append(
+                    f"{e['endpoint']}: implemented per the manifest, but a "
+                    f"hand-maintained row still says otherwise: {line.strip()}")
+    if problems:
+        for p in problems:
+            print(f"CONTRADICTION  {p}")
+        sys.exit(1)
+
+
 def inject(path, section, body, check):
     begin = MARKER_FMT.format("BEGIN", section)
     end = MARKER_FMT.format("END", section)
@@ -213,6 +245,7 @@ def main():
     ok &= inject(
         ROOT / "Documentation" / "INTEGRATING.md",
         "endpoint-quick-reference", quick_reference(data), check)
+    check_hand_sections(data)
     sys.exit(0 if ok else 1)
 
 
