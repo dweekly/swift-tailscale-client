@@ -48,7 +48,7 @@ import Foundation
         if FileManager.default.fileExists(atPath: expanded),
           let parsed = parseSameUserProofPath(expanded)
         {
-          log("Using TAILSCALE_SAMEUSER_PATH override: \(expanded)")
+          log("Using TAILSCALE_SAMEUSER_PATH override: \(DiscoveryLog.redactedProofPath(expanded))")
           return Result(port: parsed.port, token: parsed.token, source: expanded)
         }
       }
@@ -56,14 +56,14 @@ import Foundation
       // Try libproc first (fast and precise)
       if ProcessInfo.processInfo.environment["TAILSCALE_SKIP_LIBPROC"] != "1" {
         if let result = locateViaLibproc() {
-          log("Found sameuserproof via libproc: \(result.source)")
+          log("Found sameuserproof via libproc: \(DiscoveryLog.redactedProofPath(result.source))")
           return result
         }
       }
 
       // Fall back to filesystem enumeration
       if let result = locateViaFilesystem() {
-        log("Found sameuserproof via filesystem: \(result.source)")
+        log("Found sameuserproof via filesystem: \(DiscoveryLog.redactedProofPath(result.source))")
         return result
       }
 
@@ -207,7 +207,8 @@ import Foundation
             port: candidate.port, token: candidate.token, source: candidate.url.path)
         }
         let reason = snapshot[index] == nil ? "probe timed out" : "port not answering"
-        log("Ignoring sameuserproof at \(candidate.url.path) (\(reason))")
+        let redacted = DiscoveryLog.redactedProofPath(candidate.url.path)
+        log("Ignoring sameuserproof at \(redacted) (\(reason))")
       }
       return nil
     }
@@ -272,8 +273,10 @@ import Foundation
     }
 
     private func log(_ message: String) {
+      // Routed through DiscoveryLog so tests can capture every line and
+      // prove no token material leaks; callers redact proof paths first.
       if ProcessInfo.processInfo.environment["TAILSCALE_DISCOVERY_DEBUG"] == "1" {
-        fputs("[MacClientInfo] \(message)\n", stderr)
+        DiscoveryLog.emit("[MacClientInfo] \(message)")
       }
     }
   }

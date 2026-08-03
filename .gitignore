@@ -10,3 +10,4 @@ DerivedData/
 *.swp
 *~
 .claude/worktrees/
+__pycache__/

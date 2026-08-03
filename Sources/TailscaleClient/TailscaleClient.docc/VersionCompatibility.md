@@ -36,11 +36,14 @@ installs:
 
 ## Capability version
 
-Requests send `Tailscale-Cap: 1` by default
-(`TailscaleClientConfiguration.capabilityVersion`, override with
-`TAILSCALE_LOCALAPI_CAPABILITY`). Raising it tells the daemon you understand
-newer response shapes; leave it at the default unless you are deliberately
-opting into a newer contract.
+Requests send `Tailscale-Cap: 144` by default
+(``TailscaleClientConfiguration/defaultCapabilityVersion``, override with
+``TailscaleClientConfiguration/capabilityVersion`` or the
+`TAILSCALE_LOCALAPI_CAPABILITY` environment variable). The default is pinned
+to the upstream revision this package was tested against — see the
+constant's documentation for provenance and the update procedure. Changing
+it tells the daemon you understand a different contract; leave it at the
+default unless you are deliberately opting into one.
 
 ## When something still breaks
 

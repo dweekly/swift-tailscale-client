@@ -30,6 +30,32 @@ public struct CertPair: Sendable, Equatable {
   }
 }
 
+extension CertPair: CustomStringConvertible, CustomDebugStringConvertible {
+  /// Never includes the private key: printing a `CertPair` in logs or a
+  /// debugger must not leak credential material.
+  public var description: String {
+    "CertPair(certificatePEM: \(certificatePEM.count) chars, privateKeyPEM: <redacted>)"
+  }
+
+  public var debugDescription: String { description }
+}
+
+extension CertPair: CustomReflectable {
+  /// `dump(_:)`, `Mirror`, and playground/debugger reflection follow this
+  /// instead of the stored properties, so the private key cannot surface
+  /// through reflection either — including when a `CertPair` is nested
+  /// inside a reflected container.
+  public var customMirror: Mirror {
+    Mirror(
+      self,
+      children: [
+        "certificatePEM": certificatePEM,
+        "privateKeyPEM": "<redacted>",
+      ],
+      displayStyle: .struct)
+  }
+}
+
 /// The control plane's answer to a feature availability probe, from
 /// `POST /localapi/v0/query-feature` (e.g. `feature=funnel` or `serve`).
 ///

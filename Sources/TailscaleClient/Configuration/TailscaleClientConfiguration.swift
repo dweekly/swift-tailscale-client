@@ -13,10 +13,10 @@ public struct TailscaleClientConfiguration: Sendable {
   ///
   /// This advertises which LocalAPI capability level the client understands
   /// (upstream: `tailcfg.CurrentCapabilityVersion`). The default of
-  /// ``defaultCapabilityVersion`` is intentionally conservative — claiming a
-  /// higher version than the client actually handles can change response
-  /// shapes. Override via this property or the `TAILSCALE_LOCALAPI_CAPABILITY`
-  /// environment variable if you need daemon behavior gated on a newer version.
+  /// ``defaultCapabilityVersion`` is pinned to a *tested* upstream revision —
+  /// see that constant for provenance and the update procedure. Override via
+  /// this property or the `TAILSCALE_LOCALAPI_CAPABILITY` environment
+  /// variable when you need different daemon behavior.
   public var capabilityVersion: Int
   /// Deadline applied to each unary request and to establishing a streaming
   /// connection (not to the lifetime of an established stream). `nil` disables
@@ -25,15 +25,37 @@ public struct TailscaleClientConfiguration: Sendable {
   /// Transport responsible for executing HTTP requests. Defaults to the built-in implementation.
   public var transport: any TailscaleTransport
 
-  /// The conservative default for ``capabilityVersion``.
-  public static let defaultCapabilityVersion = 1
+  /// The default for ``capabilityVersion``, pinned to a tested upstream
+  /// revision — never bumped to "latest" without compatibility evidence.
+  ///
+  /// Provenance: `tailcfg.CurrentCapabilityVersion` is **144** at the
+  /// immutable `tailscale/tailscale` commit recorded in
+  /// `Documentation/endpoints.json` (`upstream_provenance.revision`,
+  /// currently `4c4d1c35f83a…`), the same revision our wire models were
+  /// verified against; `Scripts/verify-upstream-maturity.py` re-checks the
+  /// constant against that exact commit in CI. Compatibility evidence: the
+  /// full integration suite passes with this value against the hermetic
+  /// daemon matrix (current stable, previous stable 1.96.4, unstable) and a
+  /// real tailnet daemon.
+  ///
+  /// Update procedure: advance the pinned commit in the manifest, re-verify
+  /// the upstream constant there, re-check any capability-gated LocalAPI
+  /// behavior against our models, run the matrix, and update this constant —
+  /// in that order (CI enforces the agreement).
+  public static let defaultCapabilityVersion = 144
+
+  /// This package's own release version, surfaced in
+  /// ``TailscaleClient/versionDiagnostics()``. Kept in sync with the
+  /// CHANGELOG by `Scripts/check-release-consistency.sh`.
+  public static let packageVersion = "0.10.0"
 
   /// Creates a new configuration with explicit settings.
   ///
   /// - Parameters:
   ///   - endpoint: The connection endpoint (Unix socket, TCP loopback, or custom URL).
   ///   - authToken: Optional authentication token for TCP connections.
-  ///   - capabilityVersion: Capability version to advertise to the daemon (defaults to 1).
+  ///   - capabilityVersion: Capability version to advertise to the daemon
+  ///     (defaults to ``defaultCapabilityVersion``).
   ///   - requestTimeout: Per-request deadline (defaults to 30 seconds; nil disables).
   ///   - transport: Transport implementation for executing requests (defaults to URLSessionTailscaleTransport).
   public init(
@@ -86,5 +108,37 @@ public struct TailscaleClientConfiguration: Sendable {
       endpoint: discovery.endpoint,
       authToken: discovery.authToken,
       capabilityVersion: discovery.capabilityVersion)
+  }
+}
+
+extension TailscaleClientConfiguration: CustomStringConvertible, CustomDebugStringConvertible {
+  /// Never includes the auth token: printing a configuration in logs or a
+  /// debugger must not leak credential material.
+  public var description: String {
+    let token = authToken == nil ? "nil" : "<redacted>"
+    let timeout = requestTimeout.map { "\($0)" } ?? "nil"
+    return
+      "TailscaleClientConfiguration(endpoint: \(endpoint), authToken: \(token), "
+      + "capabilityVersion: \(capabilityVersion), requestTimeout: \(timeout))"
+  }
+
+  public var debugDescription: String { description }
+}
+
+extension TailscaleClientConfiguration: CustomReflectable {
+  /// `dump(_:)` and `Mirror` follow this instead of the stored properties,
+  /// so the auth token cannot surface through reflection either — including
+  /// when a configuration is nested inside a reflected container.
+  public var customMirror: Mirror {
+    Mirror(
+      self,
+      children: [
+        "endpoint": endpoint,
+        "authToken": authToken == nil ? "nil" : "<redacted>",
+        "capabilityVersion": capabilityVersion,
+        "requestTimeout": requestTimeout.map { "\($0)" } ?? "nil",
+        "transport": String(describing: type(of: transport)),
+      ],
+      displayStyle: .struct)
   }
 }

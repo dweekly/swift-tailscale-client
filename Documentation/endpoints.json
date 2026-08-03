@@ -1,524 +1,833 @@
 {
-  "$comment": "Machine-readable manifest of every LocalAPI endpoint this package implements. Single source of truth: Scripts/generate-endpoint-docs.py renders the human tables in LOCALAPI-COVERAGE.md and INTEGRATING.md from this file, and CI fails if they drift. Fields: endpoint (LocalAPI path suffix), methods, symbol (Swift API), access (read|write|destructive), gate (core = always registered, else the upstream build feature; endpoints with a gate throw endpointUnavailable on 404/501 when marked optional), since (package version), min_tailscaled (earliest daemon known to serve it; 'old' = predates our tested floor), tested (how CI exercises it), transports, stability (stable|experimental), upstream (general|debug|gui-contract), notes.",
+  "$comment": "Machine-readable manifest of every LocalAPI endpoint this package implements. Single source of truth: Scripts/generate-endpoint-docs.py renders the human tables in LOCALAPI-COVERAGE.md and INTEGRATING.md from this file, and CI fails if they drift. Two INDEPENDENT stability axes: upstream_maturity is Tailscale's own per-method 'API maturity' annotation for the daemon endpoint (stable | unstable | unspecified - upstream documents that unannotated methods must be assumed unstable), and swift_support is THIS package's promise for its Swift facade (supported | preview | experimental). A supported Swift facade over an upstream-unstable endpoint means we normalize upstream drift, not that Tailscale guarantees the wire contract. Other fields: endpoint (LocalAPI path suffix), methods, symbol (Swift API), access (read|write|destructive), gate (core = always registered, else the upstream build feature), since (package version), min_tailscaled ('old' = predates our tested floor), tested, transports, upstream (general|debug|gui-contract), upstream_symbol (Go client/local method), upstream_notes, notes.",
   "tested_matrix": "hermetic headscale lanes: tailscaled stable / previous-stable 1.96.4 / unstable; plus a real tailnet daemon on self-hosted macOS",
   "endpoints": [
     {
       "endpoint": "status",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "status(query:)",
       "access": "read",
       "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "Status / StatusWithoutPeers",
       "since": "0.1.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "?peers=false via StatusQuery; interfaceName/interfaceInfo derived client-side"
     },
     {
       "endpoint": "whois",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "whois(address:)",
       "access": "read",
       "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "WhoIs",
       "since": "0.2.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "?proto= not yet exposed"
     },
     {
       "endpoint": "prefs",
-      "methods": ["GET", "PATCH"],
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
       "symbol": "prefs(), editPrefs(_:)",
       "access": "write",
       "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "GetPrefs / EditPrefs",
       "since": "0.2.0",
       "min_tailscaled": "old",
       "tested": "matrix+live (writes hermetic-only)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "PATCH takes typed MaskedPrefs value+Set flag pairs (v0.8.0)"
     },
     {
       "endpoint": "ping",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "ping(ip:type:size:)",
       "access": "read",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "Ping / PingWithOpts",
       "since": "0.2.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "disco/TSMP/ICMP/peerAPI ping types"
     },
     {
       "endpoint": "metrics",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "metrics()",
       "access": "read",
-      "gate": "HasClientMetrics",
+      "gate": "HasClientMetrics || HasDebug",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "DaemonMetrics",
       "since": "0.2.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "debug",
       "notes": "Prometheus text; internal counters, names may churn upstream"
     },
     {
       "endpoint": "usermetrics",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "userMetrics()",
       "access": "read",
-      "gate": "core",
+      "gate": "HasUserMetrics",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "UserMetrics",
       "since": "0.6.0",
       "min_tailscaled": "1.78",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "stable user-facing metrics (tailscale metrics print)"
     },
     {
       "endpoint": "watch-ipn-bus",
-      "methods": ["GET (stream)"],
+      "methods": [
+        "GET (stream)"
+      ],
       "symbol": "watchIPNBus(options:reconnect:onUndecodableLine:)",
       "access": "read",
-      "gate": "core",
+      "gate": "HasIPNBus",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "WatchIPNBus",
+      "upstream_notes": "our Swift facade normalizes and tolerates shape drift",
       "since": "0.3.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback (Darwin only)"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback (Darwin only)"
+      ],
       "upstream": "general",
       "notes": "NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0)"
     },
     {
       "endpoint": "debug-optional-features",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "daemonFeatures()",
       "access": "read",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "QueryOptionalFeatures",
       "since": "0.4.0",
       "min_tailscaled": "1.86",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "debug",
       "notes": "capability probe: which optional features this daemon was built with"
     },
     {
       "endpoint": "derpmap",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "derpMap()",
       "access": "read",
       "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "CurrentDERPMap",
       "since": "0.6.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "relay regions/nodes; feeds the client-side netcheck"
     },
     {
       "endpoint": "suggest-exit-node",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "suggestExitNode(forceProbe:)",
       "access": "read",
-      "gate": "core",
+      "gate": "HasUseExitNode",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "SuggestExitNode / SuggestExitNodeWithProbe",
       "since": "0.6.0",
       "min_tailscaled": "old (POST probe: 1.86)",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "empty 200 body = no candidates"
     },
     {
       "endpoint": "dns-osconfig",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "dnsOSConfig()",
       "access": "read",
-      "gate": "core",
+      "gate": "HasDNS",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "GetDNSOSConfig",
       "since": "0.7.0",
       "min_tailscaled": "old",
-      "tested": "matrix+live (userspace daemons 500 → skip)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "tested": "matrix+live (userspace daemons 500 \u2192 skip)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "installed OS DNS state; 500 on userspace-networking daemons"
     },
     {
       "endpoint": "dns-query",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "dnsQuery(name:type:)",
       "access": "read",
-      "gate": "core",
+      "gate": "HasDNS",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "QueryDNS",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "raw RFC 1035 answer bytes + chosen resolvers"
     },
     {
       "endpoint": "check-ip-forwarding",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "checkIPForwarding()",
       "access": "read",
-      "gate": "core",
+      "gate": "HasAdvertiseRoutes",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "CheckIPForwarding",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "subnet-router/exit-node preflight"
     },
     {
       "endpoint": "dns-config",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "dnsConfig()",
       "access": "read",
-      "gate": "core (added 1.98)",
+      "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "DNSConfig",
       "since": "0.10.0",
       "min_tailscaled": "1.98",
       "tested": "matrix (previous-stable asserts endpointUnavailable)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
-      "notes": "tailnet DNS intent from the netmap; older daemons → endpointUnavailable"
+      "notes": "tailnet DNS intent from the netmap; older daemons \u2192 endpointUnavailable"
     },
     {
       "endpoint": "peer-by-id",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "peer(byID:)",
       "access": "read",
-      "gate": "core (added ~1.98)",
+      "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "PeerByID",
       "since": "0.7.0",
       "min_tailscaled": "~1.98",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
-      "notes": "404 = not in netmap OR daemon predates the endpoint — indistinguishable"
+      "notes": "404 = not in netmap OR daemon predates the endpoint \u2014 indistinguishable"
     },
     {
       "endpoint": "user-profile",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "userProfile(byID:)",
       "access": "read",
-      "gate": "core (added ~1.98)",
+      "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "UserProfile",
       "since": "0.7.0",
       "min_tailscaled": "~1.98",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
-      "notes": "404 = unknown user OR older daemon — indistinguishable"
+      "notes": "404 = unknown user OR older daemon \u2014 indistinguishable"
     },
     {
       "endpoint": "check-prefs",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "checkPrefs(_:)",
       "access": "read",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "CheckPrefs",
       "since": "0.8.0",
       "min_tailscaled": "old",
       "tested": "matrix",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "fails closed: daemon-reported Error throws; malformed 200 throws .decoding"
     },
     {
       "endpoint": "set-use-exit-node-enabled",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "setUseExitNode(enabled:)",
       "access": "write",
-      "gate": "core",
+      "gate": "HasUseExitNode",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "SetUseExitNode",
       "since": "0.8.0",
       "min_tailscaled": "old",
       "tested": "matrix (hermetic-only writes)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "toggles without forgetting the selected exit node"
     },
     {
       "endpoint": "set-expiry-sooner",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "setExpirySooner(_:)",
       "access": "write",
       "gate": "core",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "DebugSetExpireIn",
+      "upstream_notes": "upstream files this under debug",
       "since": "0.8.0",
       "min_tailscaled": "old",
       "tested": "unit (wire shape)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "key hygiene; shortens node-key expiry"
     },
     {
       "endpoint": "reload-config",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "reloadConfig()",
       "access": "write",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "ReloadConfig",
       "since": "0.8.0",
       "min_tailscaled": "old",
       "tested": "matrix (no-config daemons return ok=false)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "only meaningful for config-file daemons"
     },
     {
       "endpoint": "start",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "start(options:)",
       "access": "write",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "Start",
       "since": "0.8.0",
       "min_tailscaled": "old",
       "tested": "matrix",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "backend start / headless auth-key bring-up; 204 on success"
     },
     {
       "endpoint": "login-interactive",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "loginInteractive()",
       "access": "write",
       "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "StartLoginInteractive",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "matrix + CLI black-box",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
-      "notes": "BrowseToURL arrives on the IPN bus — subscribe before calling"
+      "notes": "BrowseToURL arrives on the IPN bus \u2014 subscribe before calling"
     },
     {
       "endpoint": "logout",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "logout()",
       "access": "destructive",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "Logout",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "unit only (never integration-tested)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "disconnects and expires the node key"
     },
     {
       "endpoint": "reset-auth",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "resetAuth()",
       "access": "destructive",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "",
+      "upstream_notes": "no public Go client method",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "unit only (never integration-tested)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "wipes auth state for re-login"
     },
     {
       "endpoint": "profiles/",
-      "methods": ["GET", "PUT", "POST", "DELETE"],
+      "methods": [
+        "GET",
+        "PUT",
+        "POST",
+        "DELETE"
+      ],
       "symbol": "profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)",
       "access": "write",
       "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "ProfileStatus / SwitchProfile / SwitchToEmptyProfile / DeleteProfile",
+      "upstream_notes": "mixed per-symbol maturity; addProfile() performs the same PUT /profiles/ operation as upstream SwitchToEmptyProfile (stable)",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "matrix (reads; mutations hermetic-only)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
-      "notes": "multi-account profile management (LoginProfile/NetworkProfile models)"
+      "notes": "multi-account profile management (LoginProfile/NetworkProfile models)",
+      "upstream_symbol_maturity": {
+        "SwitchProfile": "stable",
+        "SwitchToEmptyProfile": "stable"
+      }
     },
     {
       "endpoint": "id-token",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "idToken(audience:)",
       "access": "read",
       "gate": "HasDebug",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "IDToken",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "unit (control-plane dependent)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "OIDC token passed through as raw control-plane JSON"
     },
     {
       "endpoint": "serve-config",
-      "methods": ["GET", "POST"],
+      "methods": [
+        "GET",
+        "POST"
+      ],
       "symbol": "serveConfig(), setServeConfig(_:)",
       "access": "write",
       "gate": "HasServe",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "GetServeConfig / SetServeConfig",
+      "upstream_notes": "GetServeConfig is explicitly unstable upstream; GetServeConfig is annotated unstable; SetServeConfig carries no annotation (assume unstable)",
       "since": "0.10.0",
       "min_tailscaled": "old (ETag: 1.40+)",
       "tested": "matrix incl. live stale-ETag 412 proof (hermetic-only writes)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
-      "notes": "ETag optimistic concurrency; stale writes throw .preconditionFailed"
+      "notes": "ETag optimistic concurrency; stale writes throw .preconditionFailed",
+      "upstream_symbol_maturity": {
+        "SetServeConfig": "unspecified"
+      }
     },
     {
       "endpoint": "cert-domains",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "certDomains()",
       "access": "read",
-      "gate": "HasACME",
+      "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "CertDomains",
       "since": "0.10.0",
       "min_tailscaled": "old",
-      "tested": "matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "tested": "matrix (ACME-less builds \u2192 endpointUnavailable, seen on 1.96.4 tarball)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "null body (no HTTPS) decodes as empty list"
     },
     {
       "endpoint": "cert/",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)",
       "access": "read",
       "gate": "HasACME",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "CertPair / CertPairWithValidity / GetCertificate",
       "since": "0.10.0",
       "min_tailscaled": "old",
       "tested": "unit (needs HTTPS-enabled tailnet live)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "first fetch may block on ACME issuance; pair split fails closed"
     },
     {
       "endpoint": "set-dns",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "setDNS(name:value:)",
       "access": "write",
       "gate": "HasACME",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "SetDNS",
       "since": "0.10.0",
       "min_tailscaled": "old",
       "tested": "unit (control-plane rate-limited)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "ACME dns-01 TXT records only; control plane restricts names"
     },
     {
       "endpoint": "query-feature",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "queryFeature(_:)",
       "access": "read",
       "gate": "HasServe",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "QueryFeature",
       "since": "0.10.0",
       "min_tailscaled": "old",
-      "tested": "matrix (headscale control plane → skip)",
-      "transports": ["unix", "loopback"],
-      "stability": "stable",
+      "tested": "matrix (headscale control plane \u2192 skip)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "general",
       "notes": "control-plane probe for serve/funnel enablement; 503 without a netmap"
     },
     {
       "endpoint": "bugreport",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "experimental.bugreport(note:)",
       "access": "write",
       "gate": "HasDebug",
+      "upstream_maturity": "stable",
+      "swift_support": "experimental",
+      "upstream_symbol": "BugReport / BugReportWithOpts",
+      "upstream_notes": "upstream-stable; our facade is still in the experimental namespace (promotion tracked in issue draft 04)",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "experimental",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "debug",
       "notes": "drops a marker in the daemon log; returns the marker ID"
     },
     {
       "endpoint": "goroutines",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "symbol": "experimental.goroutines()",
       "access": "read",
-      "gate": "HasDebug",
+      "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "experimental",
+      "upstream_symbol": "Goroutines",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
-      "transports": ["unix", "loopback"],
-      "stability": "experimental",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "debug",
       "notes": "Go stack dump for diagnostics"
     },
     {
       "endpoint": "logtap",
-      "methods": ["GET (stream)"],
+      "methods": [
+        "GET (stream)"
+      ],
       "symbol": "experimental.logtap()",
       "access": "read",
-      "gate": "HasDebug",
+      "gate": "HasLogTail",
+      "upstream_maturity": "unstable",
+      "swift_support": "experimental",
+      "upstream_symbol": "TailDaemonLogs",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix",
-      "transports": ["unix", "loopback (Darwin only)"],
-      "stability": "experimental",
+      "transports": [
+        "unix",
+        "loopback (Darwin only)"
+      ],
       "upstream": "debug",
       "notes": "live daemon log stream"
     },
     {
       "endpoint": "set-gui-visible",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "experimental.setGUIVisible(_:sessionID:)",
       "access": "write",
-      "gate": "core",
+      "gate": "HasDebug || windows || darwin",
+      "upstream_maturity": "unspecified",
+      "swift_support": "experimental",
+      "upstream_symbol": "",
+      "upstream_notes": "GUI-client contract; no public Go client method",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "unit (wire shape)",
-      "transports": ["unix", "loopback"],
-      "stability": "experimental",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "gui-contract",
       "notes": "GUI-client contract; shapes follow Tailscale's own clients"
     },
     {
       "endpoint": "set-push-device-token",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "experimental.setPushDeviceToken(_:)",
       "access": "write",
-      "gate": "core",
+      "gate": "HasDebug",
+      "upstream_maturity": "unspecified",
+      "swift_support": "experimental",
+      "upstream_symbol": "",
+      "upstream_notes": "GUI-client contract; no public Go client method",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "unit (wire shape)",
-      "transports": ["unix", "loopback"],
-      "stability": "experimental",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "gui-contract",
       "notes": "APNs token registration (GUI contract)"
     },
     {
       "endpoint": "handle-push-message",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "symbol": "experimental.handlePushMessage(_:)",
       "access": "write",
-      "gate": "core",
+      "gate": "HasDebug",
+      "upstream_maturity": "unspecified",
+      "swift_support": "experimental",
+      "upstream_symbol": "",
+      "upstream_notes": "GUI-client contract; no public Go client method",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "unit (wire shape)",
-      "transports": ["unix", "loopback"],
-      "stability": "experimental",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
       "upstream": "gui-contract",
       "notes": "delivers a push payload to the daemon (GUI contract)"
+    }
+  ],
+  "upstream_provenance": {
+    "repository": "tailscale/tailscale",
+    "revision": "4c4d1c35f83a21c6069ae09de69b246ed1993f3e",
+    "capability_version": 144,
+    "verified": "2026-08-03",
+    "source": "client/local/{local,cert,serve}.go 'API maturity' doc comments; unannotated methods are upstream-unstable per package documentation. Validated by Scripts/verify-upstream-maturity.py against this exact revision."
+  },
+  "upstream_stable_unimplemented": [
+    {
+      "go_symbol": "WhoIsForService / WhoIsForIP / WhoIsNodeKey / WhoIsProto",
+      "endpoint": "whois",
+      "note": "typed whois variants (protocol, node key, destination-IP, service scoped)"
+    },
+    {
+      "go_symbol": "CheckUpdate",
+      "endpoint": "update/check",
+      "note": "reports the daemon's update availability; does not install anything"
+    },
+    {
+      "go_symbol": "DisconnectControl",
+      "endpoint": "disconnect-control",
+      "note": "graceful removal of HA subnet-router/app-connector replicas before shutdown - administrative, not a test-harness tool"
+    },
+    {
+      "go_symbol": "DialTCP / UserDial",
+      "endpoint": "dial",
+      "note": "raw duplex streams over HTTP upgrade; needs a Swift connection abstraction first (issue draft 04)"
     }
   ]
 }

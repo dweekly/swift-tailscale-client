@@ -48,12 +48,11 @@ final class NewEndpointAPITests: XCTestCase {
 
     await assertThrowsErrorAsync(try await client.whois(address: "100.64.0.99")) { error in
       guard let clientError = error as? TailscaleClientError,
-        case .unexpectedStatus(let code, _, let endpoint) = clientError
+        case .peerNotFound(let endpoint) = clientError
       else {
-        XCTFail("Expected unexpectedStatus error, got \(error)")
+        XCTFail("Expected peerNotFound error, got \(error)")
         return
       }
-      XCTAssertEqual(code, 404)
       XCTAssertEqual(endpoint, "/localapi/v0/whois")
     }
   }
@@ -99,12 +98,12 @@ final class NewEndpointAPITests: XCTestCase {
 
     await assertThrowsErrorAsync(try await client.prefs()) { error in
       guard let clientError = error as? TailscaleClientError,
-        case .unexpectedStatus(let code, _, let endpoint) = clientError
+        case .permissionDenied(let body, let endpoint) = clientError
       else {
-        XCTFail("Expected unexpectedStatus error, got \(error)")
+        XCTFail("Expected permissionDenied error, got \(error)")
         return
       }
-      XCTAssertEqual(code, 403)
+      XCTAssertEqual(String(decoding: body, as: UTF8.self), "forbidden")
       XCTAssertEqual(endpoint, "/localapi/v0/prefs")
     }
   }

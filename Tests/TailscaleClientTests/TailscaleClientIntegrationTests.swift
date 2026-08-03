@@ -400,7 +400,7 @@ import XCTest
         switch error {
         case .endpointUnavailable:
           throw XCTSkip("Daemon built without DNS support; skipping")
-        case .unexpectedStatus(let code, _, _) where code == 403:
+        case .permissionDenied:
           throw XCTSkip("LocalAPI connection lacks write permission for dns-query; skipping")
         default:
           throw error
@@ -447,7 +447,7 @@ import XCTest
         switch error {
         case .endpointUnavailable:
           throw XCTSkip("Daemon built without debug support; skipping")
-        case .unexpectedStatus(let code, _, _) where code == 403:
+        case .permissionDenied:
           throw XCTSkip("LocalAPI connection lacks write permission for goroutines; skipping")
         default:
           throw error

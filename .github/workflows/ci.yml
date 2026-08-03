@@ -59,6 +59,12 @@ jobs:
       - name: Check formatting
         run: swift format lint --strict --recursive Sources Tests
 
+      # The release workflow runs this same script on a macOS runner whose
+      # system bash is 3.2; running it here too keeps that path exercised on
+      # every PR instead of discovering a bashism at tag time.
+      - name: Check release consistency (macOS bash)
+        run: ./Scripts/check-release-consistency.sh
+
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
 
@@ -114,6 +120,13 @@ jobs:
       # Recipe articles may only show code that Examples/Recipes compiles.
       - name: Check recipe snippets match compiled sources
         run: python3 Scripts/check-recipe-snippets.py
+
+      # The upstream_maturity axis is only trustworthy if it matches what
+      # tailscale/tailscale actually annotates at the pinned commit; this
+      # re-derives every annotation from the pinned sources (it has already
+      # caught one hand-transcription error).
+      - name: Verify upstream maturity ledger against pinned revision
+        run: python3 Scripts/verify-upstream-maturity.py
 
   test-tsan:
     name: Test with Thread Sanitizer

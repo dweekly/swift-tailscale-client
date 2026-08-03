@@ -22,6 +22,9 @@ extension TailscaleClient {
     let endpoint = "/localapi/v0/serve-config"
     let request = TailscaleRequest(method: "GET", path: endpoint)
     let response = try await executeWithDeadline(request, endpoint: endpoint)
+    if let error = Self.commonStatusError(response, endpoint: endpoint) {
+      throw error
+    }
     guard response.statusCode == 200 else {
       throw TailscaleClientError.unexpectedStatus(
         code: response.statusCode, body: response.data, endpoint: endpoint)
@@ -115,8 +118,10 @@ extension TailscaleClient {
     }
     let request = TailscaleRequest(method: "GET", path: endpoint, queryItems: queryItems)
     let response = try await executeWithDeadline(request, endpoint: endpoint)
-    if response.statusCode == 404 || response.statusCode == 501 {
-      throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: "acme")
+    if let error = Self.commonStatusError(
+      response, endpoint: endpoint, optionalEndpoint: true, feature: "acme")
+    {
+      throw error
     }
     guard response.statusCode == 200 else {
       throw TailscaleClientError.unexpectedStatus(

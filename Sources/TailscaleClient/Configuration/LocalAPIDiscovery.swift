@@ -34,14 +34,41 @@ public enum TailscaleEndpoint: Sendable, Equatable {
 /// Set `TAILSCALE_DISCOVERY_DEBUG=1` to log each decision to stderr.
 public struct LocalAPIDiscovery {
   /// The outcome of a discovery pass.
-  public struct Result: Sendable, Equatable {
+  public struct Result: Sendable, Equatable, CustomStringConvertible,
+    CustomDebugStringConvertible, CustomReflectable
+  {
     /// Where to connect.
     public var endpoint: TailscaleEndpoint
     /// Auth token for loopback connections, when discovery found one.
+    /// Treat this as a secret: it authenticates every LocalAPI request.
     public var authToken: String?
     /// Capability version to advertise (from `TAILSCALE_LOCALAPI_CAPABILITY`
     /// or the default).
     public var capabilityVersion: Int
+
+    /// Never includes the auth token, so printing a discovery result cannot
+    /// leak credential material.
+    public var description: String {
+      let token = authToken == nil ? "nil" : "<redacted>"
+      return
+        "LocalAPIDiscovery.Result(endpoint: \(endpoint), authToken: \(token), "
+        + "capabilityVersion: \(capabilityVersion))"
+    }
+
+    public var debugDescription: String { description }
+
+    /// `dump(_:)` and `Mirror` follow this instead of the stored properties,
+    /// so the auth token cannot surface through reflection either.
+    public var customMirror: Mirror {
+      Mirror(
+        self,
+        children: [
+          "endpoint": endpoint,
+          "authToken": authToken == nil ? "nil" : "<redacted>",
+          "capabilityVersion": capabilityVersion,
+        ],
+        displayStyle: .struct)
+    }
   }
 
   private let environment: [String: String]
@@ -129,9 +156,11 @@ public struct LocalAPIDiscovery {
         }
         if let mac = MacClientInfo().locateSameUserProof() {
           if debug {
-            let tokenPreview = mac.token.prefix(8)
+            // The token authenticates LocalAPI requests: never log any part
+            // of it. Port + redacted source are enough to diagnose discovery.
             Self.debugLog(
-              "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) token=\(tokenPreview)…")
+              "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) "
+                + "source=\(DiscoveryLog.redactedProofPath(mac.source))")
           }
           return .init(
             endpoint: .loopback(host: "127.0.0.1", port: mac.port),
@@ -165,20 +194,16 @@ public struct LocalAPIDiscovery {
     return (Self.expandPath(Self.defaultSocketPath), nil)
   }
 
-  /// Writes to stderr via fd 2 directly: the C `stderr` global is not
-  /// concurrency-safe under Swift 6 strict concurrency on Glibc.
   private static func debugLog(_ message: String) {
-    let bytes = Array((message + "\n").utf8)
-    bytes.withUnsafeBufferPointer { buffer in
-      _ = write(2, buffer.baseAddress, buffer.count)
-    }
+    DiscoveryLog.emit(message)
   }
 
   private static func expandPath(_ path: String) -> String {
     (path as NSString).expandingTildeInPath
   }
 
-  private static let defaultCapability = 1
+  private static let defaultCapability =
+    TailscaleClientConfiguration.defaultCapabilityVersion
   private static let defaultSocketPath = "/var/run/tailscale/tailscaled.sock"
 
   private static let candidateSockets: [(path: String, authToken: String?)] = [

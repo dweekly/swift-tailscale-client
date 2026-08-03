@@ -4,13 +4,17 @@
 import Foundation
 
 extension TailscaleClient {
-  /// Wrappers over the daemon's unstable debug surfaces.
+  /// Wrappers over the daemon's debug surfaces.
   ///
-  /// Everything reachable through this namespace is **exempt from SemVer**:
-  /// upstream marks these endpoints as debug interfaces that can change or
-  /// vanish in any Tailscale release, and this package mirrors that stance
-  /// (see the stability tiers in `ROADMAP.md`). Reach for them in
-  /// diagnostics tooling; avoid them in production app logic.
+  /// Everything reachable through this namespace is **exempt from SemVer**
+  /// in *this package*: these are debug interfaces that can change or vanish
+  /// between Tailscale releases, and this package mirrors that stance (see
+  /// the stability tiers in `ROADMAP.md`). Upstream maturity varies per
+  /// method — `BugReport`/`BugReportWithOpts` are upstream-stable, while
+  /// `TailDaemonLogs` (logtap) is explicitly unstable and the rest carry no
+  /// annotation; `Documentation/endpoints.json` records each one. Reach for
+  /// this namespace in diagnostics tooling; avoid it in production app
+  /// logic.
   public nonisolated var experimental: ExperimentalClient {
     ExperimentalClient(client: self)
   }

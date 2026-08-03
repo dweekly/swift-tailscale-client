@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """Render the human-readable endpoint tables from Documentation/endpoints.json.
 
-The manifest is the single source of truth for what this package implements.
-This script injects generated tables between BEGIN/END markers in:
+The manifest is the single source of truth for what this package implements,
+including TWO INDEPENDENT stability axes per endpoint:
 
-  - Documentation/LOCALAPI-COVERAGE.md  (implemented-endpoints)
+  - upstream_maturity: Tailscale's own per-method "API maturity" annotation
+    (stable | unstable | unspecified; upstream documents that unannotated
+    methods must be assumed unstable), verified against the revision recorded
+    in the manifest's upstream_provenance block.
+  - swift_support: this package's promise for its Swift facade
+    (supported | preview | experimental).
+
+This script validates those classifications and injects generated tables
+between BEGIN/END markers in:
+
+  - Documentation/LOCALAPI-COVERAGE.md  (implemented-endpoints,
+                                         upstream-stable-unimplemented)
   - Documentation/INTEGRATING.md        (endpoint-quick-reference)
 
 Usage:
@@ -21,59 +32,149 @@ MANIFEST = ROOT / "Documentation" / "endpoints.json"
 
 MARKER_FMT = "<!-- {} GENERATED: {} (Scripts/generate-endpoint-docs.py) -->"
 
+VALID_MATURITY = {"stable", "unstable", "unspecified"}
+VALID_SUPPORT = {"supported", "preview", "experimental"}
+VALID_ACCESS = {"read", "write", "destructive"}
+
 
 def load():
     with open(MANIFEST) as f:
         return json.load(f)
 
 
+def validate(data):
+    problems = []
+    if "upstream_provenance" not in data:
+        problems.append("manifest is missing the upstream_provenance block")
+    for e in data["endpoints"]:
+        name = e.get("endpoint", "<unnamed>")
+        for field, valid in (
+            ("upstream_maturity", VALID_MATURITY),
+            ("swift_support", VALID_SUPPORT),
+            ("access", VALID_ACCESS),
+        ):
+            value = e.get(field)
+            if value not in valid:
+                problems.append(
+                    f"{name}: {field}={value!r} is not one of {sorted(valid)}")
+        if "upstream_symbol" not in e:
+            problems.append(f"{name}: missing upstream_symbol (use \"\" when none exists)")
+        listed = [s.strip() for s in e.get("upstream_symbol", "").split("/") if s.strip()]
+        for symbol, maturity in e.get("upstream_symbol_maturity", {}).items():
+            if maturity not in VALID_MATURITY:
+                problems.append(
+                    f"{name}: upstream_symbol_maturity[{symbol}]={maturity!r} "
+                    f"is not one of {sorted(VALID_MATURITY)}")
+            if symbol not in listed:
+                problems.append(
+                    f"{name}: upstream_symbol_maturity names {symbol}, "
+                    f"which is not in upstream_symbol")
+    if problems:
+        for p in problems:
+            print(f"INVALID  {p}")
+        sys.exit(1)
+
+
+def maturity_cell(e):
+    """Coverage-table cell: entry maturity plus any per-symbol exceptions."""
+    overrides = e.get("upstream_symbol_maturity", {})
+    if not overrides:
+        return e["upstream_maturity"]
+    detail = ", ".join(f"{s}: {m}" for s, m in sorted(overrides.items()))
+    return f"{e['upstream_maturity']} ({detail})"
+
+
+def maturity_phrase(e):
+    mat = e["upstream_maturity"]
+    support = e["swift_support"]
+    if mat == "stable":
+        upstream = "upstream stable"
+    elif mat == "unstable":
+        upstream = "upstream unstable"
+    else:
+        upstream = "no upstream maturity note (assume unstable)"
+    if support == "supported":
+        swift = "supported Swift API"
+        if mat != "stable":
+            swift = "supported Swift normalization layer"
+    elif support == "preview":
+        swift = "preview Swift API"
+    else:
+        swift = "experimental Swift API (SemVer-exempt)"
+    if e.get("upstream_symbol_maturity"):
+        upstream += " (per-symbol exceptions in the coverage matrix)"
+    return f"{upstream}; {swift}"
+
+
 def coverage_table(data):
+    prov = data["upstream_provenance"]
     lines = [
-        "| Endpoint | Method(s) | Swift API | Access | Gate | Since | Min tailscaled | Tested | Notes |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Endpoint | Method(s) | Swift API | Access | Upstream maturity | Swift support "
+        "| Gate | Since | Min tailscaled | Tested | Notes |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for e in data["endpoints"]:
+        notes = e["notes"]
+        if e.get("upstream_notes"):
+            notes = f"{notes}. Upstream: {e['upstream_notes']}"
         lines.append(
-            "| `{endpoint}` | {methods} | `{symbol}` | {access} | {gate} | v{since} "
-            "| {min} | {tested} | {notes} |".format(
+            "| `{endpoint}` | {methods} | `{symbol}` | {access} | {maturity} | {support} "
+            "| {gate} | v{since} | {min} | {tested} | {notes} |".format(
                 endpoint=e["endpoint"],
                 methods=", ".join(e["methods"]),
                 symbol=e["symbol"],
                 access=e["access"],
+                maturity=maturity_cell(e),
+                support=e["swift_support"],
                 gate=e["gate"],
                 since=e["since"],
                 min=e["min_tailscaled"],
                 tested=e["tested"],
-                notes=e["notes"],
+                notes=notes,
             )
         )
+    lines.append("")
+    lines.append(
+        f"Upstream maturity per Tailscale's own \"API maturity\" annotations in "
+        f"`{prov['repository']}` {prov['revision']} (verified {prov['verified']}); "
+        f"methods without an annotation must be assumed unstable, and \"supported\" "
+        f"over an upstream-unstable endpoint means this package normalizes drift — "
+        f"not that Tailscale guarantees the wire contract.")
     lines.append("")
     lines.append(f"Tested against: {data['tested_matrix']}.")
     return "\n".join(lines)
 
 
+def stable_gaps_table(data):
+    lines = [
+        "| Go method | Endpoint | Note |",
+        "|---|---|---|",
+    ]
+    for gap in data["upstream_stable_unimplemented"]:
+        lines.append(
+            f"| `{gap['go_symbol']}` | `{gap['endpoint']}` | {gap['note']} |")
+    return "\n".join(lines)
+
+
 def quick_reference(data):
     lines = [
-        "| Swift API | Endpoint | Access | Availability caveat |",
+        "| Swift API | Endpoint | Access | Stability & availability |",
         "|---|---|---|---|",
     ]
     for e in data["endpoints"]:
-        caveat = "—"
+        caveats = [maturity_phrase(e)]
         if not e["min_tailscaled"].startswith("old"):
-            caveat = f"needs tailscaled {e['min_tailscaled']}"
+            caveats.append(f"needs tailscaled {e['min_tailscaled']}")
         if e["gate"].startswith("Has"):
-            gate_note = f"absent on builds without `{e['gate']}`"
-            caveat = gate_note if caveat == "—" else f"{caveat}; {gate_note}"
+            caveats.append(f"absent on builds without `{e['gate']}`")
         if e["access"] == "destructive":
-            caveat = ("**destructive** — " + caveat) if caveat != "—" else "**destructive**"
-        if e["stability"] == "experimental":
-            caveat = (caveat + "; " if caveat != "—" else "") + "SemVer-exempt"
+            caveats.insert(0, "**destructive**")
         lines.append(
             "| `{symbol}` | `{endpoint}` | {access} | {caveat} |".format(
                 symbol=e["symbol"],
                 endpoint=e["endpoint"],
                 access=e["access"],
-                caveat=caveat,
+                caveat="; ".join(caveats),
             )
         )
     return "\n".join(lines)
@@ -104,10 +205,11 @@ def inject(path, section, body, check):
 def main():
     check = "--check" in sys.argv
     data = load()
+    validate(data)
+    coverage = ROOT / "Documentation" / "LOCALAPI-COVERAGE.md"
     ok = True
-    ok &= inject(
-        ROOT / "Documentation" / "LOCALAPI-COVERAGE.md",
-        "implemented-endpoints", coverage_table(data), check)
+    ok &= inject(coverage, "implemented-endpoints", coverage_table(data), check)
+    ok &= inject(coverage, "upstream-stable-unimplemented", stable_gaps_table(data), check)
     ok &= inject(
         ROOT / "Documentation" / "INTEGRATING.md",
         "endpoint-quick-reference", quick_reference(data), check)
