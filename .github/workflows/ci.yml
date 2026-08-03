@@ -163,16 +163,39 @@ jobs:
       - uses: actions/checkout@v7
 
       # Warnings-as-errors catches broken ``symbol`` links and malformed
-      # directives on every PR instead of at deploy time. The coverage dump
-      # is informational for now; the 1.0 criterion (fail on undocumented
-      # public symbols) gates on it once the emitted schema is pinned down.
+      # directives on every PR instead of at deploy time.
       - name: Build documentation strictly
         run: |
+          set -o pipefail
           swift package --allow-writing-to-directory /tmp/docs-strict \
             generate-documentation --target TailscaleClient \
             --output-path /tmp/docs-strict \
             --warnings-as-errors \
-            --experimental-documentation-coverage --coverage-summary-level brief
+            --experimental-documentation-coverage --coverage-summary-level brief \
+            2>&1 | tee /tmp/docc-build.log
+
+      # Regression floors on the abstract-coverage table above (measured
+      # v0.12.0: Types 93%, Members 70%, Globals 1.6%). The pre-1.0 API
+      # audit raises these to 100 — the 1.0 criterion is no undocumented
+      # public symbols; until then this fails any PR that loses ground.
+      - name: Check documentation coverage floors
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+
+          floors = {"Types": 90.0, "Members": 68.0, "Globals": 1.0}
+          text = open("/tmp/docc-build.log").read()
+          rows = dict(
+              (m.group(1), float(m.group(2)))
+              for m in re.finditer(r"^(Types|Members|Globals)\s*\|\s*([\d.]+)% ", text, re.M))
+          if set(rows) != set(floors):
+              sys.exit(f"::error::coverage table not found in DocC output (got {rows})")
+          failed = [f"{k} {rows[k]}% < floor {floors[k]}%" for k in floors if rows[k] < floors[k]]
+          for k in floors:
+              print(f"{k}: {rows[k]}% abstract coverage (floor {floors[k]}%)")
+          if failed:
+              sys.exit("::error::documentation coverage regressed: " + "; ".join(failed))
+          EOF
 
   test-tsan:
     name: Test with Thread Sanitizer

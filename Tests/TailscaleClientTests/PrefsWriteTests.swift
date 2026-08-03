@@ -292,6 +292,25 @@ final class PrefsWriteTests: XCTestCase {
     XCTAssertEqual(body["AuthKey"] as? String, "tskey-auth-xyz")
   }
 
+  func testStartEncodesUpdatePrefsWithWireKeys() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 204, data: Data())
+    }
+    let client = makeClient(transport: transport)
+    try await client.start(
+      options: StartOptions(
+        updatePrefs: Prefs(controlURL: "http://127.0.0.1:8080", wantRunning: true)))
+
+    let body = try jsonObject((await recorder.requests).first?.body)
+    XCTAssertNil(body["AuthKey"], "unset fields must stay off the wire")
+    let updatePrefs = try XCTUnwrap(body["UpdatePrefs"] as? [String: Any])
+    XCTAssertEqual(updatePrefs["ControlURL"] as? String, "http://127.0.0.1:8080")
+    XCTAssertEqual(updatePrefs["WantRunning"] as? Bool, true)
+    XCTAssertNil(updatePrefs["CorpDNS"], "nil prefs fields must stay off the wire")
+  }
+
   func testStartWithDefaultsSendsEmptyObject() async throws {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in

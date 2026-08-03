@@ -81,7 +81,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 
 ### Docs
 - [x] DocC tutorial: *Build a Tailscale menu bar app*
-- [ ] Verify docs CI hard-fails on undocumented public symbols (the 1.0 criterion) and fix any stragglers
+- [x] Verify docs CI *can* hard-fail on undocumented public symbols — confirmed: the strict DocC lane's abstract-coverage table is parseable and now gates as **regression floors** (Types 90 / Members 68 / Globals 1, measured 93/70/1.6). Raising the floors to 100 means writing ~200 missing member abstracts — that's the pre-1.0 API audit's job, tracked in the 1.0 checklist
 
 ## v1.0.0 — API Freeze
 
@@ -90,7 +90,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 - [ ] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) — after v0.12.0 this means zero unwrapped always-on handlers
 - [ ] Test coverage ≥ 85%; streaming path and transport parsers fully unit-tested
 - [x] Integration matrix green against at least two tailscaled versions (three hermetic headscale lanes — stable / previous-stable / unstable — plus a live self-hosted macOS lane, on every PR)
-- [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols), one tutorial, at least two buildable examples in `Examples/` (StatusDemo and Recipes exist; tutorial ships in v0.12.0)
+- [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols — the abstract-coverage regression floors from v0.12.0 raised to 100%, which means writing the ~200 missing member abstracts in the pre-freeze audit), one tutorial (shipped in v0.12.0), at least two buildable examples in `Examples/` (StatusDemo and Recipes exist)
 - [x] Homebrew formula, Swift Package Index docs, and release automation all live
 - [ ] Unofficial-status disclaimer and the stability policy present in README, DocC landing page, and error output (README/DocC done; audit error/CLI output)
 - [ ] **Pre-freeze API audit**: naming pass against `client/local` conventions; remove deprecated `addProfile()`; decide whether the transport-neutral core and safesocket parity work (issue drafts 05/06) changes any public API — if it does, it lands before the freeze or is redesigned to be additive

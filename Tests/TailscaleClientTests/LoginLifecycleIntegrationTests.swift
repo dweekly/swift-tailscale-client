@@ -55,7 +55,18 @@ import XCTest
         $0.state == .needsLogin
       }
 
-      // 2. Interactive login: the daemon asks control for an auth URL and
+      // 2. logout() deletes the profile, and with it the control URL — a
+      //    plain loginInteractive() here would dial the default control
+      //    plane (observed live: BrowseToURL pointed at login.tailscale.com,
+      //    which headscale can never approve). Re-seed prefs the way GUIs
+      //    do, via start(options:) with UpdatePrefs.
+      let loginServer =
+        ProcessInfo.processInfo.environment["TAILSCALE_LOGIN_SERVER"] ?? "http://127.0.0.1:8080"
+      try await client.start(
+        options: StartOptions(
+          updatePrefs: Prefs(controlURL: loginServer, corpDNS: false, wantRunning: true)))
+
+      // 3. Interactive login: the daemon asks control for an auth URL and
       //    delivers it as BrowseToURL on the bus.
       try await client.loginInteractive()
       let notify = try await collector.waitFor("BrowseToURL after loginInteractive") {
@@ -63,7 +74,11 @@ import XCTest
       }
       let authURL = try XCTUnwrap(notify.browseToURL)
 
-      // 3. Approve the login the way a human would, minus the browser:
+      XCTAssertTrue(
+        authURL.hasPrefix(loginServer),
+        "auth URL must come from the seeded control server, got: \(authURL)")
+
+      // 4. Approve the login the way a human would, minus the browser:
       //    the last path component of headscale's auth URL is the
       //    registration key that `headscale nodes register` accepts.
       let key = try XCTUnwrap(URL(string: authURL)?.lastPathComponent)
@@ -71,7 +86,7 @@ import XCTest
       let user = ProcessInfo.processInfo.environment["TAILSCALE_HEADSCALE_USER"] ?? "ci"
       try runHeadscale(["nodes", "register", "--user", user, "--key", key])
 
-      // 4. The bus reports Running again and a fresh status agrees.
+      // 5. The bus reports Running again and a fresh status agrees.
       _ = try await collector.waitFor("Running state after registration", timeout: 90) {
         $0.state == .running
       }

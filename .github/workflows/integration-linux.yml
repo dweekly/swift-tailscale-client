@@ -128,6 +128,9 @@ jobs:
           TAILSCALE_INTEGRATION_LOGIN: "1"
           TAILSCALE_LOCALAPI_SOCKET: /var/run/tailscale/tailscaled.sock
           TAILSCALE_DISCOVERY_DEBUG: "1"
+          # logout() deletes the profile (control URL included); the test
+          # re-seeds prefs with this before loginInteractive().
+          TAILSCALE_LOGIN_SERVER: http://127.0.0.1:8080
         run: swift test --filter LoginLifecycleIntegrationTests
 
       - name: Dump daemon logs on failure
