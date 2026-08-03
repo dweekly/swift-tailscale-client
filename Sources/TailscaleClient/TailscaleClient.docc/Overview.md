@@ -105,6 +105,8 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 
 ### DNS & Routing Diagnostics
 - ``DNSOSConfig``
+- ``DNSConfig``
+- ``DNSRecord``
 - ``DNSQueryResponse``
 - ``DNSResolver``
 - ``IPForwardingCheck``

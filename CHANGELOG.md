@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- `dnsConfig()` wraps `GET /localapi/v0/dns-config` (requires Tailscale 1.98+; older daemons surface as `endpointUnavailable`, exercised by the new previous-stable CI lane) — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
+- Hermetic headscale nightly now runs a tailscaled version matrix: stable, previous-stable (pinned), and unstable.
+- Hostile-transport test suite: a real Unix fault server exercises accept-then-silence (unary + streaming deadlines, with independent watchdogs so a regressed deadline fails fast instead of hanging CI), missing/refused sockets, and non-200 streaming heads; CLI black-box tests run the built binary to pin `login --timeout` behavior and `watch --json` NDJSON framing; discovery staleness selection is tested with injected probes.
+- CI: a Thread Sanitizer lane (Linux) runs the unit suite under TSan to catch data races in the concurrency-heavy transport and test-harness code.
+
+### Breaking
+
+- `IPNNotify.loginFinished` changed from `Bool?` to `EmptyMessage?` to match the wire format (upstream sends `{}` as a presence marker). Replace `if notify.loginFinished == true` with `if notify.loginFinished != nil`.
+
+### Fixed
+
+- `checkPrefs(_:)` now decodes its response **strictly** and fails closed: daemon-reported failures (HTTP 200 + `Error` field, previously discarded entirely) throw with the daemon's reason, and a malformed 200 body throws `.decoding` instead of silently passing validation.
+- Unix-socket unary requests now poll with cancellation checks and bridge task cancellation into the transport, so `requestTimeout` interrupts a daemon that accepts but never answers.
+- Unix-socket streaming now connects and validates the HTTP response head *before* `watchIPNBus()`/`logtap()` return, restoring the promised throw-on-connect-failure semantics.
+- CLI `login --timeout` races a real timer against the IPN bus (a silent bus now times out) and rejects non-positive values.
+- `routeAll` documentation corrected: it accepts advertised subnet routes (`--accept-routes`); exit-node routing is separate.
+- macOS App Store discovery: the Group Containers fallback no longer recursively scans all containers — it shallow-scans Tailscale's own, orders candidates newest-first, and liveness-probes each with an authenticated status request before selecting (stale proof files are skipped).
+- CLI `watch --json` emits compact NDJSON (ISO 8601 dates) with diagnostics on stderr, making it machine-parseable.
+- `NotifyWatchOpt.allInitial` now includes `initialDriveShares` and `initialOutgoingFiles`.
+- `DNSConfig.routes` tolerates JSON `null` route values (Go nil slices, seen against a live daemon).
+- `DNSConfig.exitNodeFilteredSet` documentation corrected: entries are DNS names the exit node's DNS proxy must not answer (leading-dot entries are suffix matches, others exact) — not CIDR prefixes.
+
+### Changed
+
+- CI coverage floor ratcheted from 55% to 70% (latest measured: 79.2% on macOS).
+
 ## [0.9.0] - 2026-08-03
 
 ### Added

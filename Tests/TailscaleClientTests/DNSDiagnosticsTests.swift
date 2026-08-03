@@ -65,6 +65,61 @@ final class DNSDiagnosticsTests: XCTestCase {
     XCTAssertTrue(notReady.warning?.contains("disabled") ?? false)
   }
 
+  func testDNSConfigDecodesAndRequests() async throws {
+    let body = #"""
+      {
+        "Resolvers": [{"Addr": "1.1.1.1"}],
+        "Routes": {"corp.example.com.": [{"Addr": "10.0.0.53"}]},
+        "Domains": ["example.ts.net"],
+        "Proxied": true,
+        "CertDomains": ["host.example.ts.net"],
+        "ExtraRecords": [{"Name": "vpn.example.ts.net", "Value": "100.64.0.1"}]
+      }
+      """#
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 200, data: Data(body.utf8))
+    }
+    let client = makeClient(transport: transport)
+    let config = try await client.dnsConfig()
+
+    XCTAssertEqual(config.resolvers.first?.address, "1.1.1.1")
+    XCTAssertEqual(config.routes["corp.example.com."]?.first?.address, "10.0.0.53")
+    XCTAssertTrue(config.proxied)
+    XCTAssertEqual(config.certDomains, ["host.example.ts.net"])
+    XCTAssertEqual(config.extraRecords.first?.name, "vpn.example.ts.net")
+    XCTAssertEqual(config.extraRecords.first?.value, "100.64.0.1")
+
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.method, "GET")
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/dns-config")
+  }
+
+  func testDNSConfigMaps404ToEndpointUnavailable() async {
+    // dns-config was added in Tailscale 1.98; the previous stable 404s it.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 404, data: Data("404 page not found".utf8))
+    }
+    let client = makeClient(transport: transport)
+    await assertThrowsErrorAsync(try await client.dnsConfig()) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .endpointUnavailable(let endpoint, _) = clientError
+      else {
+        XCTFail("Expected endpointUnavailable, got \(error)")
+        return
+      }
+      XCTAssertEqual(endpoint, "/localapi/v0/dns-config")
+    }
+  }
+
+  func testDNSConfigToleratesEmptyObject() throws {
+    let config = try JSONDecoder.tailscale().decode(DNSConfig.self, from: Data("{}".utf8))
+    XCTAssertTrue(config.resolvers.isEmpty)
+    XCTAssertTrue(config.routes.isEmpty)
+    XCTAssertFalse(config.proxied)
+  }
+
   // MARK: - Request shapes
 
   func testDNSOSConfigRequestShape() async throws {

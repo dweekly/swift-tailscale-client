@@ -120,7 +120,7 @@ final class PrefsWriteTests: XCTestCase {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
-      return TailscaleResponse(statusCode: 200, data: Data())
+      return TailscaleResponse(statusCode: 200, data: Data("{}".utf8))
     }
     let client = makeClient(transport: transport)
 
@@ -151,6 +151,71 @@ final class PrefsWriteTests: XCTestCase {
         return
       }
     }
+  }
+
+  func testCheckPrefsThrowsOnDaemonReportedError() async throws {
+    // The daemon reports invalid prefs as HTTP 200 with an Error field.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(
+        statusCode: 200, data: Data(#"{"Error": "exit node not found"}"#.utf8))
+    }
+    let client = makeClient(transport: transport)
+    let prefs = try JSONDecoder.tailscale().decode(
+      Prefs.self, from: try fixture(named: "prefs-sample", type: "json"))
+
+    await assertThrowsErrorAsync(try await client.checkPrefs(prefs)) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .unexpectedStatus(let code, let body, _) = clientError
+      else {
+        XCTFail("Expected unexpectedStatus, got \(error)")
+        return
+      }
+      XCTAssertEqual(code, 200)
+      XCTAssertEqual(String(data: body, encoding: .utf8), "exit node not found")
+    }
+  }
+
+  func testCheckPrefsAcceptsEmptyErrorAsValid() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data(#"{"Error": ""}"#.utf8))
+    }
+    let client = makeClient(transport: transport)
+    let prefs = try JSONDecoder.tailscale().decode(
+      Prefs.self, from: try fixture(named: "prefs-sample", type: "json"))
+    try await client.checkPrefs(prefs)  // must not throw
+  }
+
+  func testCheckPrefsFailsClosedOnMalformedResponses() async throws {
+    // A validity check must never treat garbage as approval.
+    let prefs = try JSONDecoder.tailscale().decode(
+      Prefs.self, from: try fixture(named: "prefs-sample", type: "json"))
+
+    for body in ["not json at all", #"{"Error": 123}"#, ""] {
+      let transport = MockTransport { _, _ in
+        TailscaleResponse(statusCode: 200, data: Data(body.utf8))
+      }
+      let client = makeClient(transport: transport)
+      await assertThrowsErrorAsync(try await client.checkPrefs(prefs)) { error in
+        guard let clientError = error as? TailscaleClientError,
+          case .decoding = clientError
+        else {
+          XCTFail("Malformed body \(body) must fail closed with .decoding, got \(error)")
+          return
+        }
+      }
+    }
+  }
+
+  func testCheckPrefsTreatsUnknownFieldsAsValid() async throws {
+    // Unknown *extra* fields are fine (tolerant decoding); only a malformed
+    // or missing contract shape fails.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data(#"{"Error": "", "Future": true}"#.utf8))
+    }
+    let client = makeClient(transport: transport)
+    let prefs = try JSONDecoder.tailscale().decode(
+      Prefs.self, from: try fixture(named: "prefs-sample", type: "json"))
+    try await client.checkPrefs(prefs)
   }
 
   // MARK: - setUseExitNode

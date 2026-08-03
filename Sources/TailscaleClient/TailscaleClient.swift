@@ -158,12 +158,23 @@ public actor TailscaleClient {
   ///
   /// - Parameter prefs: The complete preferences to validate.
   /// - Throws: ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` with the
-  ///   daemon's explanation when the prefs are invalid; nothing on success.
+  ///   daemon's explanation when the prefs are invalid (the daemon reports
+  ///   validation failures as HTTP 200 with an `Error` field, surfaced here
+  ///   as `unexpectedStatus(200, <reason>, …)`);
+  ///   ``TailscaleClientError/decoding(_:body:endpoint:)`` when the response
+  ///   is malformed — a validity check must fail closed, never open.
   public func checkPrefs(_ prefs: Prefs) async throws {
     let endpoint = "/localapi/v0/check-prefs"
     let body = try JSONEncoder().encode(prefs)
     let request = TailscaleRequest(method: "POST", path: endpoint, body: body)
-    _ = try await performRawRequest(request, endpoint: endpoint)
+    // Strict decode: the daemon answers 200 even for invalid prefs, with the
+    // reason in {"Error": "..."} — an empty or absent Error means valid, and
+    // anything that is not that shape is an error, not a pass.
+    let result: CheckPrefsResult = try await performRequest(request, endpoint: endpoint)
+    if let reason = result.error, !reason.isEmpty {
+      throw TailscaleClientError.unexpectedStatus(
+        code: 200, body: Data(reason.utf8), endpoint: endpoint)
+    }
   }
 
   /// Toggles use of the currently-selected exit node without forgetting
@@ -321,7 +332,9 @@ public actor TailscaleClient {
   /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the
   /// IPN bus) — not the stable string ID shown in `status`. A 404 surfaces as
   /// ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` and means the
-  /// peer is not in the current netmap, not that the endpoint is missing.
+  /// peer is not in the current netmap — or, on daemons that predate this
+  /// 2026 endpoint (added around Tailscale 1.98), that the path itself is
+  /// unknown; the two are indistinguishable.
   ///
   /// - Parameter id: The peer's numeric node ID.
   /// - Returns: The peer's `tailcfg.Node` record decoded as ``WhoIsNode``.
@@ -387,6 +400,25 @@ public actor TailscaleClient {
       ])
     return try await performRequest(
       request, endpoint: endpoint, optionalEndpoint: true, feature: "dns")
+  }
+
+  /// Fetches the tailnet's DNS configuration from the current netmap —
+  /// what the control plane wants DNS to be, versus ``dnsOSConfig()``
+  /// which reports what is installed on the OS.
+  ///
+  /// Requires Tailscale 1.98+ — the endpoint does not exist on earlier
+  /// daemons, which surface as
+  /// ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``.
+  ///
+  /// - Returns: The parsed response from `/localapi/v0/dns-config`.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` on daemons
+  ///   older than 1.98; `.unexpectedStatus(503, …)` when the daemon has no
+  ///   netmap yet; other `TailscaleClientError` cases on failure.
+  public func dnsConfig() async throws -> DNSConfig {
+    let endpoint = "/localapi/v0/dns-config"
+    return try await performRequest(
+      TailscaleRequest(path: endpoint), endpoint: endpoint, optionalEndpoint: true,
+      feature: "dns")
   }
 
   /// Checks whether the host is configured to forward IP traffic — the

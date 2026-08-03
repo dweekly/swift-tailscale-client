@@ -5,6 +5,7 @@ import Foundation
 
 #if os(macOS)
   import Darwin
+  import os
 #endif
 
 #if os(macOS)
@@ -14,6 +15,14 @@ import Foundation
       var token: String
       var source: String
     }
+
+    /// Liveness probe for a loopback candidate; injectable for tests.
+    /// Defaults to an authenticated status request against the port.
+    var probeOverride: (@Sendable (UInt16, String) -> Bool)?
+
+    /// Candidate directories to scan; injectable for tests. Defaults to
+    /// Tailscale's Group Containers (plus `TAILSCALE_SAMEUSER_DIR`).
+    var directoriesOverride: [URL]?
 
     /// Locates the sameuserproof file asynchronously.
     ///
@@ -149,25 +158,82 @@ import Foundation
 
     // MARK: - Filesystem discovery (fallback)
 
-    private func locateViaFilesystem() -> Result? {
+    func locateViaFilesystem() -> Result? {
       let fm = FileManager.default
-      for url in candidateDirectories() {
-        guard fm.fileExists(atPath: url.path) else { continue }
-        log("Scanning directory \(url.path) for sameuserproof files")
-        if let enumerator = fm.enumerator(
-          at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        {
-          for case let fileURL as URL in enumerator {
-            if let parsed = parseSameUserProofPath(fileURL.path) {
-              return Result(port: parsed.port, token: parsed.token, source: fileURL.path)
-            }
-          }
+      var candidates: [(url: URL, port: UInt16, token: String, modified: Date)] = []
+      for dir in candidateDirectories() {
+        guard fm.fileExists(atPath: dir.path) else { continue }
+        log("Scanning directory \(dir.path) for sameuserproof files")
+        // Shallow scan only: proof files sit directly in the Tailscale
+        // container; recursing through all of Group Containers wastes time
+        // and risks touching unrelated apps' data.
+        guard
+          let contents = try? fm.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])
+        else { continue }
+        for fileURL in contents {
+          guard let parsed = parseSameUserProofPath(fileURL.path) else { continue }
+          let modified =
+            (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey])
+              .contentModificationDate) ?? .distantPast
+          candidates.append((fileURL, parsed.port, parsed.token, modified))
         }
+      }
+      // Proof files from previously installed flavors linger, so candidates
+      // are liveness-probed — concurrently, under one overall deadline, so a
+      // pile of stale files cannot stack sequential waits and freeze a
+      // synchronous caller. Newest live candidate wins.
+      let probe = probeOverride ?? Self.liveProbe
+      let ordered = candidates.sorted { $0.modified > $1.modified }
+      guard !ordered.isEmpty else { return nil }
+
+      let results = OSAllocatedUnfairLock(initialState: [Int: Bool]())
+      let group = DispatchGroup()
+      for (index, candidate) in ordered.enumerated() {
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+          let alive = probe(candidate.port, candidate.token)
+          results.withLock { $0[index] = alive }
+          group.leave()
+        }
+      }
+      _ = group.wait(timeout: .now() + 1.5)
+
+      let snapshot = results.withLock { $0 }
+      for (index, candidate) in ordered.enumerated() {
+        if snapshot[index] == true {
+          return Result(
+            port: candidate.port, token: candidate.token, source: candidate.url.path)
+        }
+        let reason = snapshot[index] == nil ? "probe timed out" : "port not answering"
+        log("Ignoring sameuserproof at \(candidate.url.path) (\(reason))")
       }
       return nil
     }
 
+    /// Confirms a loopback LocalAPI candidate actually answers an
+    /// authenticated status request before it is selected.
+    private static let liveProbe: @Sendable (UInt16, String) -> Bool = { port, token in
+      guard let url = URL(string: "http://127.0.0.1:\(port)/localapi/v0/status?peers=false")
+      else { return false }
+      var request = URLRequest(url: url, timeoutInterval: 0.8)
+      let credentials = Data(":\(token)".utf8).base64EncodedString()
+      request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
+      let semaphore = DispatchSemaphore(value: 0)
+      let alive = OSAllocatedUnfairLock(initialState: false)
+      URLSession.shared.dataTask(with: request) { _, response, _ in
+        if (response as? HTTPURLResponse)?.statusCode == 200 {
+          alive.withLock { $0 = true }
+        }
+        semaphore.signal()
+      }.resume()
+      _ = semaphore.wait(timeout: .now() + 1.0)
+      return alive.withLock { $0 }
+    }
+
     private func candidateDirectories() -> [URL] {
+      if let directoriesOverride { return directoriesOverride }
       var urls: [URL] = []
       let fm = FileManager.default
       if let dirOverride = ProcessInfo.processInfo.environment["TAILSCALE_SAMEUSER_DIR"] {
@@ -177,8 +243,8 @@ import Foundation
       let homeGroup = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(
         "Library/Group Containers", isDirectory: true)
       let systemGroup = URL(fileURLWithPath: "/Library/Group Containers", isDirectory: true)
-      urls.append(homeGroup)
-      urls.append(systemGroup)
+      // Only Tailscale's own containers are scanned — never the whole
+      // Group Containers tree.
       if let homeContents = try? fm.contentsOfDirectory(
         at: homeGroup, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
       {

@@ -142,7 +142,7 @@ for try await notification in try await client.watchIPNBus() {
 | `derpMap()` | Fetch the DERP relay map (regions, nodes, STUN/DERP ports) |
 | `suggestExitNode(forceProbe:)` | Ask the daemon which exit node it would pick right now |
 | `netcheck(options:)` | Client-side STUN probe of every DERP region: latency, public IP, NAT hardness, UDP reachability |
-| `dnsOSConfig()` | The DNS configuration Tailscale has installed on the OS |
+| `dnsOSConfig()` / `dnsConfig()` | Installed OS DNS state / the tailnet's DNS intent from the netmap |
 | `dnsQuery(name:type:)` | Resolve a name through tailscaled's forwarder (the MagicDNS path) |
 | `checkIPForwarding()` | Subnet-router / exit-node readiness preflight |
 | `peer(byID:)` / `userProfile(byID:)` | Resolve numeric node and user IDs to full records |

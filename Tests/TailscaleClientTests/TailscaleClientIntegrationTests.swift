@@ -209,8 +209,11 @@ import XCTest
     func testSuggestExitNodeAgainstLiveDaemon() async throws {
       do {
         let suggestion = try await client.suggestExitNode()
-        XCTAssertFalse(
-          suggestion.id?.isEmpty ?? true, "A returned suggestion should carry a node ID")
+        // Some daemon builds report "no candidates" as an empty 200 rather
+        // than an HTTP error (seen on headscale tailnets with no exit nodes).
+        guard let id = suggestion.id, !id.isEmpty else {
+          throw XCTSkip("Daemon returned an empty suggestion (no exit nodes); skipping")
+        }
       } catch let error as TailscaleClientError {
         switch error {
         case .endpointUnavailable:
@@ -315,9 +318,16 @@ import XCTest
         throw XCTSkip("whois returned no node for self")
       }
 
-      let fetched = try await client.peer(byID: node.id)
-      XCTAssertEqual(fetched.id, node.id)
-      XCTAssertEqual(fetched.stableID, node.stableID)
+      do {
+        let fetched = try await client.peer(byID: node.id)
+        XCTAssertEqual(fetched.id, node.id)
+        XCTAssertEqual(fetched.stableID, node.stableID)
+      } catch let error as TailscaleClientError {
+        // peer-by-id is also a 2026 addition; a 404 for our own known-valid
+        // node ID means the daemon predates the endpoint (seen on 1.96.4).
+        guard case .unexpectedStatus(404, _, _) = error else { throw error }
+        throw XCTSkip("Daemon predates the peer-by-id endpoint; skipping")
+      }
 
       if let userID = node.user {
         do {
@@ -335,7 +345,9 @@ import XCTest
     }
 
     func testPeerByIDNotFoundAgainstLiveDaemon() async throws {
-      await assertThrowsErrorAsync(try await client.peer(byID: 1)) { error in
+      // Small tailnets (headscale!) really do have a node with ID 1, so the
+      // bogus ID must be far outside any plausible allocation.
+      await assertThrowsErrorAsync(try await client.peer(byID: 999_999_999_999)) { error in
         guard let clientError = error as? TailscaleClientError,
           case .unexpectedStatus(let code, _, _) = clientError
         else {
@@ -355,8 +367,15 @@ import XCTest
         // report empty arrays, which is still a valid response.
         print("dns-osconfig: \(config.nameservers) search=\(config.searchDomains.count)")
       } catch let error as TailscaleClientError {
-        guard case .endpointUnavailable = error else { throw error }
-        throw XCTSkip("Daemon built without DNS support; skipping")
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without DNS support; skipping")
+        case .unexpectedStatus(500, _, _):
+          // Userspace-networking daemons manage no OS DNS and answer 500.
+          throw XCTSkip("Daemon has no OS DNS configuration (userspace mode); skipping")
+        default:
+          throw error
+        }
       }
     }
 
@@ -375,6 +394,24 @@ import XCTest
           throw XCTSkip("Daemon built without DNS support; skipping")
         case .unexpectedStatus(let code, _, _) where code == 403:
           throw XCTSkip("LocalAPI connection lacks write permission for dns-query; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
+    func testDNSConfigAgainstLiveDaemon() async throws {
+      do {
+        let config = try await client.dnsConfig()
+        print("dns-config: proxied=\(config.proxied) domains=\(config.domains.count)")
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          // The typed unavailability is the asserted contract on daemons
+          // older than 1.98 (exercised by the previous-stable lane).
+          throw XCTSkip("Daemon predates dns-config (Tailscale 1.98+); skipping")
+        case .unexpectedStatus(503, _, _):
+          throw XCTSkip("No netmap available yet; skipping")
         default:
           throw error
         }

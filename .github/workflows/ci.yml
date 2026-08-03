@@ -14,6 +14,9 @@ jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-26
+    # Defense in depth on every job: a hung test should fail the job in
+    # minutes, not consume the 6-hour runner default.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -44,9 +47,9 @@ jobs:
             -instr-profile "$PROFDATA" \
             -ignore-filename-regex '(Tests/|\.build/|Sources/tailscale-swift/)' \
             | python3 -c "import json,sys; print(round(json.load(sys.stdin)['data'][0]['totals']['lines']['percent'], 1))")
-          # Floor just under the measured v0.4.0 baseline (56.8%); ratchets per
-          # Documentation/TESTING.md as the transport/parser tests land (v0.5.0).
-          MIN=55
+          # Ratcheted to 70 at v0.9.0 (~79% measured since); raise as coverage
+          # grows, never lower without a documented reason (see TESTING.md).
+          MIN=70
           echo "Library line coverage: ${PERCENT}% (floor: ${MIN}%)"
           if ! python3 -c "import sys; sys.exit(0 if float('$PERCENT') >= $MIN else 1)"; then
             echo "::error::Line coverage ${PERCENT}% is below the ${MIN}% floor (see Documentation/TESTING.md)"
@@ -63,6 +66,7 @@ jobs:
     name: Test on Linux
     runs-on: ubuntu-24.04
     container: swift:6.1
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -78,9 +82,28 @@ jobs:
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
 
+  test-tsan:
+    name: Test with Thread Sanitizer
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    # TSan roughly doubles runtime, so this gets headroom over test-linux.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # TSan guards the concurrency-heavy paths (UnixSocketTransport's
+      # detached tasks, the FaultUnixServer test harness) against data
+      # races that functional tests would only catch by flaking.
+      - name: Build (thread sanitizer)
+        run: swift build --sanitize=thread
+
+      - name: Run tests (thread sanitizer)
+        run: swift test --sanitize=thread
+
   build-platforms:
     name: Build (${{ matrix.platform }})
     runs-on: macos-26
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
