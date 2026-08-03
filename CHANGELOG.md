@@ -8,7 +8,8 @@ All notable changes to this project will be documented in this file. The format 
 
 - `dnsConfig()` wraps `GET /localapi/v0/dns-config` (requires Tailscale 1.98+; older daemons surface as `endpointUnavailable`, exercised by the new previous-stable CI lane) — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
 - Hermetic headscale nightly now runs a tailscaled version matrix: stable, previous-stable (pinned), and unstable.
-- Hostile-transport test suite: a real Unix fault server exercises accept-then-silence (unary + streaming deadlines), missing/refused sockets, and non-200 streaming heads; CLI black-box tests run the built binary to pin `login --timeout` behavior and `watch --json` NDJSON framing; discovery staleness selection is tested with injected probes.
+- Hostile-transport test suite: a real Unix fault server exercises accept-then-silence (unary + streaming deadlines, with independent watchdogs so a regressed deadline fails fast instead of hanging CI), missing/refused sockets, and non-200 streaming heads; CLI black-box tests run the built binary to pin `login --timeout` behavior and `watch --json` NDJSON framing; discovery staleness selection is tested with injected probes.
+- CI: a Thread Sanitizer lane (Linux) runs the unit suite under TSan to catch data races in the concurrency-heavy transport and test-harness code.
 
 ### Breaking
 
@@ -25,10 +26,11 @@ All notable changes to this project will be documented in this file. The format 
 - CLI `watch --json` emits compact NDJSON (ISO 8601 dates) with diagnostics on stderr, making it machine-parseable.
 - `NotifyWatchOpt.allInitial` now includes `initialDriveShares` and `initialOutgoingFiles`.
 - `DNSConfig.routes` tolerates JSON `null` route values (Go nil slices, seen against a live daemon).
+- `DNSConfig.exitNodeFilteredSet` documentation corrected: entries are DNS names the exit node's DNS proxy must not answer (leading-dot entries are suffix matches, others exact) — not CIDR prefixes.
 
 ### Changed
 
-- CI coverage floor ratcheted from 55% to 70% (measured: 73.7%).
+- CI coverage floor ratcheted from 55% to 70% (latest measured: 79.2% on macOS).
 
 ## [0.9.0] - 2026-08-03
 

@@ -147,8 +147,9 @@ public struct DNSConfig: Codable, Sendable, Equatable {
   /// Extra DNS records the tailnet defines.
   public var extraRecords: [DNSRecord]
 
-  /// App connectors/exit nodes whose DNS answers are filtered (CIDR
-  /// prefixes as strings).
+  /// DNS names the exit node's DNS proxy must not answer. An entry with a
+  /// leading dot (`.example.com`) is a suffix match; any other entry is an
+  /// exact match.
   public var exitNodeFilteredSet: [String]
 
   /// Creates an instance for tests, previews, or fixtures.

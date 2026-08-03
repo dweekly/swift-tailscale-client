@@ -88,7 +88,7 @@ Every transport/decoding change runs against this list; each item becomes a name
 ## Coverage policy
 
 - Coverage measured in CI (`swift test --enable-code-coverage` + `llvm-cov export`), with a hard floor enforced in `ci.yml` — no external service required. Codecov upload is a possible later addition for badges/patch checks.
-- Floor: **70%** at v0.4.0 (measured baseline: 56.8% — `UnixSocketTransport` and `MacClientInfo` are integration-only until their v0.5.0 parser extraction), ratcheting to **75%** once those land and **85%** by v1.0. The floor tracks just under the measured baseline so regressions fail while honest measurement stays possible.
+- Floor: **70%** (raised at v0.9.0; latest measured ~79% on macOS). History: the floor started at **55%** at v0.4.0 against a 56.8% baseline, when `UnixSocketTransport` and `MacClientInfo` were integration-only; the v0.5.0 parser extraction and later test rounds lifted the measurement well past that. Next ratchet target: **85%** by v1.0. The floor tracks under the measured value so regressions fail while honest measurement stays possible.
 - Streaming path and transport parsers must reach full branch coverage — they are the historical blind spot (the v0.3.x headline features shipped untested).
 
 ## Integration testing

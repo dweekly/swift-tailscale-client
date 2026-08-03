@@ -24,11 +24,19 @@ import XCTest
 
     let path: String
     private let behaviors: [Behavior]
+
+    /// One lock guards all lifecycle state below. Every file descriptor is
+    /// closed exactly once: ownership is transferred out under the lock
+    /// (`listenFD = -1`, removal from `openFDs`) before the close happens,
+    /// so a stop() racing the accept thread — or a second stop() from
+    /// deinit after `defer { server.stop() }` — can never double-close a
+    /// descriptor number the OS may have already reused.
+    private let lock = NSLock()
     private var listenFD: Int32 = -1
-    private let heldFDs = NSLock()
     private var openFDs: [Int32] = []
-    private var thread: Thread?
     private var stopped = false
+
+    private var thread: Thread?
 
     /// - Parameter behaviors: one entry per accepted connection; the last
     ///   entry repeats for any further connections.
@@ -36,40 +44,51 @@ import XCTest
       self.behaviors = behaviors
       self.path = NSTemporaryDirectory() + "fault-\(UUID().uuidString.prefix(8)).sock"
 
-      listenFD = socket(AF_UNIX, Self.streamType, 0)
-      guard listenFD >= 0 else { throw POSIXError(.EIO) }
+      let fd = socket(AF_UNIX, Self.streamType, 0)
+      guard fd >= 0 else { throw POSIXError(.EIO) }
 
       var addr = sockaddr_un()
       addr.sun_family = sa_family_t(AF_UNIX)
       let maxLength = MemoryLayout.size(ofValue: addr.sun_path) / MemoryLayout<CChar>.stride
-      guard path.utf8.count < maxLength else { throw POSIXError(.ENAMETOOLONG) }
+      guard path.utf8.count < maxLength else {
+        close(fd)
+        throw POSIXError(.ENAMETOOLONG)
+      }
       withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
         let base = buffer.baseAddress!.assumingMemoryBound(to: CChar.self)
         _ = strncpy(base, path, maxLength - 1)
       }
       let size = socklen_t(MemoryLayout<sockaddr_un>.size)
       let bindResult = withUnsafePointer(to: &addr) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listenFD, $0, size) }
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, size) }
       }
-      guard bindResult == 0, listen(listenFD, 4) == 0 else {
-        close(listenFD)
+      guard bindResult == 0, listen(fd, 4) == 0 else {
+        close(fd)
         throw POSIXError(.EIO)
       }
+      listenFD = fd
 
-      let thread = Thread { [weak self] in self?.acceptLoop() }
+      let thread = Thread { [weak self] in self?.acceptLoop(listenerFD: fd) }
       thread.name = "FaultUnixServer"
       thread.start()
       self.thread = thread
     }
 
-    private func acceptLoop() {
+    private func acceptLoop(listenerFD: Int32) {
       var connectionIndex = 0
-      while !stopped {
-        let fd = accept(listenFD, nil, nil)
+      while !isStopped {
+        let fd = accept(listenerFD, nil, nil)
         guard fd >= 0 else { return }
-        heldFDs.lock()
+
+        lock.lock()
+        if stopped {
+          // stop() already ran and will never see this fd; close it here.
+          lock.unlock()
+          close(fd)
+          return
+        }
         openFDs.append(fd)
-        heldFDs.unlock()
+        lock.unlock()
 
         // Drain whatever request bytes arrive first.
         var buffer = [UInt8](repeating: 0, count: 4096)
@@ -87,25 +106,43 @@ import XCTest
             _ = write(fd, pointer.baseAddress, pointer.count - 1)  // omit NUL
           }
           if closeAfterWrite {
-            close(fd)
-            heldFDs.lock()
+            // Take ownership under the lock so a concurrent stop() cannot
+            // also close this descriptor.
+            lock.lock()
+            let owned = openFDs.contains(fd)
             openFDs.removeAll { $0 == fd }
-            heldFDs.unlock()
+            lock.unlock()
+            if owned { close(fd) }
           }
         }
       }
     }
 
-    /// Stops the server. Pass `keepSocketFile: true` to leave the (now
-    /// unserved) socket file behind, which makes connects fail with
-    /// ECONNREFUSED instead of ENOENT.
+    private var isStopped: Bool {
+      lock.lock()
+      defer { lock.unlock() }
+      return stopped
+    }
+
+    /// Stops the server. Thread-safe and idempotent: only the first call
+    /// closes descriptors; later calls (including deinit after a
+    /// `defer { server.stop() }`) are no-ops apart from the unlink.
+    /// Pass `keepSocketFile: true` to leave the (now unserved) socket file
+    /// behind, which makes connects fail with ECONNREFUSED instead of ENOENT.
     func stop(keepSocketFile: Bool = false) {
+      lock.lock()
+      let alreadyStopped = stopped
       stopped = true
-      if listenFD >= 0 { close(listenFD) }
-      heldFDs.lock()
-      for fd in openFDs { close(fd) }
+      let listener = listenFD
+      listenFD = -1
+      let connections = openFDs
       openFDs.removeAll()
-      heldFDs.unlock()
+      lock.unlock()
+
+      if !alreadyStopped {
+        if listener >= 0 { close(listener) }
+        for fd in connections { close(fd) }
+      }
       if !keepSocketFile {
         unlink(path)
       }
@@ -113,7 +150,6 @@ import XCTest
 
     deinit {
       stop()
-      unlink(path)
     }
 
     private static var streamType: Int32 {

@@ -22,9 +22,22 @@ import XCTest
       return TailscaleClient(configuration: configuration)
     }
 
+    /// Independent kill switch for the timeout tests: if deadline handling
+    /// regresses, awaiting the broken operation would otherwise hang until
+    /// the job-level CI timeout. Closing the server forces an EOF error
+    /// instead, so the test fails promptly (wrong error + elapsed bound).
+    private func armWatchdog(_ server: FaultUnixServer) -> Task<Void, any Error> {
+      Task {
+        try await Task.sleep(for: .seconds(5))
+        server.stop()
+      }
+    }
+
     func testUnaryTimesOutWhenServerAcceptsButNeverReplies() async throws {
       let server = try FaultUnixServer(behaviors: [.acceptThenSilence])
       defer { server.stop() }
+      let watchdog = armWatchdog(server)
+      defer { watchdog.cancel() }
       let client = makeClient(path: server.path, timeout: .milliseconds(700))
 
       let start = ContinuousClock.now
@@ -96,6 +109,8 @@ import XCTest
     func testStreamingTimesOutWhenServerAcceptsButNeverSendsHead() async throws {
       let server = try FaultUnixServer(behaviors: [.acceptThenSilence])
       defer { server.stop() }
+      let watchdog = armWatchdog(server)
+      defer { watchdog.cancel() }
       let client = makeClient(path: server.path, timeout: .milliseconds(700))
 
       let start = ContinuousClock.now
