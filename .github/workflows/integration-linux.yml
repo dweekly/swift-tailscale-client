@@ -32,7 +32,7 @@ jobs:
           # newly-wrapped endpoint needs optional-endpoint gating (as
           # dns-config demonstrated before this lane existed).
           - track: previous-stable
-            pin: "1.96.5"
+            pin: "1.96.4"
     steps:
       - uses: actions/checkout@v7
 
