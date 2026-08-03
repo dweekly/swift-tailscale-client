@@ -168,10 +168,13 @@ public actor TailscaleClient {
     let raw = try await performRawRequest(request, endpoint: endpoint)
     // The daemon answers 200 even for invalid prefs, with the reason in
     // {"Error": "..."} — an empty or absent Error means valid.
-    struct CheckResult: Decodable { let Error: String? }
+    struct CheckResult: Decodable {
+      let error: String?
+      enum CodingKeys: String, CodingKey { case error = "Error" }
+    }
     if let data = raw.data(using: .utf8),
       let result = try? JSONDecoder().decode(CheckResult.self, from: data),
-      let reason = result.Error, !reason.isEmpty
+      let reason = result.error, !reason.isEmpty
     {
       throw TailscaleClientError.unexpectedStatus(
         code: 200, body: Data(reason.utf8), endpoint: endpoint)
