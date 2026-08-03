@@ -5,6 +5,7 @@ import Foundation
 
 #if os(macOS)
   import Darwin
+  import os
 #endif
 
 #if os(macOS)
@@ -151,20 +152,56 @@ import Foundation
 
     private func locateViaFilesystem() -> Result? {
       let fm = FileManager.default
-      for url in candidateDirectories() {
-        guard fm.fileExists(atPath: url.path) else { continue }
-        log("Scanning directory \(url.path) for sameuserproof files")
-        if let enumerator = fm.enumerator(
-          at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        {
-          for case let fileURL as URL in enumerator {
-            if let parsed = parseSameUserProofPath(fileURL.path) {
-              return Result(port: parsed.port, token: parsed.token, source: fileURL.path)
-            }
-          }
+      var candidates: [(url: URL, port: UInt16, token: String, modified: Date)] = []
+      for dir in candidateDirectories() {
+        guard fm.fileExists(atPath: dir.path) else { continue }
+        log("Scanning directory \(dir.path) for sameuserproof files")
+        // Shallow scan only: proof files sit directly in the Tailscale
+        // container; recursing through all of Group Containers wastes time
+        // and risks touching unrelated apps' data.
+        guard
+          let contents = try? fm.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])
+        else { continue }
+        for fileURL in contents {
+          guard let parsed = parseSameUserProofPath(fileURL.path) else { continue }
+          let modified =
+            (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey])
+              .contentModificationDate) ?? .distantPast
+          candidates.append((fileURL, parsed.port, parsed.token, modified))
         }
       }
+      // Proof files from previously installed flavors linger; try newest
+      // first and require a live, authenticated answer before selecting.
+      for candidate in candidates.sorted(by: { $0.modified > $1.modified }) {
+        if probeLocalAPI(port: candidate.port, token: candidate.token) {
+          return Result(
+            port: candidate.port, token: candidate.token, source: candidate.url.path)
+        }
+        log("Ignoring stale sameuserproof at \(candidate.url.path) (port not answering)")
+      }
       return nil
+    }
+
+    /// Confirms a loopback LocalAPI candidate actually answers an
+    /// authenticated status request before it is selected.
+    private func probeLocalAPI(port: UInt16, token: String) -> Bool {
+      guard let url = URL(string: "http://127.0.0.1:\(port)/localapi/v0/status?peers=false")
+      else { return false }
+      var request = URLRequest(url: url, timeoutInterval: 1.5)
+      let credentials = Data(":\(token)".utf8).base64EncodedString()
+      request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
+      let semaphore = DispatchSemaphore(value: 0)
+      let alive = OSAllocatedUnfairLock(initialState: false)
+      URLSession.shared.dataTask(with: request) { _, response, _ in
+        if (response as? HTTPURLResponse)?.statusCode == 200 {
+          alive.withLock { $0 = true }
+        }
+        semaphore.signal()
+      }.resume()
+      _ = semaphore.wait(timeout: .now() + 2.0)
+      return alive.withLock { $0 }
     }
 
     private func candidateDirectories() -> [URL] {
@@ -177,8 +214,8 @@ import Foundation
       let homeGroup = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(
         "Library/Group Containers", isDirectory: true)
       let systemGroup = URL(fileURLWithPath: "/Library/Group Containers", isDirectory: true)
-      urls.append(homeGroup)
-      urls.append(systemGroup)
+      // Only Tailscale's own containers are scanned — never the whole
+      // Group Containers tree.
       if let homeContents = try? fm.contentsOfDirectory(
         at: homeGroup, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
       {

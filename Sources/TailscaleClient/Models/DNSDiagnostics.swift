@@ -178,7 +178,10 @@ public struct DNSConfig: Codable, Sendable, Equatable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     resolvers = try container.decodeIfPresent([DNSResolver].self, forKey: .resolvers) ?? []
-    routes = try container.decodeIfPresent([String: [DNSResolver]].self, forKey: .routes) ?? [:]
+    // Go emits nil slices as JSON null for route values (seen live).
+    let rawRoutes =
+      try container.decodeIfPresent([String: [DNSResolver]?].self, forKey: .routes) ?? [:]
+    routes = rawRoutes.mapValues { $0 ?? [] }
     fallbackResolvers =
       try container.decodeIfPresent([DNSResolver].self, forKey: .fallbackResolvers) ?? []
     domains = try container.decodeIfPresent([String].self, forKey: .domains) ?? []

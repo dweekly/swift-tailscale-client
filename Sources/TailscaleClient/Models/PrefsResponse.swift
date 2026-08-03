@@ -10,7 +10,9 @@ public struct Prefs: Sendable, Codable, Equatable {
   /// The control server URL (usually https://controlplane.tailscale.com).
   public let controlURL: String?
 
-  /// Whether to route all traffic through Tailscale (full tunnel mode).
+  /// Whether to accept subnet routes advertised by other nodes
+  /// (`--accept-routes`). Exit-node behavior is controlled separately by
+  /// `exitNodeID`/`exitNodeIP`.
   public let routeAll: Bool?
 
   /// Stable ID of the exit node being used.

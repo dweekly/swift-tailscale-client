@@ -29,8 +29,9 @@ public struct IPNNotify: Codable, Sendable, Equatable {
   /// Critical error message from the backend.
   public var errMessage: String?
 
-  /// Login process completed successfully.
-  public var loginFinished: Bool?
+  /// Present when the login process completed (upstream sends an empty
+  /// object as a marker, not a boolean).
+  public var loginFinished: EmptyMessage?
 
   /// Backend state changed.
   public var state: IPNState?
@@ -93,7 +94,7 @@ public struct IPNNotify: Codable, Sendable, Equatable {
     version: String? = nil,
     sessionID: String? = nil,
     errMessage: String? = nil,
-    loginFinished: Bool? = nil,
+    loginFinished: EmptyMessage? = nil,
     state: IPNState? = nil,
     browseToURL: String? = nil,
     engine: EngineStatus? = nil,
@@ -437,5 +438,7 @@ public struct NotifyWatchOpt: OptionSet, Sendable {
     .initialNetMap,
     .initialHealthState,
     .initialSuggestedExitNode,
+    .initialDriveShares,
+    .initialOutgoingFiles,
   ]
 }

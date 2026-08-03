@@ -22,7 +22,8 @@ import Foundation
 /// fields (control URL, netfilter mode, profile switches) stay out of the
 /// typed surface deliberately.
 public struct MaskedPrefs: Sendable, Equatable {
-  /// Route all traffic through the exit node (`--exit-node` semantics).
+  /// Accept subnet routes advertised by other nodes (`--accept-routes`).
+  /// Exit-node selection is separate: use `exitNodeID`/`exitNodeIP`.
   public var routeAll: Bool?
 
   /// Stable node ID of the exit node to use; empty string clears it.

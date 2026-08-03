@@ -18,12 +18,21 @@ struct UnixSocketTransport {
 
   func send(_ request: TailscaleRequest, capabilityVersion: Int) async throws -> TailscaleResponse {
     let transport = self
+    // Bridge cancellation into the detached task so a request deadline
+    // (Task cancellation) interrupts the blocking socket work.
+    let task = Task.detached(priority: .userInitiated) {
+      try transport.performSend(request, capabilityVersion: capabilityVersion)
+    }
     do {
-      return try await Task.detached(priority: .userInitiated) {
-        try transport.performSend(request, capabilityVersion: capabilityVersion)
-      }.value
+      return try await withTaskCancellationHandler {
+        try await task.value
+      } onCancel: {
+        task.cancel()
+      }
     } catch let error as TailscaleTransportError {
       throw error
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw TailscaleTransportError.networkFailure(underlying: error)
     }
@@ -33,11 +42,30 @@ struct UnixSocketTransport {
     -> AsyncThrowingStream<Data, Error>
   {
     let transport = self
+    // Connect, send the request, and validate the response head BEFORE
+    // returning, so callers get a thrown error (not a poisoned stream) when
+    // the daemon is unreachable or rejects the request.
+    let setup = Task.detached(priority: .userInitiated) {
+      try transport.openStreamConnection(request, capabilityVersion: capabilityVersion)
+    }
+    let connection: StreamConnection
+    do {
+      connection = try await withTaskCancellationHandler {
+        try await setup.value
+      } onCancel: {
+        setup.cancel()
+      }
+    } catch let error as TailscaleTransportError {
+      throw error
+    } catch {
+      throw TailscaleTransportError.networkFailure(underlying: error)
+    }
+
     return AsyncThrowingStream { continuation in
       let task = Task.detached(priority: .userInitiated) {
+        defer { transport.closeSocket(connection.fd) }
         do {
-          try transport.performStreamingRead(
-            request, capabilityVersion: capabilityVersion, continuation: continuation)
+          try transport.streamBody(connection, continuation: continuation)
         } catch {
           continuation.finish(throwing: error)
         }
@@ -46,6 +74,87 @@ struct UnixSocketTransport {
         task.cancel()
       }
     }
+  }
+
+  /// A validated streaming connection: the request has been written and the
+  /// 200 response head consumed; `initialBody` holds bytes read past it.
+  struct StreamConnection: Sendable {
+    let fd: Int32
+    let isChunked: Bool
+    let initialBody: Data
+  }
+
+  private func openStreamConnection(_ request: TailscaleRequest, capabilityVersion: Int) throws
+    -> StreamConnection
+  {
+    let fd = try connectSocket()
+    do {
+      let requestData = HTTPWireFormat.requestData(
+        for: request, capabilityVersion: capabilityVersion, keepAlive: true)
+      try writeAll(fd, requestData)
+
+      var headBuffer = HTTPHeadBuffer()
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      while true {
+        try Task.checkCancellation()
+        guard try waitReadable(fd, timeoutMilliseconds: 500) else { continue }
+        let readCount = try readSome(fd, into: &buffer)
+        guard readCount > 0 else {
+          throw TailscaleTransportError.malformedResponse(
+            detail: "Connection closed before the response head arrived")
+        }
+        let incoming = Data(bytes: buffer, count: readCount)
+        guard let (headData, bodyRemainder) = try headBuffer.feed(incoming) else { continue }
+        let head = try HTTPWireFormat.parseResponseHead(headData)
+        guard head.statusCode == 200 else {
+          throw TailscaleTransportError.malformedResponse(
+            detail: "Streaming endpoint returned status \(head.statusCode)")
+        }
+        return StreamConnection(fd: fd, isChunked: head.isChunked, initialBody: bodyRemainder)
+      }
+    } catch {
+      closeSocket(fd)
+      throw error
+    }
+  }
+
+  private func streamBody(
+    _ connection: StreamConnection,
+    continuation: AsyncThrowingStream<Data, Error>.Continuation
+  ) throws {
+    var framer = NewlineFramer()
+    var chunkDecoder = connection.isChunked ? ChunkedTransferDecoder() : nil
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    var pending = connection.initialBody
+
+    while !Task.isCancelled {
+      if !pending.isEmpty {
+        let payload: Data
+        if chunkDecoder != nil {
+          payload = try chunkDecoder!.feed(pending)
+          if chunkDecoder!.isComplete {
+            for line in framer.feed(payload) { continuation.yield(line) }
+            if let remainder = framer.flushRemainder() { continuation.yield(remainder) }
+            continuation.finish()
+            return
+          }
+        } else {
+          payload = pending
+        }
+        for line in framer.feed(payload) { continuation.yield(line) }
+        pending = Data()
+      }
+
+      guard try waitReadable(connection.fd, timeoutMilliseconds: 500) else { continue }
+      let readCount = try readSome(connection.fd, into: &buffer)
+      if readCount == 0 { break }  // Server closed the connection.
+      pending = Data(bytes: buffer, count: readCount)
+    }
+
+    if let remainder = framer.flushRemainder() {
+      continuation.yield(remainder)
+    }
+    continuation.finish()
   }
 
   // MARK: - Unary
@@ -60,10 +169,14 @@ struct UnixSocketTransport {
       for: request, capabilityVersion: capabilityVersion, keepAlive: false)
     try writeAll(fd, requestData)
 
-    // Connection: close — read the entire response to EOF.
+    // Connection: close — read the entire response to EOF, polling so a
+    // cancelled deadline interrupts a daemon that accepts the connection
+    // but never answers or never closes it.
     var responseData = Data()
     var buffer = [UInt8](repeating: 0, count: 4096)
     while true {
+      try Task.checkCancellation()
+      guard try waitReadable(fd, timeoutMilliseconds: 500) else { continue }
       let readCount = try readSome(fd, into: &buffer)
       guard readCount > 0 else { break }
       responseData.append(buffer, count: readCount)
@@ -82,73 +195,6 @@ struct UnixSocketTransport {
       bodyData = try decoder.feed(body)
     }
     return TailscaleResponse(statusCode: head.statusCode, data: bodyData, headers: head.headers)
-  }
-
-  // MARK: - Streaming
-
-  private func performStreamingRead(
-    _ request: TailscaleRequest,
-    capabilityVersion: Int,
-    continuation: AsyncThrowingStream<Data, Error>.Continuation
-  ) throws {
-    let fd = try connectSocket()
-    defer { closeSocket(fd) }
-
-    let requestData = HTTPWireFormat.requestData(
-      for: request, capabilityVersion: capabilityVersion, keepAlive: true)
-    try writeAll(fd, requestData)
-
-    var headBuffer = HTTPHeadBuffer()
-    var framer = NewlineFramer()
-    var chunkDecoder: ChunkedTransferDecoder?
-    var sawHead = false
-    var buffer = [UInt8](repeating: 0, count: 4096)
-
-    while !Task.isCancelled {
-      // Poll with a timeout so cancellation is honored even when the daemon
-      // is silent (a blocked read(2) would otherwise pin this task forever).
-      guard try waitReadable(fd, timeoutMilliseconds: 500) else { continue }
-
-      let readCount = try readSome(fd, into: &buffer)
-      if readCount == 0 {
-        break  // Server closed the connection.
-      }
-      var incoming = Data(bytes: buffer, count: readCount)
-
-      if !sawHead {
-        guard let (headData, bodyRemainder) = try headBuffer.feed(incoming) else { continue }
-        let head = try HTTPWireFormat.parseResponseHead(headData)
-        guard head.statusCode == 200 else {
-          throw TailscaleTransportError.malformedResponse(
-            detail: "Streaming endpoint returned status \(head.statusCode)")
-        }
-        chunkDecoder = head.isChunked ? ChunkedTransferDecoder() : nil
-        sawHead = true
-        incoming = bodyRemainder
-        if incoming.isEmpty { continue }
-      }
-
-      let payload: Data
-      if chunkDecoder != nil {
-        payload = try chunkDecoder!.feed(incoming)
-        if chunkDecoder!.isComplete {
-          for line in framer.feed(payload) { continuation.yield(line) }
-          if let remainder = framer.flushRemainder() { continuation.yield(remainder) }
-          continuation.finish()
-          return
-        }
-      } else {
-        payload = incoming
-      }
-      for line in framer.feed(payload) {
-        continuation.yield(line)
-      }
-    }
-
-    if let remainder = framer.flushRemainder() {
-      continuation.yield(remainder)
-    }
-    continuation.finish()
   }
 
   // MARK: - POSIX plumbing

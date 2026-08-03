@@ -158,12 +158,24 @@ public actor TailscaleClient {
   ///
   /// - Parameter prefs: The complete preferences to validate.
   /// - Throws: ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` with the
-  ///   daemon's explanation when the prefs are invalid; nothing on success.
+  ///   daemon's explanation when the prefs are invalid (the daemon reports
+  ///   validation failures as HTTP 200 with an `Error` field, surfaced here
+  ///   as `unexpectedStatus(200, <reason>, …)`); nothing on success.
   public func checkPrefs(_ prefs: Prefs) async throws {
     let endpoint = "/localapi/v0/check-prefs"
     let body = try JSONEncoder().encode(prefs)
     let request = TailscaleRequest(method: "POST", path: endpoint, body: body)
-    _ = try await performRawRequest(request, endpoint: endpoint)
+    let raw = try await performRawRequest(request, endpoint: endpoint)
+    // The daemon answers 200 even for invalid prefs, with the reason in
+    // {"Error": "..."} — an empty or absent Error means valid.
+    struct CheckResult: Decodable { let Error: String? }
+    if let data = raw.data(using: .utf8),
+      let result = try? JSONDecoder().decode(CheckResult.self, from: data),
+      let reason = result.Error, !reason.isEmpty
+    {
+      throw TailscaleClientError.unexpectedStatus(
+        code: 200, body: Data(reason.utf8), endpoint: endpoint)
+    }
   }
 
   /// Toggles use of the currently-selected exit node without forgetting

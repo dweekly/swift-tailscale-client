@@ -9,6 +9,19 @@ All notable changes to this project will be documented in this file. The format 
 - `dnsConfig()` wraps `GET /localapi/v0/dns-config` — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
 - Hermetic headscale nightly now runs a tailscaled version matrix (stable and unstable tracks).
 
+### Fixed
+
+- `checkPrefs(_:)` now surfaces validation failures: the daemon reports them as HTTP 200 with an `Error` body field, previously discarded.
+- `IPNNotify.loginFinished` is now `EmptyMessage?` matching the wire format (upstream sends `{}`, not a boolean), so login-completion notifications decode instead of being skipped.
+- Unix-socket unary requests now poll with cancellation checks and bridge task cancellation into the transport, so `requestTimeout` interrupts a daemon that accepts but never answers.
+- Unix-socket streaming now connects and validates the HTTP response head *before* `watchIPNBus()`/`logtap()` return, restoring the promised throw-on-connect-failure semantics.
+- CLI `login --timeout` races a real timer against the IPN bus (a silent bus now times out) and rejects non-positive values.
+- `routeAll` documentation corrected: it accepts advertised subnet routes (`--accept-routes`); exit-node routing is separate.
+- macOS App Store discovery: the Group Containers fallback no longer recursively scans all containers — it shallow-scans Tailscale's own, orders candidates newest-first, and liveness-probes each with an authenticated status request before selecting (stale proof files are skipped).
+- CLI `watch --json` emits compact NDJSON (ISO 8601 dates) with diagnostics on stderr, making it machine-parseable.
+- `NotifyWatchOpt.allInitial` now includes `initialDriveShares` and `initialOutgoingFiles`.
+- `DNSConfig.routes` tolerates JSON `null` route values (Go nil slices, seen against a live daemon).
+
 ### Changed
 
 - CI coverage floor ratcheted from 55% to 70% (measured: 73.7%).

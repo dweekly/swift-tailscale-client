@@ -15,26 +15,44 @@ struct LoginCommand: AsyncParsableCommand {
   var timeout: Int = 300
 
   func run() async throws {
+    guard timeout > 0 else {
+      print("--timeout must be positive.")
+      throw ExitCode(1)
+    }
     let client = TailscaleClient()
     let stream = try await client.watchIPNBus(options: [.initialState])
     try await client.loginInteractive()
     print("Login started; waiting for the authentication URL…")
 
-    let deadline = ContinuousClock.now.advanced(by: .seconds(timeout))
-    for try await notify in stream {
-      if let url = notify.browseToURL {
-        print("\nOpen this URL to authenticate:\n\n  \(url)\n")
+    // Race the bus observation against a real timer: a silent bus must
+    // still time out.
+    let seconds = timeout
+    try await withThrowingTaskGroup(of: Bool.self) { group in
+      group.addTask {
+        for try await notify in stream {
+          if let url = notify.browseToURL {
+            print("\nOpen this URL to authenticate:\n\n  \(url)\n")
+          }
+          if notify.state == .running {
+            return true
+          }
+          if let error = notify.errMessage, !error.isEmpty {
+            print("Login error: \(error)")
+            return false
+          }
+        }
+        return false
       }
-      if notify.state == .running {
+      group.addTask {
+        try await Task.sleep(for: .seconds(seconds))
+        return false
+      }
+      let finished = try await group.next() ?? false
+      group.cancelAll()
+      if finished {
         print("✓ Logged in and running.")
-        return
-      }
-      if let error = notify.errMessage, !error.isEmpty {
-        print("Login error: \(error)")
-        throw ExitCode(1)
-      }
-      if ContinuousClock.now > deadline {
-        print("Timed out waiting for login to complete.")
+      } else {
+        print("Login did not complete (timed out or failed).")
         throw ExitCode(1)
       }
     }

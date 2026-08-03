@@ -34,7 +34,9 @@ struct WatchCommand: AsyncParsableCommand {
       options.insert(.rateLimit)
     }
 
-    print("Watching IPN bus (Ctrl+C to stop)...")
+    if !json {
+      print("Watching IPN bus (Ctrl+C to stop)...")
+    }
     // fflush(nil) flushes all streams; the stdout global is not
     // concurrency-safe under strict concurrency on Glibc.
     fflush(nil)
@@ -53,16 +55,18 @@ struct WatchCommand: AsyncParsableCommand {
         isFirstMessage = false
         fflush(nil)
       }
-      print("Stream ended")
+      FileHandle.standardError.write(Data("Stream ended\n".utf8))
     } catch {
-      print("Error: \(error)")
+      FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
       throw error
     }
   }
 
   private func printJSON(_ notify: IPNNotify) {
+    // NDJSON: one compact object per line so the output is machine-parseable.
     let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    encoder.outputFormatting = [.sortedKeys]
+    encoder.dateEncodingStrategy = .iso8601
     if let data = try? encoder.encode(notify),
       let string = String(data: data, encoding: .utf8)
     {
