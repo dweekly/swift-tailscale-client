@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-03
+
 ### Added
 
 - DocC article *Writing Safely*: mask semantics, validate-before-apply, purpose-built endpoints over raw edits, and the hermetic write-testing pattern.
