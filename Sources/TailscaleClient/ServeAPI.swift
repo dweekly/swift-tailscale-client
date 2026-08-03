@@ -42,8 +42,10 @@ extension TailscaleClient {
       }
     }
     // The unix transport lowercases header names; URLSession preserves them.
-    config.etag = response.headers.first { $0.key.caseInsensitiveCompare("Etag") == .orderedSame }?
-      .value
+    let etagHeader = response.headers.first { key, _ in
+      key.caseInsensitiveCompare("Etag") == .orderedSame
+    }
+    config.etag = etagHeader?.value
     return config
   }
 
@@ -76,7 +78,10 @@ extension TailscaleClient {
   public func certDomains() async throws -> [String] {
     let endpoint = "/localapi/v0/cert-domains"
     let request = TailscaleRequest(method: "GET", path: endpoint)
-    return try await performRequest(request, endpoint: endpoint)
+    // Go serializes a nil slice as JSON `null` when the tailnet has no
+    // cert domains (seen live against headscale tailnets).
+    let domains: [String]? = try await performRequest(request, endpoint: endpoint)
+    return domains ?? []
   }
 
   /// Fetches raw PEM bytes for a domain's TLS credential.

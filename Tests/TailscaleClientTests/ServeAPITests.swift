@@ -164,6 +164,16 @@ final class ServeAPITests: XCTestCase {
     XCTAssertEqual(domains, ["node.tail1234.ts.net"])
   }
 
+  func testCertDomainsToleratesNullBody() async throws {
+    // Go emits a nil slice as top-level `null` when HTTPS is not enabled
+    // for the tailnet (regression caught live on all headscale lanes).
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data("null".utf8))
+    }
+    let domains = try await makeClient(transport: transport).certDomains()
+    XCTAssertEqual(domains, [])
+  }
+
   func testCertPEMSendsTypeAndMinValidity() async throws {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
