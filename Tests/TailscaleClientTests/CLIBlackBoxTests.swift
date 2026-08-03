@@ -104,7 +104,8 @@ import XCTest
       XCTAssertEqual(result.status, 0, result.stderr)
 
       let lines = result.stdout.split(separator: "\n").map(String.init)
-      XCTAssertEqual(lines.count, 2, "stdout must carry exactly the NDJSON events: \(result.stdout)")
+      XCTAssertEqual(
+        lines.count, 2, "stdout must carry exactly the NDJSON events: \(result.stdout)")
       for line in lines {
         let object = try JSONSerialization.jsonObject(with: Data(line.utf8))
         XCTAssertNotNil(object as? [String: Any], "Each stdout line must be a JSON object")
