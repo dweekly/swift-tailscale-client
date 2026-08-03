@@ -133,7 +133,15 @@ import XCTest
         throw XCTSkip("Peer has no Tailscale IPs")
       }
 
-      let result = try await client.ping(ip: peerIP)
+      let result: PingResult
+      do {
+        result = try await client.ping(ip: peerIP)
+      } catch let error as TailscaleClientError {
+        // A "online" peer can still be unreachable on a real tailnet (asleep
+        // laptop, roaming phone); a ping timeout is environment, not client.
+        guard case .timeout = error else { throw error }
+        throw XCTSkip("Peer \(peerIP) did not answer ping before the timeout; skipping")
+      }
       if result.isSuccess {
         XCTAssertNotNil(result.latencySeconds, "Expected latency for successful ping")
         XCTAssertNotNil(result.latencyDescription, "Expected latency description")
