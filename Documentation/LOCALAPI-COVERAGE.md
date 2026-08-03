@@ -42,42 +42,45 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | Endpoint | Method(s) | Swift API | Access | Upstream maturity | Swift support | Gate | Since | Min tailscaled | Tested | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `status` | GET | `status(query:)` | read | stable | supported | core | v0.1.0 | old | matrix+live | ?peers=false via StatusQuery; interfaceName/interfaceInfo derived client-side |
-| `whois` | GET | `whois(address:)` | read | stable | supported | core | v0.2.0 | old | matrix+live | ?proto= not yet exposed |
+| `whois` | GET | `whois(address:), whois(address:protocol:), whois(nodeKey:), whois(address:scopedToDestination:), whois(address:forService:)` | read | stable | supported | core | v0.2.0 | old | matrix+live | all stable variants wrapped; a peer miss (404) throws typed .peerNotFound |
 | `prefs` | GET, PATCH | `prefs(), editPrefs(_:)` | write | stable | supported | core | v0.2.0 | old | matrix+live (writes hermetic-only) | PATCH takes typed MaskedPrefs value+Set flag pairs (v0.8.0) |
 | `ping` | POST | `ping(ip:type:size:)` | read | unspecified | supported | core | v0.2.0 | old | matrix+live | disco/TSMP/ICMP/peerAPI ping types |
-| `metrics` | GET | `metrics()` | read | unspecified | supported | HasClientMetrics || HasDebug | v0.2.0 | old | matrix+live | Prometheus text; internal counters, names may churn upstream |
-| `usermetrics` | GET | `userMetrics()` | read | unspecified | supported | HasUserMetrics | v0.6.0 | 1.78 | matrix+live | stable user-facing metrics (tailscale metrics print) |
-| `watch-ipn-bus` | GET (stream) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | read | unstable | supported | HasIPNBus | v0.3.0 | old | matrix+live | NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0). Upstream: our Swift facade normalizes and tolerates shape drift |
+| `metrics` | GET | `metrics()` | read | unspecified | supported | HasClientMetrics | v0.2.0 | old | matrix+live | Prometheus text; internal counters, names may churn upstream |
+| `usermetrics` | GET | `userMetrics()` | read | unspecified | supported | core | v0.6.0 | 1.78 | matrix+live | stable user-facing metrics (tailscale metrics print) |
+| `watch-ipn-bus` | GET (stream) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | read | unstable | supported | core | v0.3.0 | old | matrix+live | NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0). Upstream: our Swift facade normalizes and tolerates shape drift |
 | `debug-optional-features` | POST | `daemonFeatures()` | read | unspecified | supported | core | v0.4.0 | 1.86 | matrix+live | capability probe: which optional features this daemon was built with |
 | `derpmap` | GET | `derpMap()` | read | stable | supported | core | v0.6.0 | old | matrix+live | relay regions/nodes; feeds the client-side netcheck |
-| `suggest-exit-node` | GET | `suggestExitNode(forceProbe:)` | read | unspecified | supported | HasUseExitNode | v0.6.0 | old (POST probe: 1.86) | matrix+live | empty 200 body = no candidates |
-| `dns-osconfig` | GET | `dnsOSConfig()` | read | unstable | supported | HasDNS | v0.7.0 | old | matrix+live (userspace daemons 500 → skip) | installed OS DNS state; 500 on userspace-networking daemons |
-| `dns-query` | GET | `dnsQuery(name:type:)` | read | unspecified | supported | HasDNS | v0.7.0 | old | matrix+live | raw RFC 1035 answer bytes + chosen resolvers |
-| `check-ip-forwarding` | GET | `checkIPForwarding()` | read | unstable | supported | HasAdvertiseRoutes | v0.7.0 | old | matrix+live | subnet-router/exit-node preflight |
-| `dns-config` | GET | `dnsConfig()` | read | unspecified | supported | core | v0.10.0 | 1.98 | matrix (previous-stable asserts endpointUnavailable) | tailnet DNS intent from the netmap; older daemons → endpointUnavailable |
-| `peer-by-id` | GET | `peer(byID:)` | read | unspecified | supported | core | v0.7.0 | ~1.98 | matrix+live | 404 = not in netmap OR daemon predates the endpoint — indistinguishable |
-| `user-profile` | GET | `userProfile(byID:)` | read | stable | supported | core | v0.7.0 | ~1.98 | matrix+live | 404 = unknown user OR older daemon — indistinguishable |
+| `suggest-exit-node` | GET | `suggestExitNode(forceProbe:)` | read | unspecified | supported | core | v0.6.0 | old (POST probe: 1.86) | matrix+live | empty 200 body = no candidates |
+| `dns-osconfig` | GET | `dnsOSConfig()` | read | unstable | supported | core | v0.7.0 | old | matrix+live (userspace daemons 500 → skip) | installed OS DNS state; 500 on userspace-networking daemons |
+| `dns-query` | GET | `dnsQuery(name:type:)` | read | unspecified | supported | core | v0.7.0 | old | matrix+live | raw RFC 1035 answer bytes + chosen resolvers |
+| `check-ip-forwarding` | GET | `checkIPForwarding()` | read | unstable | supported | core | v0.7.0 | old | matrix+live | subnet-router/exit-node preflight |
+| `check-udp-gro-forwarding` | GET | `checkUDPGROForwarding()` | read | unstable | supported | core (Linux) | v0.11.0 | old | matrix (non-Linux daemons -> endpointUnavailable skip) | Linux subnet-router/exit-node performance preflight. Upstream: annotated unstable upstream despite its diagnostic role - not a stable-parity item |
+| `dns-config` | GET | `dnsConfig()` | read | unspecified | supported | core (added 1.98) | v0.10.0 | 1.98 | matrix (previous-stable asserts endpointUnavailable) | tailnet DNS intent from the netmap; older daemons → endpointUnavailable |
+| `peer-by-id` | GET | `peer(byID:)` | read | unspecified | supported | core (added ~1.98) | v0.7.0 | ~1.98 | matrix+live | 404 = not in netmap OR daemon predates the endpoint — indistinguishable |
+| `user-profile` | GET | `userProfile(byID:)` | read | stable | supported | core (added ~1.98) | v0.7.0 | ~1.98 | matrix+live | 404 = unknown user OR older daemon — indistinguishable |
 | `check-prefs` | POST | `checkPrefs(_:)` | read | unspecified | supported | core | v0.8.0 | old | matrix | fails closed: daemon-reported Error throws; malformed 200 throws .decoding |
-| `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | write | stable | supported | HasUseExitNode | v0.8.0 | old | matrix (hermetic-only writes) | toggles without forgetting the selected exit node |
+| `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | write | stable | supported | core | v0.8.0 | old | matrix (hermetic-only writes) | toggles without forgetting the selected exit node |
 | `set-expiry-sooner` | POST | `setExpirySooner(_:)` | write | unstable | supported | core | v0.8.0 | old | unit (wire shape) | key hygiene; shortens node-key expiry. Upstream: upstream files this under debug |
 | `reload-config` | POST | `reloadConfig()` | write | unspecified | supported | core | v0.8.0 | old | matrix (no-config daemons return ok=false) | only meaningful for config-file daemons |
 | `start` | POST | `start(options:)` | write | unspecified | supported | core | v0.8.0 | old | matrix | backend start / headless auth-key bring-up; 204 on success |
 | `login-interactive` | POST | `loginInteractive()` | write | stable | supported | core | v0.9.0 | old | matrix + CLI black-box | BrowseToURL arrives on the IPN bus — subscribe before calling |
 | `logout` | POST | `logout()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | disconnects and expires the node key |
+| `update/check` | GET | `checkUpdate()` | read | stable | supported | clientupdate (feature) | v0.11.0 | old | matrix (skips where the build omits clientupdate) | reports update availability only; installs nothing |
+| `disconnect-control` | POST | `disconnectControl()` | write | stable | supported | core | v0.11.0 | old | unit only (administrative: never exercised against live daemons) | administrative: drains HA subnet-router/app-connector replicas before shutdown |
 | `reset-auth` | POST | `resetAuth()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | wipes auth state for re-login. Upstream: no public Go client method |
 | `profiles/` | GET, PUT, POST, DELETE | `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | write | unspecified (SwitchProfile: stable, SwitchToEmptyProfile: stable) | supported | core | v0.9.0 | old | matrix (reads; mutations hermetic-only) | multi-account profile management (LoginProfile/NetworkProfile models). Upstream: mixed per-symbol maturity; addProfile() performs the same PUT /profiles/ operation as upstream SwitchToEmptyProfile (stable) |
 | `id-token` | POST | `idToken(audience:)` | read | unspecified | supported | HasDebug | v0.9.0 | old | unit (control-plane dependent) | OIDC token passed through as raw control-plane JSON |
 | `serve-config` | GET, POST | `serveConfig(), setServeConfig(_:)` | write | unstable (SetServeConfig: unspecified) | supported | HasServe | v0.10.0 | old (ETag: 1.40+) | matrix incl. live stale-ETag 412 proof (hermetic-only writes) | ETag optimistic concurrency; stale writes throw .preconditionFailed. Upstream: GetServeConfig is explicitly unstable upstream; GetServeConfig is annotated unstable; SetServeConfig carries no annotation (assume unstable) |
-| `cert-domains` | GET | `certDomains()` | read | stable | supported | core | v0.10.0 | old | matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball) | null body (no HTTPS) decodes as empty list |
+| `cert-domains` | GET | `certDomains()` | read | stable | supported | HasACME | v0.10.0 | old | matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball) | null body (no HTTPS) decodes as empty list |
 | `cert/` | GET | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | read | stable | supported | HasACME | v0.10.0 | old | unit (needs HTTPS-enabled tailnet live) | first fetch may block on ACME issuance; pair split fails closed |
 | `set-dns` | POST | `setDNS(name:value:)` | write | unspecified | supported | HasACME | v0.10.0 | old | unit (control-plane rate-limited) | ACME dns-01 TXT records only; control plane restricts names |
 | `query-feature` | POST | `queryFeature(_:)` | read | unspecified | supported | HasServe | v0.10.0 | old | matrix (headscale control plane → skip) | control-plane probe for serve/funnel enablement; 503 without a netmap |
-| `bugreport` | POST | `experimental.bugreport(note:)` | write | stable | experimental | HasDebug | v0.7.0 | old | matrix+live | drops a marker in the daemon log; returns the marker ID. Upstream: upstream-stable; our facade is still in the experimental namespace (promotion tracked in issue draft 04) |
-| `goroutines` | GET | `experimental.goroutines()` | read | unspecified | experimental | core | v0.7.0 | old | matrix+live | Go stack dump for diagnostics |
-| `logtap` | GET (stream) | `experimental.logtap()` | read | unstable | experimental | HasLogTail | v0.7.0 | old | matrix | live daemon log stream |
-| `set-gui-visible` | POST | `experimental.setGUIVisible(_:sessionID:)` | write | unspecified | experimental | HasDebug || windows || darwin | v0.9.0 | old | unit (wire shape) | GUI-client contract; shapes follow Tailscale's own clients. Upstream: GUI-client contract; no public Go client method |
-| `set-push-device-token` | POST | `experimental.setPushDeviceToken(_:)` | write | unspecified | experimental | HasDebug | v0.9.0 | old | unit (wire shape) | APNs token registration (GUI contract). Upstream: GUI-client contract; no public Go client method |
-| `handle-push-message` | POST | `experimental.handlePushMessage(_:)` | write | unspecified | experimental | HasDebug | v0.9.0 | old | unit (wire shape) | delivers a push payload to the daemon (GUI contract). Upstream: GUI-client contract; no public Go client method |
+| `bugreport` | POST | `bugReport(note:) (supported), experimental.bugreport(note:diagnose:record:)` | write | stable | supported | HasDebug | v0.7.0 | old | matrix+live | drops a marker in the daemon log; returns the marker ID. Upstream: upstream-stable; supported facade added per the stable-parity ledger, diagnose/record knobs stay in the experimental namespace |
+| `goroutines` | GET | `experimental.goroutines()` | read | unspecified | experimental | HasDebug | v0.7.0 | old | matrix+live | Go stack dump for diagnostics |
+| `logtap` | GET (stream) | `experimental.logtap()` | read | unstable | experimental | HasDebug | v0.7.0 | old | matrix | live daemon log stream |
+| `set-gui-visible` | POST | `experimental.setGUIVisible(_:sessionID:)` | write | unspecified | experimental | core | v0.9.0 | old | unit (wire shape) | GUI-client contract; shapes follow Tailscale's own clients. Upstream: GUI-client contract; no public Go client method |
+| `set-push-device-token` | POST | `experimental.setPushDeviceToken(_:)` | write | unspecified | experimental | core | v0.9.0 | old | unit (wire shape) | APNs token registration (GUI contract). Upstream: GUI-client contract; no public Go client method |
+| `handle-push-message` | POST | `experimental.handlePushMessage(_:)` | write | unspecified | experimental | core | v0.9.0 | old | unit (wire shape) | delivers a push payload to the daemon (GUI contract). Upstream: GUI-client contract; no public Go client method |
 
 Upstream maturity per Tailscale's own "API maturity" annotations in `tailscale/tailscale` 4c4d1c35f83a21c6069ae09de69b246ed1993f3e (verified 2026-08-03); methods without an annotation must be assumed unstable, and "supported" over an upstream-unstable endpoint means this package normalizes drift — not that Tailscale guarantees the wire contract.
 
@@ -91,9 +94,6 @@ Methods Tailscale explicitly documents as stable in `client/local` that this pac
 <!-- BEGIN GENERATED: upstream-stable-unimplemented (Scripts/generate-endpoint-docs.py) -->
 | Go method | Endpoint | Note |
 |---|---|---|
-| `WhoIsForService / WhoIsForIP / WhoIsNodeKey / WhoIsProto` | `whois` | typed whois variants (protocol, node key, destination-IP, service scoped) |
-| `CheckUpdate` | `update/check` | reports the daemon's update availability; does not install anything |
-| `DisconnectControl` | `disconnect-control` | graceful removal of HA subnet-router/app-connector replicas before shutdown - administrative, not a test-harness tool |
 | `DialTCP / UserDial` | `dial` | raw duplex streams over HTTP upgrade; needs a Swift connection abstraction first (issue draft 04) |
 <!-- END GENERATED: upstream-stable-unimplemented (Scripts/generate-endpoint-docs.py) -->
 

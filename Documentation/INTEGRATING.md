@@ -133,42 +133,45 @@ drifts from it.
 | Swift API | Endpoint | Access | Stability & availability |
 |---|---|---|---|
 | `status(query:)` | `status` | read | upstream stable; supported Swift API |
-| `whois(address:)` | `whois` | read | upstream stable; supported Swift API |
+| `whois(address:), whois(address:protocol:), whois(nodeKey:), whois(address:scopedToDestination:), whois(address:forService:)` | `whois` | read | upstream stable; supported Swift API |
 | `prefs(), editPrefs(_:)` | `prefs` | write | upstream stable; supported Swift API |
 | `ping(ip:type:size:)` | `ping` | read | no upstream maturity note (assume unstable); supported Swift normalization layer |
-| `metrics()` | `metrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasClientMetrics || HasDebug` |
-| `userMetrics()` | `usermetrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.78; absent on builds without `HasUserMetrics` |
-| `watchIPNBus(options:reconnect:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasIPNBus` |
+| `metrics()` | `metrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasClientMetrics` |
+| `userMetrics()` | `usermetrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.78 |
+| `watchIPNBus(options:reconnect:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer |
 | `daemonFeatures()` | `debug-optional-features` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.86 |
 | `derpMap()` | `derpmap` | read | upstream stable; supported Swift API |
-| `suggestExitNode(forceProbe:)` | `suggest-exit-node` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasUseExitNode` |
-| `dnsOSConfig()` | `dns-osconfig` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasDNS` |
-| `dnsQuery(name:type:)` | `dns-query` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasDNS` |
-| `checkIPForwarding()` | `check-ip-forwarding` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasAdvertiseRoutes` |
+| `suggestExitNode(forceProbe:)` | `suggest-exit-node` | read | no upstream maturity note (assume unstable); supported Swift normalization layer |
+| `dnsOSConfig()` | `dns-osconfig` | read | upstream unstable; supported Swift normalization layer |
+| `dnsQuery(name:type:)` | `dns-query` | read | no upstream maturity note (assume unstable); supported Swift normalization layer |
+| `checkIPForwarding()` | `check-ip-forwarding` | read | upstream unstable; supported Swift normalization layer |
+| `checkUDPGROForwarding()` | `check-udp-gro-forwarding` | read | upstream unstable; supported Swift normalization layer |
 | `dnsConfig()` | `dns-config` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.98 |
 | `peer(byID:)` | `peer-by-id` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled ~1.98 |
 | `userProfile(byID:)` | `user-profile` | read | upstream stable; supported Swift API; needs tailscaled ~1.98 |
 | `checkPrefs(_:)` | `check-prefs` | read | no upstream maturity note (assume unstable); supported Swift normalization layer |
-| `setUseExitNode(enabled:)` | `set-use-exit-node-enabled` | write | upstream stable; supported Swift API; absent on builds without `HasUseExitNode` |
+| `setUseExitNode(enabled:)` | `set-use-exit-node-enabled` | write | upstream stable; supported Swift API |
 | `setExpirySooner(_:)` | `set-expiry-sooner` | write | upstream unstable; supported Swift normalization layer |
 | `reloadConfig()` | `reload-config` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `start(options:)` | `start` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `loginInteractive()` | `login-interactive` | write | upstream stable; supported Swift API |
 | `logout()` | `logout` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
+| `checkUpdate()` | `update/check` | read | upstream stable; supported Swift API |
+| `disconnectControl()` | `disconnect-control` | write | upstream stable; supported Swift API |
 | `resetAuth()` | `reset-auth` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | `profiles/` | write | no upstream maturity note (assume unstable) (per-symbol exceptions in the coverage matrix); supported Swift normalization layer |
 | `idToken(audience:)` | `id-token` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasDebug` |
 | `serveConfig(), setServeConfig(_:)` | `serve-config` | write | upstream unstable (per-symbol exceptions in the coverage matrix); supported Swift normalization layer; absent on builds without `HasServe` |
-| `certDomains()` | `cert-domains` | read | upstream stable; supported Swift API |
+| `certDomains()` | `cert-domains` | read | upstream stable; supported Swift API; absent on builds without `HasACME` |
 | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | `cert/` | read | upstream stable; supported Swift API; absent on builds without `HasACME` |
 | `setDNS(name:value:)` | `set-dns` | write | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasACME` |
 | `queryFeature(_:)` | `query-feature` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasServe` |
-| `experimental.bugreport(note:)` | `bugreport` | write | upstream stable; experimental Swift API (SemVer-exempt); absent on builds without `HasDebug` |
-| `experimental.goroutines()` | `goroutines` | read | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt) |
-| `experimental.logtap()` | `logtap` | read | upstream unstable; experimental Swift API (SemVer-exempt); absent on builds without `HasLogTail` |
-| `experimental.setGUIVisible(_:sessionID:)` | `set-gui-visible` | write | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt); absent on builds without `HasDebug || windows || darwin` |
-| `experimental.setPushDeviceToken(_:)` | `set-push-device-token` | write | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt); absent on builds without `HasDebug` |
-| `experimental.handlePushMessage(_:)` | `handle-push-message` | write | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt); absent on builds without `HasDebug` |
+| `bugReport(note:) (supported), experimental.bugreport(note:diagnose:record:)` | `bugreport` | write | upstream stable; supported Swift API; absent on builds without `HasDebug` |
+| `experimental.goroutines()` | `goroutines` | read | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt); absent on builds without `HasDebug` |
+| `experimental.logtap()` | `logtap` | read | upstream unstable; experimental Swift API (SemVer-exempt); absent on builds without `HasDebug` |
+| `experimental.setGUIVisible(_:sessionID:)` | `set-gui-visible` | write | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt) |
+| `experimental.setPushDeviceToken(_:)` | `set-push-device-token` | write | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt) |
+| `experimental.handlePushMessage(_:)` | `handle-push-message` | write | no upstream maturity note (assume unstable); experimental Swift API (SemVer-exempt) |
 <!-- END GENERATED: endpoint-quick-reference (Scripts/generate-endpoint-docs.py) -->
 
 ## Testing an app that uses this package

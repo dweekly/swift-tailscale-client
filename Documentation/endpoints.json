@@ -28,12 +28,12 @@
       "methods": [
         "GET"
       ],
-      "symbol": "whois(address:)",
+      "symbol": "whois(address:), whois(address:protocol:), whois(nodeKey:), whois(address:scopedToDestination:), whois(address:forService:)",
       "access": "read",
       "gate": "core",
       "upstream_maturity": "stable",
       "swift_support": "supported",
-      "upstream_symbol": "WhoIs",
+      "upstream_symbol": "WhoIs / WhoIsProto / WhoIsNodeKey / WhoIsForIP / WhoIsForService",
       "since": "0.2.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
@@ -42,7 +42,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "?proto= not yet exposed"
+      "notes": "all stable variants wrapped; a peer miss (404) throws typed .peerNotFound"
     },
     {
       "endpoint": "prefs",
@@ -278,6 +278,28 @@
       "notes": "subnet-router/exit-node preflight"
     },
     {
+      "endpoint": "check-udp-gro-forwarding",
+      "methods": [
+        "GET"
+      ],
+      "symbol": "checkUDPGROForwarding()",
+      "access": "read",
+      "gate": "core (Linux)",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "CheckUDPGROForwarding",
+      "since": "0.11.0",
+      "min_tailscaled": "old",
+      "tested": "matrix (non-Linux daemons -> endpointUnavailable skip)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "Linux subnet-router/exit-node performance preflight",
+      "upstream_notes": "annotated unstable upstream despite its diagnostic role - not a stable-parity item"
+    },
+    {
       "endpoint": "dns-config",
       "methods": [
         "GET"
@@ -489,6 +511,48 @@
       "notes": "disconnects and expires the node key"
     },
     {
+      "endpoint": "update/check",
+      "methods": [
+        "GET"
+      ],
+      "symbol": "checkUpdate()",
+      "access": "read",
+      "gate": "clientupdate (feature)",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "CheckUpdate",
+      "since": "0.11.0",
+      "min_tailscaled": "old",
+      "tested": "matrix (skips where the build omits clientupdate)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "reports update availability only; installs nothing"
+    },
+    {
+      "endpoint": "disconnect-control",
+      "methods": [
+        "POST"
+      ],
+      "symbol": "disconnectControl()",
+      "access": "write",
+      "gate": "core",
+      "upstream_maturity": "stable",
+      "swift_support": "supported",
+      "upstream_symbol": "DisconnectControl",
+      "since": "0.11.0",
+      "min_tailscaled": "old",
+      "tested": "unit only (administrative: never exercised against live daemons)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "administrative: drains HA subnet-router/app-connector replicas before shutdown"
+    },
+    {
       "endpoint": "reset-auth",
       "methods": [
         "POST"
@@ -675,13 +739,13 @@
       "methods": [
         "POST"
       ],
-      "symbol": "experimental.bugreport(note:)",
+      "symbol": "bugReport(note:) (supported), experimental.bugreport(note:diagnose:record:)",
       "access": "write",
       "gate": "HasDebug",
       "upstream_maturity": "stable",
-      "swift_support": "experimental",
+      "swift_support": "supported",
       "upstream_symbol": "BugReport / BugReportWithOpts",
-      "upstream_notes": "upstream-stable; our facade is still in the experimental namespace (promotion tracked in issue draft 04)",
+      "upstream_notes": "upstream-stable; supported facade added per the stable-parity ledger, diagnose/record knobs stay in the experimental namespace",
       "since": "0.7.0",
       "min_tailscaled": "old",
       "tested": "matrix+live",
@@ -809,21 +873,6 @@
     "source": "client/local/{local,cert,serve}.go 'API maturity' doc comments; unannotated methods are upstream-unstable per package documentation. Validated by Scripts/verify-upstream-maturity.py against this exact revision."
   },
   "upstream_stable_unimplemented": [
-    {
-      "go_symbol": "WhoIsForService / WhoIsForIP / WhoIsNodeKey / WhoIsProto",
-      "endpoint": "whois",
-      "note": "typed whois variants (protocol, node key, destination-IP, service scoped)"
-    },
-    {
-      "go_symbol": "CheckUpdate",
-      "endpoint": "update/check",
-      "note": "reports the daemon's update availability; does not install anything"
-    },
-    {
-      "go_symbol": "DisconnectControl",
-      "endpoint": "disconnect-control",
-      "note": "graceful removal of HA subnet-router/app-connector replicas before shutdown - administrative, not a test-harness tool"
-    },
     {
       "go_symbol": "DialTCP / UserDial",
       "endpoint": "dial",

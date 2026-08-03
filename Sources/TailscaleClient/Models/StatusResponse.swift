@@ -463,12 +463,44 @@ public struct UserProfile: Sendable, Codable, Equatable {
 public struct ClientVersionStatus: Sendable, Codable, Equatable {
   public let runningLatest: Bool?
 
+  /// Latest available client version, when the daemon knows one.
+  public let latestVersion: String?
+
+  /// Whether the available update carries an urgent security fix.
+  public let urgentSecurityUpdate: Bool?
+
+  /// Whether the daemon suggests notifying the user about the update.
+  public let notify: Bool?
+
+  /// URL to show the user alongside an update notification.
+  public let notifyURL: String?
+
+  /// Text to show the user alongside an update notification.
+  public let notifyText: String?
+
   /// Creates an instance for tests, previews, or fixtures.
-  public init(runningLatest: Bool? = nil) {
+  public init(
+    runningLatest: Bool? = nil,
+    latestVersion: String? = nil,
+    urgentSecurityUpdate: Bool? = nil,
+    notify: Bool? = nil,
+    notifyURL: String? = nil,
+    notifyText: String? = nil
+  ) {
     self.runningLatest = runningLatest
+    self.latestVersion = latestVersion
+    self.urgentSecurityUpdate = urgentSecurityUpdate
+    self.notify = notify
+    self.notifyURL = notifyURL
+    self.notifyText = notifyText
   }
 
   enum CodingKeys: String, CodingKey {
     case runningLatest = "RunningLatest"
+    case latestVersion = "LatestVersion"
+    case urgentSecurityUpdate = "UrgentSecurityUpdate"
+    case notify = "Notify"
+    case notifyURL = "NotifyURL"
+    case notifyText = "NotifyText"
   }
 }

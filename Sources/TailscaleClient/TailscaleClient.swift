@@ -342,6 +342,10 @@ public actor TailscaleClient {
 
   /// Creates a new (empty) login profile and switches to it; follow with
   /// ``loginInteractive()`` or ``start(options:)`` to authenticate it.
+  ///
+  /// This is the same `PUT /localapi/v0/profiles/` operation as upstream's
+  /// `SwitchToEmptyProfile` (a stable upstream API) — the "sign out to a
+  /// clean slate" move. The daemon answers `201 Created`.
   public func addProfile() async throws {
     let endpoint = "/localapi/v0/profiles/"
     _ = try await performRawRequest(

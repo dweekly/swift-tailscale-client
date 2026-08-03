@@ -696,6 +696,58 @@ import XCTest
       }
     }
 
+    // MARK: - Stable-parity surface (issue draft 04)
+
+    func testWhoIsProtoVariantAgainstLiveDaemon() async throws {
+      let status = try await client.status()
+      guard let selfIP = status.tailscaleIPs.first else {
+        throw XCTSkip("No Tailscale IPs available")
+      }
+      do {
+        let whoIs = try await client.whois(address: selfIP, protocol: .tcp)
+        XCTAssertNotNil(whoIs.node)
+      } catch let error as TailscaleClientError {
+        // Older daemons ignore proto=; a peerNotFound here means the daemon
+        // rejected the variant rather than the address.
+        guard case .peerNotFound = error else { throw error }
+        throw XCTSkip("Daemon did not resolve the proto-scoped lookup; skipping")
+      }
+    }
+
+    func testCheckUpdateAgainstLiveDaemon() async throws {
+      do {
+        let version = try await client.checkUpdate()
+        // Any decoded answer passes; content depends on the release tracker.
+        _ = version.runningLatest
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon built without clientupdate; skipping")
+        case .unexpectedStatus:
+          throw XCTSkip("Update check unavailable in this environment; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
+    func testCheckUDPGROForwardingAgainstLiveDaemon() async throws {
+      do {
+        let check = try await client.checkUDPGROForwarding()
+        // Warning text is environment-specific; decoding is the contract.
+        _ = check.isReady
+      } catch let error as TailscaleClientError {
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon does not serve check-udp-gro-forwarding; skipping")
+      }
+    }
+
+    // addProfile() (upstream SwitchToEmptyProfile) and disconnectControl()
+    // are deliberately NOT integration-tested: both disrupt the daemon for
+    // everything that runs after them (empty profile logs the node out;
+    // disconnect-control drops the control connection). Wire shapes are
+    // pinned in StableParityTests.
+
     func testQueryFeatureAgainstLiveDaemon() async throws {
       do {
         let response = try await client.queryFeature("serve")
