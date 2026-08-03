@@ -69,18 +69,18 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 **Goal:** wrap the last two always-registered handlers, get test coverage to the 1.0 bar, and finish the documentation set so v1.0.0 is purely a freeze-and-commit release.
 
 ### Library
-- [ ] `shutdown()` — `POST /localapi/v0/shutdown` (destructive: terminates the daemon; wire-shape unit tests only, prominent warnings, never integration-tested against live daemons)
-- [ ] `services()` — `GET /localapi/v0/services` (spike first: shape is Tailscale Services / VIP services state)
-- [ ] **Linux `NetworkInterfaceDiscovery`** — the implementation is `#if canImport(Darwin)`-gated, so `StatusResponse.interfaceName`/`interfaceInfo` silently return nil on Linux despite Linux being a first-class daemon platform; port the `getifaddrs` path to Glibc with a Linux CI assertion
+- [x] `shutdown()` — `POST /localapi/v0/shutdown` (destructive: terminates the daemon; wire-shape unit tests only, prominent warnings, never integration-tested against live daemons)
+- [x] `services()` — `GET /localapi/v0/services` (spike first: shape is Tailscale Services / VIP services state)
+- [x] **Linux `NetworkInterfaceDiscovery`** — the implementation is `#if canImport(Darwin)`-gated, so `StatusResponse.interfaceName`/`interfaceInfo` silently return nil on Linux despite Linux being a first-class daemon platform; port the `getifaddrs` path to Glibc with a Linux CI assertion
 
 ### Testing
 - [ ] Coverage floor ratchets 70 → 85 (fill the gaps the report shows; streaming path and transport parsers stay fully unit-tested)
-- [ ] Scripted login lifecycle against headscale (interactive login is scriptable there) — the one open item carried from v0.9.0
-- [ ] Decide and document the upstream re-pin cadence (issue draft 07): a scheduled job that re-derives maturity/gates against a newer upstream commit and opens a PR when anything drifts
-- [ ] **Mechanized model-conformance audit**: a test (or scripted sweep) asserting every public model has a public memberwise init and `Sendable`/`Equatable` (+`Codable` where wire-facing), and every wire enum has a tolerant fallback case — the API-conventions section as an executable check, not a one-time review
+- [x] Scripted login lifecycle against headscale (interactive login is scriptable there) — the one open item carried from v0.9.0
+- [x] Decide and document the upstream re-pin cadence (issue draft 07): a scheduled job that re-derives maturity/gates against a newer upstream commit and opens a PR when anything drifts
+- [x] **Mechanized model-conformance audit**: a test (or scripted sweep) asserting every public model has a public memberwise init and `Sendable`/`Equatable` (+`Codable` where wire-facing), and every wire enum has a tolerant fallback case — the API-conventions section as an executable check, not a one-time review
 
 ### Docs
-- [ ] DocC tutorial: *Build a Tailscale menu bar app*
+- [x] DocC tutorial: *Build a Tailscale menu bar app*
 - [ ] Verify docs CI hard-fails on undocumented public symbols (the 1.0 criterion) and fix any stragglers
 
 ## v1.0.0 — API Freeze

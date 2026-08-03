@@ -118,6 +118,18 @@ jobs:
           TAILSCALE_DISCOVERY_DEBUG: "1"
         run: swift test --filter TailscaleClientIntegrationTests
 
+      # A separate invocation, after the main suite: this test logs the node
+      # out and re-registers it interactively (BrowseToURL → headscale CLI),
+      # so nothing else may share its process or run after it in-suite.
+      - name: Run login-lifecycle test (logout → login-interactive → register)
+        env:
+          TAILSCALE_INTEGRATION: "1"
+          TAILSCALE_INTEGRATION_WRITE: "1"
+          TAILSCALE_INTEGRATION_LOGIN: "1"
+          TAILSCALE_LOCALAPI_SOCKET: /var/run/tailscale/tailscaled.sock
+          TAILSCALE_DISCOVERY_DEBUG: "1"
+        run: swift test --filter LoginLifecycleIntegrationTests
+
       - name: Dump daemon logs on failure
         if: failure()
         run: |

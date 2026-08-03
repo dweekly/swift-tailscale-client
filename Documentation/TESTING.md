@@ -121,7 +121,11 @@ Why headscale rather than the real control plane: hermetic, no secrets, safe on 
 
 ### Mutation tests for write APIs (v0.8.0+)
 
-Write endpoints (prefs PATCH etc.) get apply → verify → revert integration tests, run only in the headscale environment — never against a developer's real tailnet.
+Write endpoints (prefs PATCH etc.) get apply → verify → revert integration tests, run only in the headscale environment — never against a developer's real tailnet. They carry a second gate on top of `TAILSCALE_INTEGRATION=1`: `TAILSCALE_INTEGRATION_WRITE=1`, which only the headscale lane sets.
+
+### Login-lifecycle test (v0.12.0)
+
+`LoginLifecycleIntegrationTests` scripts the interactive auth flow end to end: `logout()` → `loginInteractive()` → catch `BrowseToURL` on the IPN bus → approve it with the headscale CLI (`headscale nodes register --user … --key <last URL path component>`) → wait for Running. Because it expires the node's keys mid-run, it stacks a **third** gate (`TAILSCALE_INTEGRATION_LOGIN=1`) and the headscale lane runs it as a separate, final `swift test` invocation so the main suite always talks to a logged-in daemon. `TAILSCALE_HEADSCALE_USER` overrides the headscale user it registers against (default `ci`). Never enable this gate outside a throwaway control plane.
 
 ## What CI runs where
 
