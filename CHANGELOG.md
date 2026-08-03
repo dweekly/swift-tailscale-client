@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- DocC article *Writing Safely*: mask semantics, validate-before-apply, purpose-built endpoints over raw edits, and the hermetic write-testing pattern.
+- CLI: `set exit-node <stableID>` (with `--allow-lan-access`), `set shields-up <bool>`, and `set accept-routes <bool>` — the write APIs from the command line, with `--json` echoing the updated prefs.
+
+### Added
+
 - **First write APIs**: `editPrefs(_:)` applies a partial preferences update via `PATCH /localapi/v0/prefs` using the new typed `MaskedPrefs` builder — setting a property encodes both the value and its `<Name>Set` mask flag, so partial updates cannot be malformed; `checkPrefs(_:)` validates a full `Prefs` without applying; `setUseExitNode(enabled:)` toggles the selected exit node without forgetting it.
 - **Daemon control**: `setExpirySooner(_:)` (key hygiene), `reloadConfig()` (config-file daemons, typed `ReloadConfigResult`), and `start(options:)` (backend start incl. headless auth-key bring-up via `StartOptions`); raw endpoints now accept any 2xx (`start` answers 204).
 - Write-API integration tests are double-gated: `TAILSCALE_INTEGRATION_WRITE=1` is set only in the hermetic headscale workflow, never on the self-hosted runner's real tailnet.

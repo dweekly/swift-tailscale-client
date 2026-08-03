@@ -174,14 +174,14 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - [x] First real use of `TailscaleRequest.body` plumbing
 
 ### CLI
-- [ ] `set exit-node <node>`, `set shields-up`, `set accept-routes`
+- [x] `set exit-node <node>`, `set shields-up`, `set accept-routes`
 
 ### Testing
 - [x] Mutation tests in the integration suite: apply → verify → revert — double-gated behind `TAILSCALE_INTEGRATION_WRITE=1`, set only in the hermetic headscale workflow
 - [x] Unit tests assert exact PATCH bodies (mask correctness is the whole game)
 
 ### Docs
-- [ ] DocC article: *Writing Safely* (check-prefs first, mask semantics, how to avoid clobbering user config)
+- [x] DocC article: *Writing Safely* (check-prefs first, mask semantics, how to avoid clobbering user config)
 
 ## v0.9.0 — Auth, Profiles & the GUI Contract
 
