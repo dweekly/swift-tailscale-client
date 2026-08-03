@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-03
+
 ### Security
 
 - **No authentication-token material is logged anymore** (upstream-readiness issue 01): discovery debug logging previously printed the first eight characters of the macOS sameuserproof token, and several log lines included proof-file *paths whose filename embeds the full token*. All discovery logging now flows through a capturable sink with proof-path redaction, and regression tests inject a recognizable secret and assert no diagnostic surface emits any ≥4-character substring of it. `TailscaleClientConfiguration`, `LocalAPIDiscovery.Result`, and `CertPair` gained redacting `description`s **and redacting `customMirror`s**, so neither printing nor reflection (`dump(_:)`, `Mirror`, debugger/playground rendering — including nested inside reflected containers) can leak `authToken`/private-key material. Integrators: treat `authToken`, `idToken(audience:)` responses, `CertPair.privateKeyPEM`, and audit reasons as secrets in your own logs.

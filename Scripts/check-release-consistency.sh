@@ -30,11 +30,16 @@ extract() {
 
 extract "README pin" README.md 'from: "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "SKILL pin" .claude/skills/swift-tailscale-client/SKILL.md 'from: "[0-9]+\.[0-9]+\.[0-9]+"'
+extract "AGENTS.md pin" AGENTS.md 'from: "[0-9]+\.[0-9]+\.[0-9]+"'
+extract "llms.txt pin" llms.txt 'from: "[0-9]+\.[0-9]+\.[0-9]+"'
+extract "INTEGRATING pin" Documentation/INTEGRATING.md 'from: "[0-9]+\.[0-9]+\.[0-9]+"'
+extract "Recipes example pin" Examples/Recipes/Package.swift 'from: "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "DocC GettingStarted" Sources/TailscaleClient/TailscaleClient.docc/GettingStarted.md \
   'from: "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "Coverage matrix" Documentation/LOCALAPI-COVERAGE.md \
   'swift-tailscale-client version:\*\* [0-9]+\.[0-9]+\.[0-9]+'
-extract "CLAUDE.md status" CLAUDE.md 'Project Status \(v[0-9]+\.[0-9]+\.[0-9]+\)'
+# CLAUDE.md deliberately states no version: it indexes authoritative
+# sources (CHANGELOG for versions) instead of duplicating them.
 extract "packageVersion const" Sources/TailscaleClient/Configuration/TailscaleClientConfiguration.swift \
   'packageVersion = "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "CHANGELOG top entry" CHANGELOG.md '## \[[0-9]+\.[0-9]+\.[0-9]+\]'

@@ -27,7 +27,7 @@ Project maintainers are responsible for clarifying the standards of acceptable b
 This Code of Conduct applies both within project spaces and in public spaces when an individual is representing the project or its community. Examples of representing a project include using an official project e-mail address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
 
 ## Enforcement
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to David E. Weekly at [dweekly@networkweather.com](mailto:dweekly@networkweather.com). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to David E. Weekly at [david@weekly.org](mailto:david@weekly.org). All complaints will be reviewed and investigated promptly and fairly.
 
 All project maintainers are obligated to respect the privacy and security of the reporter of any incident.
 

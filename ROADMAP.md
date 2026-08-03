@@ -1,6 +1,6 @@
 # Roadmap
 
-This roadmap describes how `swift-tailscale-client` gets from v0.3.1 to a complete, rigorously tested, well-documented 1.0 — and what "complete" means for a client of an API that Tailscale itself labels unstable.
+This roadmap describes what remains between the current release and a complete, rigorously tested, well-documented 1.0 — and what "complete" means for a client of an API that Tailscale itself labels unstable. Shipped work lives in [`CHANGELOG.md`](CHANGELOG.md); this document tracks only what is yet to be done.
 
 `swift-tailscale-client` is an unofficial, MIT-licensed project with no affiliation to Tailscale Inc.
 
@@ -24,208 +24,78 @@ Upstream's own source says LocalAPI paths are namespaced under `/localapi/v0/` "
 
 "Complete coverage" means **every LocalAPI endpoint has a documented status** — implemented, planned, experimental, or unsupported-with-reason — not that every endpoint has a wrapper. Connection-hijacking endpoints (`dial`), alpha endpoints, and Tailscale-internal plumbing stay unsupported until there is a real use case.
 
-Three mechanisms make this policy operational:
-
-1. **Capability probing.** `POST /localapi/v0/debug-optional-features` reports which optional features a daemon was compiled with. v0.4.0 exposes this as `client.daemonFeatures()` and maps 404s on optional endpoints to a typed `.endpointUnavailable` error instead of a generic status failure.
-2. **Version attestation.** Every release states "tested against Tailscale X.Y" in its release notes, and the integration suite runs against a matrix of tailscaled versions (current stable, previous stable, unstable).
-3. **Tolerant decoding.** Models never fail on unknown enum values or new fields; upstream additions degrade gracefully (see API Conventions).
+The policy is mechanically enforced today: `Documentation/endpoints.json` records two independent stability axes per endpoint (Tailscale's own "API maturity" annotation and this package's Swift-support promise) plus the upstream feature gate, all pinned to an immutable `tailscale/tailscale` commit and re-verified against that commit's source in CI (`Scripts/verify-upstream-maturity.py`); generated tables and a contradiction check keep the human docs honest.
 
 ## API Conventions
 
-These conventions apply to all new code and are retrofitted to existing types in v0.4.0:
+Standing policy for all code:
 
 - **Public memberwise initializers on every model**, so consumers can construct fixtures for SwiftUI previews and their own tests.
-- **Tolerant enums**: string/int enums from the wire use an `.unknown(raw)` case (as `BackendState` already does) rather than failing decodes when upstream adds values.
-- **`Sendable` everywhere, `Equatable` on models**; `Encodable` where round-tripping matters (`Prefs`, `MaskedPrefs`, serve config).
-- **Typed identifiers** (`StableNodeID`, node keys) as lightweight wrapper structs instead of bare `String`.
-- **Typed errors**: `TailscaleClientError` grows `.endpointUnavailable(endpoint:hint:)` and `.timeout`; every request gets a configurable deadline.
-- **Streaming resilience**: an undecodable line in a stream is skipped and surfaced through a reporting hook, never fatal to the stream. Reconnection with exponential backoff is available as an explicit opt-in.
-- **Concurrency encoded in types**: `serve-config` reads return a snapshot carrying its ETag; writes require the snapshot, so a stale write surfaces as a typed conflict error rather than silent clobbering (mirroring upstream's `If-Match` requirement).
-- **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename.
+- **Tolerant enums**: string/int enums from the wire use an `.unknown(raw)`/`.other` case rather than failing decodes when upstream adds values. Booleans upstream marks `omitempty` decode absent-as-false, never as optional.
+- **`Sendable` everywhere, `Equatable` on models**; `Encodable` where round-tripping matters.
+- **Typed errors** with actionable `recoverySuggestion`s; every request gets a configurable deadline. Typed status mapping, `Tailscale-Version` observation, and audit-reason injection apply to unary requests (streaming is documented as `.transport`-only).
+- **Streaming resilience**: an undecodable line in a stream is skipped and surfaced through a reporting hook, never fatal to the stream. Reconnection with exponential backoff is an explicit opt-in.
+- **Concurrency encoded in types**: `serve-config` reads return a snapshot carrying its ETag; writes require the snapshot, so a stale write surfaces as a typed conflict error rather than silent clobbering.
+- **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename and `switchToEmptyProfile()` over the legacy `addProfile()`.
+- **Secrets never reach diagnostic surfaces** — not logs, not `description`, not reflection; regression tests assert no substring of an injected secret escapes.
 
 ## Development Practice: Spike Before You Ship
 
 No endpoint is implemented from documentation alone. Every new surface follows the same sequence:
 
 1. **Spike against a real daemon.** Exercise the endpoint with `curl --unix-socket` (or a throwaway Swift scratch file) against an actual running tailscaled — locally and/or in the headscale integration environment — and observe real request/response shapes, headers, status codes, and streaming behavior.
-2. **Cross-check upstream source.** The authority is `tailscale/tailscale`: the handler in `ipn/localapi/`, the Go client method in `client/local/`, and the types in `tailcfg`/`ipn`. Public docs lag the code; the code decides field names, optionality, and edge behavior.
+2. **Cross-check upstream source at the pinned commit.** The authority is `tailscale/tailscale`: the handler in `ipn/localapi/`, the Go client method in `client/local/`, and the types in `tailcfg`/`ipn`. Public docs lag the code; the code decides field names, optionality, and edge behavior. Record the symbol, maturity, and gate in `endpoints.json` — CI verifies all three against the pinned revision.
 3. **Capture fixtures from the spike.** Real (sanitized) responses become the versioned fixtures the unit tests decode — not hand-typed JSON guessed from docs.
-4. **Then implement**, with the fixtures and the spike findings encoding the corner cases (empty bodies, 204s, ETags, chunked framing) into tests before the API is considered done.
+4. **Then implement**, with the fixtures and the spike findings encoding the corner cases (empty bodies, 204s/201s, ETags, chunked framing) into tests before the API is considered done.
 
 The spike workflow and fixture-capture script are documented in [`Documentation/TESTING.md`](Documentation/TESTING.md).
 
-## Version Plan
+## Version Plan (remaining)
+
+v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.md`](CHANGELOG.md). What remains:
 
 | Version | Theme | New endpoints | Key non-feature work |
 |---------|-------|---------------|----------------------|
-| **v0.4.0** | Reliability foundations | `debug-optional-features` | Shipped mocks library; streaming hardening; complete `IPNNotify`; public model inits; timeouts; CI matrix + coverage |
-| **v0.5.0** | Linux & hermetic integration CI | — | POSIX socket transport; testable HTTP/chunked parsers; headscale-based integration tests in CI |
-| **v0.6.0** | Network diagnostics | `derpmap`, `suggest-exit-node`, `usermetrics` + native STUN netcheck | CLI becomes a product; Homebrew tap; `--json` everywhere |
-| **v0.7.0** | DNS & routing diagnostics | `dns-osconfig`, `dns-query`, `check-ip-forwarding`, `routecheck`, `peer-by-id`, `user-profile`; *Experimental:* `bugreport`, `logtap`, `goroutines` | `experimental` namespace debuts |
-| **v0.8.0** | Configuration (first write APIs) | `prefs` PATCH, `check-prefs`, `set-use-exit-node-enabled`, `set-expiry-sooner`, `reload-config`, `start` | Typed `MaskedPrefs` builder; write-safety docs |
-| **v0.9.0** | Auth, profiles, GUI contract | `login-interactive`, `logout`, `reset-auth`, `profiles/*`, `id-token`; *Experimental:* `set-gui-visible`, `set-push-device-token`, `handle-push-message` | Login flow guide (BrowseToURL via IPN bus) |
-| **v0.10.0** | Serve, Funnel & certificates | `serve-config`, `cert-domains`, `cert/<domain>`, `query-feature`, `set-dns` | ETag-typed optimistic concurrency |
-| **v1.0.0** | API freeze | gap-fill: `shutdown`, `services` | 1.0 criteria below; SemVer commitment |
+| **v0.12.0** | Always-on gap-fill & 1.0 runway | `shutdown`, `services` | Coverage floor 70 → 85; the menu-bar DocC tutorial; scripted headscale login-lifecycle test |
+| **v1.0.0** | API freeze | — | Pre-freeze naming audit; drop deprecated `addProfile()`; 1.0 criteria below; SemVer commitment |
 | **v1.1** | Taildrop | `file-put/`, `files/` (incl. long-poll), `file-targets` | Upload/download progress via IPN bus |
 | **v1.2** | Taildrive | `drive/fileserver-address`, `drive/shares` CRUD | |
 | **v1.3** | Tailnet Lock | 13 `tka/*` endpoints (`TailnetLock` naming) | |
-| **Ongoing** | Experimental debug surface | `debug` actions, `pprof`, `update/*`, `appc-route-info`, `policy/*`, `debug-bus-*`, `prefs/service-clients` | Added on demand; never SemVer-bound |
+| **Post-1.0 (additive)** | Stable-gap ledger | `BugReportWithOpts` recording handle; `DialTCP`/`UserDial` duplex abstraction | Both tracked in the coverage ledger; see below |
+| **Ongoing** | Experimental debug surface | `debug` actions, `pprof`, `update/install|progress`, `appc-route-info`, `policy/*`, `debug-bus-*`, `prefs/service-clients` | Added on demand; never SemVer-bound |
 
-Every version below carries the same four subsections — **Library**, **CLI**, **Testing**, **Docs** — so "done" is auditable per release.
+## v0.12.0 — Always-On Gap-Fill & 1.0 Runway
 
----
-
-## v0.4.0 — Reliability Foundations
-
-**Goal:** make everything already shipped trustworthy before adding surface area. Almost no new endpoints; every release after this one builds on this infrastructure.
+**Goal:** wrap the last two always-registered handlers, get test coverage to the 1.0 bar, and finish the documentation set so v1.0.0 is purely a freeze-and-commit release.
 
 ### Library
-- [ ] `daemonFeatures()` — wrap `POST /localapi/v0/debug-optional-features`; new `OptionalFeatures` model
-- [ ] `.endpointUnavailable` and `.timeout` cases on `TailscaleClientError`; per-request deadline in `TailscaleClientConfiguration`
-- [ ] Streaming hardening in `watchIPNBus()`:
-  - Skip-and-report policy for undecodable lines (today a single bad line kills the stream)
-  - Opt-in auto-reconnect with exponential backoff, re-requesting initial state
-  - Remove the stray `#if DEBUG` print from the hot path
-- [ ] Complete `IPNNotify`: add `Prefs`, `NetMap`, `IncomingFiles`, `OutgoingFiles`, `FilesWaiting` fields (models may be minimal, but the watch options that request them must have decodable payloads)
-- [ ] Public memberwise inits + `Equatable` on all models; adopt tolerant-enum convention package-wide
-- [ ] Always send `Host: local-tailscaled.sock` (upstream `validHost` precondition)
-- [ ] Stop hardcoding `capabilityVersion: 1`; document what the value means and how to override it
-- [ ] Round out `StatusQuery` beyond `peers`; make `LocalAPIDiscovery` public so apps can report *how* the daemon was found
-- [ ] New **`TailscaleClientMocks` library product**: `MockTransport` with scripted responses *and* scripted streams (per-line delays, injected errors, EOF), `RequestRecorder`, fixture loaders. Ships to consumers so they can test their own apps; replaces the three private copies in our test suite.
-
-### CLI
-- [ ] `tailscale-swift features` — display daemon optional features
+- [ ] `shutdown()` — `POST /localapi/v0/shutdown` (destructive: terminates the daemon; wire-shape unit tests only, prominent warnings, never integration-tested against live daemons)
+- [ ] `services()` — `GET /localapi/v0/services` (spike first: shape is Tailscale Services / VIP services state)
+- [ ] **Linux `NetworkInterfaceDiscovery`** — the implementation is `#if canImport(Darwin)`-gated, so `StatusResponse.interfaceName`/`interfaceInfo` silently return nil on Linux despite Linux being a first-class daemon platform; port the `getifaddrs` path to Glibc with a Linux CI assertion
 
 ### Testing
-- [ ] First real streaming unit tests: scripted line sequences, malformed line mid-stream, transport error mid-stream, cancellation, reconnect behavior
-- [ ] Migrate all tests to the shared mocks product
-- [ ] Coverage measurement in CI with an initial 75% gate (ratchets to 85% by 1.0)
-- [x] Real-daemon integration suite in CI via the self-hosted macOS runner (`integration.yml`: fork-guarded, read-only tests against the runner's live tailscaled)
+- [ ] Coverage floor ratchets 70 → 85 (fill the gaps the report shows; streaming path and transport parsers stay fully unit-tested)
+- [ ] Scripted login lifecycle against headscale (interactive login is scriptable there) — the one open item carried from v0.9.0
+- [ ] Decide and document the upstream re-pin cadence (issue draft 07): a scheduled job that re-derives maturity/gates against a newer upstream commit and opens a PR when anything drifts
+- [ ] **Mechanized model-conformance audit**: a test (or scripted sweep) asserting every public model has a public memberwise init and `Sendable`/`Equatable` (+`Codable` where wire-facing), and every wire enum has a tolerant fallback case — the API-conventions section as an executable check, not a one-time review
 
 ### Docs
-- [ ] `.swift-format` checked in; CI matrix (macOS + Linux build, iOS/tvOS/watchOS build-only checks)
-- [ ] DocC Topics tree updated to include all IPN bus symbols (currently absent)
-
-## v0.5.0 — Linux & Hermetic Integration CI
-
-**Goal:** Linux support is a feature-enabler, not a courtesy. The self-hosted macOS runner already provides real-daemon integration CI against one live Tailscale install; headscale on Linux runners adds what it can't — a hermetic environment safe for write-API mutation tests and a matrix across tailscaled versions.
-
-### Library
-- [x] Unix socket transport runs on raw POSIX sockets shared across Darwin and Linux, with poll-based reads so cancellation works against a silent daemon. No new dependencies — staying zero-dependency is a selling point; swift-nio is not worth the tree for one socket.
-- [x] HTTP response parsing and chunked-transfer decoding extracted into internal pure types (`HTTPWireFormat`, `HTTPHeadBuffer`, `NewlineFramer`, `ChunkedTransferDecoder`) that are unit-testable without a socket
-
-### CLI
-- [x] CLI builds and runs on Linux (unix socket endpoints; loopback streaming stays Darwin-only)
-
-### Testing
-- [x] Parser corner-case suite: chunk-size lines split across reads, trailers, chunk extensions, oversized (>1 MB) payloads, UTF-8 sequences split across read boundaries, oversized heads
-- [x] `integration-linux.yml`: nightly + on-demand hermetic workflow — headscale control plane + real tailscaled (`--tun=userspace-networking`), pre-auth key minted locally, no secrets
-- [x] Matrix over tailscaled versions in the headscale workflow: stable, previous-stable (pinned 1.96.4), unstable
-
-### Docs
-- [ ] [`Documentation/TESTING.md`](Documentation/TESTING.md) is the reference for the harness and fixture process
-
-## v0.6.0 — Network Diagnostics
-
-**Goal:** the NWX feature wave: DERP visibility, exit node optimization, and a native netcheck.
-
-### Library
-- [x] `derpMap()` — `GET /localapi/v0/derpmap`; `DERPMap`/`DERPRegion`/`DERPNode` models
-- [x] `suggestExitNode()` / `suggestExitNode(forceProbe: true)` — GET + POST variants
-- [x] `userMetrics()` — `GET /localapi/v0/usermetrics`
-- [x] **Native STUN netcheck** (pure Swift; there is no LocalAPI netcheck endpoint — the official CLI does client-side STUN): enumerate STUN endpoints from the DERP map, measure per-region latency, detect NAT type from mapped-address variation, report UDP/IPv4/IPv6 capability
-- [x] Response models are fully `Codable` (encode side added for `--json`, caching, snapshots)
-
-### CLI
-- [x] `derpmap`, `netcheck`, `suggest-exit` (+ `usermetrics`) subcommands
-- [x] CLI promoted to an **executable product** in `Package.swift`
-- [x] `--json` output on every subcommand with a structured result (`metrics`/`usermetrics` stay Prometheus text, already machine-readable); man pages available via ArgumentParser's `generate-manual` plugin (see `Documentation/HOMEBREW.md`)
-- [ ] Homebrew tap `dweekly/homebrew-tap` with a `tailscale-swift` formula built from the release tag — formula template ready in [`Documentation/HOMEBREW.md`](Documentation/HOMEBREW.md); tap repo + sha256 happen at release time
-
-### Testing
-- [x] STUN unit tests against recorded binding responses; live netcheck integration test (skips where CI blocks UDP)
-
-### Docs
-- [ ] Announcement wave: awesome-tailscale PR, r/Tailscale, Swift Forums (this is the first demo-able `brew install` moment)
-
-## v0.7.0 — DNS & Routing Diagnostics; Experimental Debut
-
-### Library
-- [x] `dnsOSConfig()`, `dnsQuery(name:type:)` — DNS diagnostics
-- [x] `checkIPForwarding()` — subnet-router preflight (upstream has no standalone `routecheck` endpoint; route probing is the `?probe=true` hook behind `suggest-exit-node`, wrapped since v0.6.0)
-- [x] `peer(byID:)`, `userProfile(byID:)` — detail lookups
-- [x] `client.experimental` namespace lands, opening with `bugreport()`, `goroutines()`, and streaming `logtap()` (the second streaming consumer — proves the v0.4 stream machinery generalizes)
-
-### CLI
-- [x] `dns status`, `dns query <name>`, `check-forwarding`
-
-### Testing
-- [x] `logtap` streaming tests reuse the scripted-stream harness; DNS fixtures for wire-format responses
-
-### Docs
-- [x] DocC article: *Experimental APIs & Stability Tiers* — landed alongside the full article set (Getting Started, Discovery & Permissions, Streaming, Error Handling, Version Compatibility), pulling the 1.0 documentation criteria forward
-
-## v0.8.0 — Configuration (First Write APIs)
-
-### Library
-- [x] `editPrefs(_:)` — `PATCH /localapi/v0/prefs` with a typed `MaskedPrefs` builder (only fields you set are sent, mirroring upstream's mask semantics)
-- [x] `checkPrefs(_:)` — validate without applying
-- [x] `setUseExitNode(enabled:)`, `setExpirySooner(_:)`, `reloadConfig()`, `start(options:)` (minimal `StartOptions`; full `ipn.Options` on demand)
-- [x] First real use of `TailscaleRequest.body` plumbing
-
-### CLI
-- [x] `set exit-node <node>`, `set shields-up`, `set accept-routes`
-
-### Testing
-- [x] Mutation tests in the integration suite: apply → verify → revert — double-gated behind `TAILSCALE_INTEGRATION_WRITE=1`, set only in the hermetic headscale workflow
-- [x] Unit tests assert exact PATCH bodies (mask correctness is the whole game)
-
-### Docs
-- [x] DocC article: *Writing Safely* (check-prefs first, mask semantics, how to avoid clobbering user config)
-
-## v0.9.0 — Auth, Profiles & the GUI Contract
-
-### Library
-- [x] `loginInteractive()`, `logout()`, `resetAuth()` — paired with `watchIPNBus` for the `BrowseToURL` flow
-- [x] `profiles()` / `currentProfile()` / `addProfile()` / `switchProfile(_:)` / `deleteProfile(_:)` — multi-account
-- [x] `idToken(audience:)`
-- [x] *Experimental:* `setGUIVisible(_:sessionID:)`, `setPushDeviceToken(_:)`, `handlePushMessage(_:)` — the endpoints Tailscale's own GUI clients use; relevant to any serious macOS/iOS app embedding this package
-
-### CLI
-- [x] `login`, `logout` (guarded by --yes), `switch <profile>` (lists when bare)
-
-### Testing
-- [ ] Full login lifecycle against headscale (interactive login is scriptable there) — read-only profiles checks run live everywhere; the scripted login remains open
-
-### Docs
-- [x] DocC article: *The Login Flow* (BrowseToURL + IPN bus state machine, headless bring-up, profile lifecycle)
-
-## v0.10.0 — Serve, Funnel & Certificates
-
-### Library
-- [x] `serveConfig()` → `ServeConfig` (payload + `etag`); `setServeConfig(_:)` sends `If-Match` — stale writes throw `.preconditionFailed(body:endpoint:)`
-- [x] `certDomains()`, `certPEM(domain:kind:minValidity:)` + `certPair(domain:minValidity:)` — ACME cert material (pair/cert/key)
-- [x] `queryFeature(_:)`, `setDNS(name:value:)` (ACME DNS-01)
-
-### CLI
-- [x] `serve status`, `cert domains`
-
-### Testing
-- [x] Concurrency test: sequential writes racing one stale ETag against the daemon in the hermetic write lane; the stale writer must get the typed conflict, never silent clobber
-
-### Docs
-- [x] DocC article: *Serve, Funnel & Certificates*
+- [ ] DocC tutorial: *Build a Tailscale menu bar app*
+- [ ] Verify docs CI hard-fails on undocumented public symbols (the 1.0 criterion) and fix any stragglers
 
 ## v1.0.0 — API Freeze
 
 **Criteria (checklist, not a feature list):**
 
-- [ ] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md)
+- [ ] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) — after v0.12.0 this means zero unwrapped always-on handlers
 - [ ] Test coverage ≥ 85%; streaming path and transport parsers fully unit-tested
-- [ ] Integration matrix green against at least two tailscaled versions (current + previous stable)
-- [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols), one tutorial, at least two buildable examples in `Examples/`
-- [ ] Homebrew formula, Swift Package Index docs, and release automation all live
-- [ ] Unofficial-status disclaimer and the stability policy present in README, DocC landing page, and error output
+- [x] Integration matrix green against at least two tailscaled versions (three hermetic headscale lanes — stable / previous-stable / unstable — plus a live self-hosted macOS lane, on every PR)
+- [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols), one tutorial, at least two buildable examples in `Examples/` (StatusDemo and Recipes exist; tutorial ships in v0.12.0)
+- [x] Homebrew formula, Swift Package Index docs, and release automation all live
+- [ ] Unofficial-status disclaimer and the stability policy present in README, DocC landing page, and error output (README/DocC done; audit error/CLI output)
+- [ ] **Pre-freeze API audit**: naming pass against `client/local` conventions; remove deprecated `addProfile()`; decide whether the transport-neutral core and safesocket parity work (issue drafts 05/06) changes any public API — if it does, it lands before the freeze or is redesigned to be additive
+- [ ] Declare the stable-gap ledger items (`BugReportWithOpts`, `DialTCP`/`UserDial`) explicitly post-1.0 in the release notes
+- [ ] Governance decisions recorded (issue draft 08): contribution policy/DCO, naming/disclaimer posture for the announcement
 - [ ] From here: strict SemVer for Stable tier; Experimental tier explicitly exempt
 
 ## Post-1.0
@@ -233,41 +103,38 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - **v1.1 Taildrop** — `file-put/<target>/<name>` (send), `files/` (inbox list, incl. `?waitfor=` long-poll), `file-targets`; progress observed via the `IncomingFiles`/`OutgoingFiles` notify fields modeled back in v0.4.0
 - **v1.2 Taildrive** — `drive/fileserver-address`, `drive/shares` list/set/rename/delete
 - **v1.3 Tailnet Lock** — the 13 `tka/*` endpoints under `TailnetLock` naming (note: `tka/modify` returns 204)
-- **Ongoing Experimental** — `debug` (`?action=` multiplexer), `pprof`, `update/check|install|progress`, `appc-route-info`, `policy/<scope>` (MDM/syspolicy), `debug-bus-graph|queues|events`, `prefs/service-clients`, and whatever upstream adds next; wrapped on demand, never SemVer-bound
+- **Stable-gap ledger** (additive, tracked in `endpoints.json` and CI-verified as upstream-stable):
+  - `BugReportWithOpts` — a recording handle that keeps the POST body open until the caller ends the recording (upstream's contract); the experimental `record:` knob documents today's limitation
+  - `DialTCP` / `UserDial` — raw duplex streams over HTTP upgrade; needs a Swift connection abstraction design spike first (issue draft 04)
+- **Transport-neutral core & safesocket parity** (issue drafts 05/06) — architecture tracks; timing depends on the pre-freeze audit above
+- **Ongoing Experimental** — `debug` (`?action=` multiplexer), `pprof`, `update/install` + `update/progress` (`update/check` shipped supported in v0.11.0), `appc-route-info`, `policy/<scope>` (MDM/syspolicy), `debug-bus-graph|queues|events`, `prefs/service-clients`, and whatever upstream adds next; wrapped on demand, never SemVer-bound
 
 ---
 
-## Cross-Cutting Tracks
+## Cross-Cutting Tracks (remaining work)
 
-Summaries here; the operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTING.md) and [`Documentation/RELEASING.md`](Documentation/RELEASING.md).
+The operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTING.md) and [`Documentation/RELEASING.md`](Documentation/RELEASING.md). Most of what these tracks originally listed has shipped; what's left:
 
 ### Testing
-- Shipped `TailscaleClientMocks` product (scripted responses and streams) — both our harness and an adoption feature
-- Fixture library organized `Fixtures/v<tailscale-version>/<endpoint>.json`, captured from real daemons by a documented script
-- Mutation/property tests: randomized truncation and field-deletion of fixtures must throw typed errors, never crash
-- Coverage gate 75% now, 85% at 1.0
-- Hermetic integration in CI via headscale on Linux runners, matrixed over tailscaled versions
+- Coverage gate 70 now → 85 at v0.12.0/1.0
+- Mutation/property tests: randomized truncation and field-deletion of fixtures must throw typed errors, never crash (nice-to-have before 1.0)
+- Scripted headscale login lifecycle (v0.12.0)
 
 ### CI/CD
-- `ci.yml`: build+test matrix (macos-26, ubuntu-24.04); swift-format lint against the checked-in `.swift-format`; `xcodebuild` build-only checks for iOS/tvOS/watchOS (declared in `Package.swift`, so they must at least compile); coverage upload
-- `docs.yml`: DocC build failing on documentation warnings; GitHub Pages hosts the bleeding-edge snapshot; **Swift Package Index hosts canonical per-release docs** via `.spi.yml`
-- `integration.yml`: nightly headscale matrix (see Testing)
-- `release.yml` on tag `v*`: verify tag ↔ CHANGELOG entry, run tests, create the GitHub Release with notes extracted from CHANGELOG, attach CLI binaries (macOS universal, Linux x86_64/arm64), open the Homebrew tap bump PR
-- CodeQL analysis; Dependabot for github-actions and swift ecosystems
+- Upstream drift automation: scheduled re-pin job for `endpoints.json` provenance (decide cadence in v0.12.0)
+- CodeQL analysis; Dependabot for github-actions and swift ecosystems (not yet enabled)
 
 ### Documentation
-- DocC articles: Getting Started · Discovery & Permissions (TCC tradeoffs) · Streaming Guide · Error Handling · Writing Safely · Experimental APIs & Stability Tiers · Version Compatibility
-- One DocC tutorial: *Build a Tailscale menu bar app*
-- `Examples/MenuBarStatus` and `Examples/Dashboard`: standalone SPM packages with path dependencies, built by CI, designed to be copy-pasted out
-- README "Choosing the right tool" section: an honest options map (this package vs TailscaleKit/tsnet embedding vs shelling out to the official CLI vs the api.tailscale.com admin API) so developers land on the right project fast — kept current as the landscape changes
-- **AI-agent skill**: the repo ships `.claude/skills/swift-tailscale-client/SKILL.md`, a machine-readable guide for coding agents covering what the package offers, when (not) to use it, how to add the SPM dependency, quickstart patterns, and testing with the mocks product — updated alongside each release
+- The menu-bar tutorial (v0.12.0); everything else in the article set has shipped
+- Keep the AI-agent adapters (`.claude/skills/…`, `AGENTS.md`, `llms.txt`, copilot instructions) in sync with each release — INTEGRATING.md is the single source
 
 ### Distribution & Discoverability
-- `.spi.yml` (platforms + documentation targets) — done
-- GitHub topics: `tailscale`, `swift`, `swift-6`, `localapi`, `wireguard`, `vpn`, `macos`, `async-await`
-- Homebrew: tap first (v0.6.0), homebrew-core only as a post-1.0 aspiration once the notability bar is met
-- Release hygiene: retro-create the missing annotated `v0.3.0` tag; standardize on annotated tags; backfill GitHub Releases for v0.1.0–v0.3.1 from CHANGELOG
-- Staged announcements: awesome-tailscale + r/Tailscale + Swift Forums at v0.6.0; Show HN + Tailscale forum at 1.0
+- GitHub topics (maintainer-side): `tailscale`, `swift`, `swift-6`, `localapi`, `wireguard`, `vpn`, `macos`, `async-await`
+- Tailscale Community Projects submission — maintainer-approval gated; unblocked now that SPI shows current releases
+- Announcement wave: awesome-tailscale PR, r/Tailscale, Swift Forums; Show HN + Tailscale forum at 1.0
+- homebrew-core as a post-1.0 aspiration once the notability bar is met
+- v0.11.0 release mechanics: maintainer tag push after the release PR merges (single tag — >3 tags in one push suppresses GitHub push events), then the Homebrew tap bump
+- Homebrew formula smoke test as part of release verification: `brew install` (or `brew audit` + install from the tap) against the freshly tagged release assets before announcing
 
 ---
 
@@ -276,7 +143,7 @@ Summaries here; the operational detail lives in [`Documentation/TESTING.md`](Doc
 - **Embedded Tailscale** — creating new tailnet nodes belongs in [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift)
 - **CLI replacement** — `tailscale-swift` demonstrates the library; it does not compete with the official CLI
 - **Shelling out** — everything in pure Swift
-- **Wrapping everything** — `dial` (connection hijack with no clean Swift mapping), `conn25/state`, `alpha-set-device-attrs`, `check-so-mark-in-use`, `upload-client-metrics`, and `debug-capture` stay unsupported until a real use case appears; each has its reason recorded in the coverage matrix. (`disconnect-control` graduated out of this list: it is upstream-stable and a stable-parity target in the coverage ledger.)
+- **Wrapping everything** — `dial` (connection hijack with no clean Swift mapping — until the post-1.0 duplex abstraction exists), `conn25/state`, `alpha-set-device-attrs`, `check-so-mark-in-use`, `upload-client-metrics`, and `debug-capture` stay unsupported until a real use case appears; each has its reason recorded in the coverage matrix
 - **Pre-1.0 API stability** — APIs may change before 1.0; from 1.0 the Stable tier follows SemVer strictly
 
 ## Contributing to the Roadmap

@@ -6,7 +6,7 @@
 Until v1.0.0 is released, the latest published version is the only supported release. Security fixes will be issued as patch releases on top of the most recent minor version.
 
 ## Reporting a Vulnerability
-Please email security reports to [dweekly@networkweather.com](mailto:dweekly@networkweather.com). Include:
+Please email security reports to [david@weekly.org](mailto:david@weekly.org). Include:
 - Description of the vulnerability.
 - Steps to reproduce.
 - Potential impact.

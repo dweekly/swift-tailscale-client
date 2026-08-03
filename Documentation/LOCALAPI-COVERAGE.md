@@ -6,7 +6,7 @@ Complete inventory of the Tailscale LocalAPI surface and this package's position
 **Last updated:** 2026-08-03
 **Upstream reference:** `tailscale/tailscale` pinned commit `4c4d1c35f83a` (verified 2026-08-03; full SHA and validation in [`endpoints.json`](endpoints.json)), `ipn/localapi/` + `client/local/`
 <!-- END GENERATED: coverage-provenance (Scripts/generate-endpoint-docs.py) -->
-**swift-tailscale-client version:** 0.10.0
+**swift-tailscale-client version:** 0.11.0
 
 Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
 
