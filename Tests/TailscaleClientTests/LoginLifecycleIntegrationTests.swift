@@ -49,9 +49,15 @@ import XCTest
       }
       defer { watchTask.cancel() }
 
+      // Every wait below is checkpointed to notifications that arrive
+      // *after* the action that should cause them — the watch delivers the
+      // pre-logout Running state up front, and matching it later made the
+      // final wait pass while the daemon was still mid-login (seen live).
+
       // 1. Log out; the backend drops to NeedsLogin once keys are expired.
+      let afterLogout = await collector.checkpoint()
       try await client.logout()
-      _ = try await collector.waitFor("NeedsLogin state after logout") {
+      _ = try await collector.waitFor("NeedsLogin state after logout", after: afterLogout) {
         $0.state == .needsLogin
       }
 
@@ -68,8 +74,11 @@ import XCTest
 
       // 3. Interactive login: the daemon asks control for an auth URL and
       //    delivers it as BrowseToURL on the bus.
+      let afterLogin = await collector.checkpoint()
       try await client.loginInteractive()
-      let notify = try await collector.waitFor("BrowseToURL after loginInteractive") {
+      let notify = try await collector.waitFor(
+        "BrowseToURL after loginInteractive", after: afterLogin
+      ) {
         $0.browseToURL != nil
       }
       let authURL = try XCTUnwrap(notify.browseToURL)
@@ -84,10 +93,13 @@ import XCTest
       let key = try XCTUnwrap(URL(string: authURL)?.lastPathComponent)
       XCTAssertFalse(key.isEmpty, "auth URL should end in a registration key: \(authURL)")
       let user = ProcessInfo.processInfo.environment["TAILSCALE_HEADSCALE_USER"] ?? "ci"
+      let afterRegister = await collector.checkpoint()
       try runHeadscale(["nodes", "register", "--user", user, "--key", key])
 
       // 5. The bus reports Running again and a fresh status agrees.
-      _ = try await collector.waitFor("Running state after registration", timeout: 90) {
+      _ = try await collector.waitFor(
+        "Running state after registration", after: afterRegister, timeout: 90
+      ) {
         $0.state == .running
       }
       let after = try await client.status()
@@ -121,7 +133,10 @@ import XCTest
   }
 
   /// Accumulates bus notifications so the test can await conditions with a
-  /// deadline without contending over a single stream iterator.
+  /// deadline without contending over a single stream iterator. Waits are
+  /// checkpointed: `waitFor(after:)` only matches notifications appended
+  /// after the given ``checkpoint()``, so a stale pre-action state (like the
+  /// initial Running the watch delivers up front) can never satisfy a wait.
   private actor NotifyCollector {
     private var notifications: [IPNNotify] = []
 
@@ -129,21 +144,28 @@ import XCTest
       notifications.append(notify)
     }
 
+    /// The current high-water mark; pass to `waitFor(after:)` to restrict
+    /// matching to notifications that arrive after this point.
+    func checkpoint() -> Int {
+      notifications.count
+    }
+
     func waitFor(
       _ what: String,
+      after checkpoint: Int,
       timeout: TimeInterval = 60,
       _ predicate: @Sendable (IPNNotify) -> Bool
     ) async throws -> IPNNotify {
       let deadline = Date().addingTimeInterval(timeout)
       while Date() < deadline {
-        if let match = notifications.first(where: predicate) {
+        if let match = notifications.dropFirst(checkpoint).first(where: predicate) {
           return match
         }
         try await Task.sleep(nanoseconds: 200_000_000)
       }
       throw LoginLifecycleFailure(
         message: "Timed out after \(Int(timeout))s waiting for \(what); "
-          + "saw \(notifications.count) notifications")
+          + "saw \(notifications.count) notifications (\(checkpoint) before the checkpoint)")
     }
   }
 
