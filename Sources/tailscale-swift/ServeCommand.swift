@@ -49,12 +49,18 @@ struct ServeStatusCommand: AsyncParsableCommand {
     for (hostPort, web) in config.web.sorted(by: { $0.key < $1.key }) {
       print("Web \(hostPort)")
       for (mount, handler) in web.handlers.sorted(by: { $0.key < $1.key }) {
-        let target =
-          handler.proxy.map { "proxy \($0)" }
-          ?? handler.path.map { "serve \($0)" }
-          ?? handler.redirect.map { "redirect \($0)" }
-          ?? handler.text.map { _ in "static text" }
-          ?? "?"
+        let target: String
+        if let proxy = handler.proxy {
+          target = "proxy \(proxy)"
+        } else if let path = handler.path {
+          target = "serve \(path)"
+        } else if let redirect = handler.redirect {
+          target = "redirect \(redirect)"
+        } else if handler.text != nil {
+          target = "static text"
+        } else {
+          target = "?"
+        }
         print("  \(mount) → \(target)")
       }
     }
