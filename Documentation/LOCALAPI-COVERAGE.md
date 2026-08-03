@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 26 (+ 6 experimental) |
+| Implemented | 31 (+ 6 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -62,6 +62,11 @@ Three upstream facts shape everything below:
 | `profiles/` | GET/PUT/POST/DELETE | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` | v0.9.0 — `LoginProfile` model |
 | `id-token` | POST | `idToken(audience:)` | v0.9.0 — OIDC token, raw JSON passthrough |
 | `set-gui-visible` / `set-push-device-token` / `handle-push-message` | POST | `experimental.setGUIVisible(_:sessionID:)`, `.setPushDeviceToken(_:)`, `.handlePushMessage(_:)` | v0.9.0 — GUI-client contract, SemVer-exempt |
+| `serve-config` | GET, POST | `serveConfig()`, `setServeConfig(_:)` | v0.10.0 — ETag optimistic concurrency; stale writes throw `.preconditionFailed` |
+| `cert-domains` | GET | `certDomains()` | v0.10.0 |
+| `cert/<domain>` | GET | `certPEM(domain:kind:minValidity:)`, `certPair(domain:minValidity:)` | v0.10.0 — first fetch may block on ACME issuance |
+| `set-dns` | POST | `setDNS(name:value:)` | v0.10.0 — ACME DNS-01 TXT; control-plane rate-limited |
+| `query-feature` | POST | `queryFeature(_:)` | v0.10.0 — control-plane feature probe (serve/funnel) |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -134,11 +139,11 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
-| `serve-config` | GET, POST | `HasServe` | Stable | v0.10.0 | `serveConfig()` → snapshot with ETag; `setServeConfig(_:)` sends `If-Match` — **GET returns an ETag and POST requires it**; stale writes must surface as a typed conflict |
-| `cert-domains` | GET | `HasACME` | Stable | v0.10.0 | `certDomains()` |
-| `cert/<domain>` (prefix) | GET | `HasACME` | Stable | v0.10.0 | `certificate(domain:type:minValidity:)` — `?type=pair\|crt\|key` |
-| `set-dns` | POST | `HasACME` | Stable | v0.10.0 | `setDNS(name:value:)` — ACME DNS-01 TXT |
-| `query-feature` | POST | `HasServe` | Stable | v0.10.0 | `queryFeature(_:)` |
+| `serve-config` | GET, POST | `HasServe` | Stable | **v0.10.0** | `serveConfig()` → snapshot with `etag`; `setServeConfig(_:)` sends `If-Match` — a stale write throws `.preconditionFailed(body:endpoint:)` (proven against a live daemon in the write lane) |
+| `cert-domains` | GET | `HasACME` | Stable | **v0.10.0** | `certDomains()` |
+| `cert/<domain>` (prefix) | GET | `HasACME` | Stable | **v0.10.0** | `certPEM(domain:kind:minValidity:)` (`?type=pair\|cert\|key`), `certPair(domain:minValidity:)` splits key/cert |
+| `set-dns` | POST | `HasACME` | Stable | **v0.10.0** | `setDNS(name:value:)` — ACME DNS-01 TXT |
+| `query-feature` | POST | `HasServe` | Stable | **v0.10.0** | `queryFeature(_:)` — `QueryFeatureResponse` |
 | `check-so-mark-in-use` | GET | core | Unsupported | — | Linux `tailscale serve` preflight internal; no Swift use case |
 
 ### Taildrop & Taildrive (post-1.0)

@@ -609,5 +609,89 @@ import XCTest
           "Interface: \(iface.name) - \(iface.address) (IPv6: \(iface.isIPv6), up: \(iface.isUp))")
       }
     }
+
+    // MARK: - Serve, Funnel & Certificates (v0.10.0)
+
+    func testServeConfigAgainstLiveDaemon() async throws {
+      // Reads are safe everywhere; a never-configured daemon returns the
+      // empty config (body `null`) — the call itself must always succeed.
+      let config = try await client.serveConfig()
+      XCTAssertNotNil(config.etag, "The daemon should always send an Etag header")
+    }
+
+    func testServeConfigWriteRoundTripWithETag() async throws {
+      try requireWriteTesting()
+      let original = try await client.serveConfig()
+
+      var modified = original
+      modified.tcp[18080] = TCPPortHandler(tcpForward: "127.0.0.1:19090")
+      try await client.setServeConfig(modified)
+
+      let fetched = try await client.serveConfig()
+      XCTAssertEqual(
+        fetched.tcp[18080]?.tcpForward, "127.0.0.1:19090",
+        "The write must round-trip through the daemon")
+
+      // Restore the original handlers under the *fresh* etag.
+      var restore = original
+      restore.etag = fetched.etag
+      try await client.setServeConfig(restore)
+      let final = try await client.serveConfig()
+      XCTAssertNil(final.tcp[18080], "Restore should remove the test handler")
+    }
+
+    func testServeConfigStaleETagIsRejected() async throws {
+      try requireWriteTesting()
+      let original = try await client.serveConfig()
+      guard let originalETag = original.etag, !originalETag.isEmpty else {
+        throw XCTSkip("Daemon did not supply an Etag; cannot prove concurrency control")
+      }
+
+      // First write succeeds and rotates the daemon's etag …
+      var first = original
+      first.tcp[18081] = TCPPortHandler(tcpForward: "127.0.0.1:19091")
+      try await client.setServeConfig(first)
+
+      // … so a second write carrying the ORIGINAL etag must be rejected.
+      var stale = original
+      stale.tcp[18082] = TCPPortHandler(tcpForward: "127.0.0.1:19092")
+      stale.etag = originalETag
+      do {
+        try await client.setServeConfig(stale)
+        XCTFail("A stale ETag write must fail with 412, not silently clobber")
+      } catch let error as TailscaleClientError {
+        guard case .preconditionFailed = error else {
+          throw error
+        }
+      }
+
+      // Clean up with the current etag.
+      let current = try await client.serveConfig()
+      var restore = original
+      restore.etag = current.etag
+      try await client.setServeConfig(restore)
+    }
+
+    func testCertDomainsAgainstLiveDaemon() async throws {
+      // Hermetic headscale tailnets have no HTTPS certificates enabled, so
+      // an empty list is the expected healthy answer; the call must decode.
+      let domains = try await client.certDomains()
+      for domain in domains {
+        XCTAssertFalse(domain.isEmpty)
+      }
+    }
+
+    func testQueryFeatureAgainstLiveDaemon() async throws {
+      do {
+        let response = try await client.queryFeature("serve")
+        // Any decoded answer is a pass; content depends on the control plane.
+        _ = response.complete
+      } catch let error as TailscaleClientError {
+        // headscale does not implement the feature-query control endpoint;
+        // the daemon then surfaces a 4xx/5xx we can't distinguish further.
+        guard case .unexpectedStatus = error else { throw error }
+        throw XCTSkip("Control plane does not support query-feature; skipping")
+      }
+    }
   }
 #endif

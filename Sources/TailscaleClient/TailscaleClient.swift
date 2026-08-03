@@ -626,6 +626,9 @@ public actor TailscaleClient {
     if optionalEndpoint, response.statusCode == 404 || response.statusCode == 501 {
       throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: feature)
     }
+    if response.statusCode == 412 {
+      throw TailscaleClientError.preconditionFailed(body: response.data, endpoint: endpoint)
+    }
     // Write endpoints answer with other 2xx codes too (start returns 204).
     guard (200..<300).contains(response.statusCode) else {
       throw TailscaleClientError.unexpectedStatus(
@@ -655,6 +658,9 @@ public actor TailscaleClient {
     if optionalEndpoint, response.statusCode == 404 || response.statusCode == 501 {
       throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: feature)
     }
+    if response.statusCode == 412 {
+      throw TailscaleClientError.preconditionFailed(body: response.data, endpoint: endpoint)
+    }
     guard response.statusCode == 200 else {
       throw TailscaleClientError.unexpectedStatus(
         code: response.statusCode, body: response.data, endpoint: endpoint)
@@ -667,7 +673,7 @@ public actor TailscaleClient {
     }
   }
 
-  private func executeWithDeadline(_ request: TailscaleRequest, endpoint: String) async throws
+  func executeWithDeadline(_ request: TailscaleRequest, endpoint: String) async throws
     -> TailscaleResponse
   {
     let configuration = self.configuration
@@ -766,6 +772,9 @@ public enum TailscaleClientError: Error, Sendable {
   case endpointUnavailable(endpoint: String, feature: String?)
   /// The configured `requestTimeout` elapsed before the daemon responded.
   case timeout(endpoint: String)
+  /// The daemon rejected a conditional write (HTTP 412): the provided ETag
+  /// no longer matches its state. Re-fetch, re-apply your change, and retry.
+  case preconditionFailed(body: Data, endpoint: String)
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
@@ -776,6 +785,8 @@ public enum TailscaleClientError: Error, Sendable {
     case .unexpectedStatus(_, let body, _):
       data = body
     case .decoding(_, let body, _):
+      data = body
+    case .preconditionFailed(let body, _):
       data = body
     }
     guard let string = String(data: data, encoding: .utf8) else {
@@ -805,6 +816,9 @@ extension TailscaleClientError: CustomStringConvertible {
       return "Endpoint \(endpoint) is unavailable on this daemon"
     case .timeout(let endpoint):
       return "Request to \(endpoint) timed out"
+    case .preconditionFailed(_, let endpoint):
+      return
+        "LocalAPI rejected the write to \(endpoint): stale ETag (HTTP 412) — re-fetch and retry"
     }
   }
 
@@ -871,6 +885,9 @@ extension TailscaleClientError: LocalizedError {
     case .timeout:
       return
         "The daemon did not respond in time. Check that tailscaled is responsive, or raise/disable TailscaleClientConfiguration.requestTimeout."
+    case .preconditionFailed:
+      return
+        "Another client changed this configuration concurrently. Re-fetch it, re-apply your change, and retry the write."
     }
   }
 }

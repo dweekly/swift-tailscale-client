@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- **Serve, Funnel & certificates** (`ServeAndFunnel` DocC article):
+  - `serveConfig()` / `setServeConfig(_:)` wrap `GET`/`POST /localapi/v0/serve-config` with ETag optimistic concurrency — the snapshot carries the daemon's `Etag` header in `ServeConfig.etag`, writes replay it as `If-Match`, and a stale write throws the new `TailscaleClientError.preconditionFailed(body:endpoint:)` (re-fetch, re-apply, retry). New `ServeConfig`/`TCPPortHandler`/`WebServerConfig`/`HTTPHandler`/`ServiceConfig` models mirror `ipn.ServeConfig` as a tolerant subset.
+  - `certDomains()`, `certPEM(domain:kind:minValidity:)`, and `certPair(domain:minValidity:)` wrap `cert-domains` and the `cert/<domain>` prefix (pair splitting matches upstream's key-then-certs layout; unsplittable pairs fail closed).
+  - `setDNS(name:value:)` (ACME DNS-01 TXT records) and `queryFeature(_:)` (`QueryFeatureResponse` control-plane probe for serve/funnel enablement).
+  - CLI: `serve status` and `cert domains`, both with `--json`.
+  - Integration write lane proves the concurrency contract against a real daemon: a round-trip write plus a deliberately stale-ETag write that must be rejected with 412.
+
 - `dnsConfig()` wraps `GET /localapi/v0/dns-config` (requires Tailscale 1.98+; older daemons surface as `endpointUnavailable`, exercised by the new previous-stable CI lane) — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
 - Hermetic headscale nightly now runs a tailscaled version matrix: stable, previous-stable (pinned), and unstable.
 - Hostile-transport test suite: a real Unix fault server exercises accept-then-silence (unary + streaming deadlines, with independent watchdogs so a regressed deadline fails fast instead of hanging CI), missing/refused sockets, and non-200 streaming heads; CLI black-box tests run the built binary to pin `login --timeout` behavior and `watch --json` NDJSON framing; discovery staleness selection is tested with injected probes.

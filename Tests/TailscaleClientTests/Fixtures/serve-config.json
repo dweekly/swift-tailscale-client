@@ -1,0 +1,28 @@
+{
+  "TCP": {
+    "443": { "HTTPS": true },
+    "10000": {
+      "TCPForward": "127.0.0.1:8080",
+      "TerminateTLS": "node.tail1234.ts.net"
+    }
+  },
+  "Web": {
+    "node.tail1234.ts.net:443": {
+      "Handlers": {
+        "/": { "Proxy": "http://127.0.0.1:3000" },
+        "/static": { "Path": "/var/www/" },
+        "/motd": { "Text": "hello from the tailnet" },
+        "/old": { "Redirect": "https://example.com/new" }
+      }
+    }
+  },
+  "AllowFunnel": {
+    "node.tail1234.ts.net:443": true
+  },
+  "Foreground": {
+    "session-abc123": {
+      "TCP": { "8443": { "HTTPS": true } }
+    }
+  },
+  "SomeFutureField": { "Ignored": true }
+}

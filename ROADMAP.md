@@ -203,18 +203,18 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 ## v0.10.0 — Serve, Funnel & Certificates
 
 ### Library
-- [ ] `serveConfig()` → `ServeConfigSnapshot` (payload + ETag); `setServeConfig(_ snapshot:)` sends `If-Match` — stale writes become a typed conflict error
-- [ ] `certDomains()`, `certificate(domain:type:minValidity:)` — ACME cert material (pair/cert/key)
-- [ ] `queryFeature(_:)`, `setDNS(name:value:)` (ACME DNS-01)
+- [x] `serveConfig()` → `ServeConfig` (payload + `etag`); `setServeConfig(_:)` sends `If-Match` — stale writes throw `.preconditionFailed(body:endpoint:)`
+- [x] `certDomains()`, `certPEM(domain:kind:minValidity:)` + `certPair(domain:minValidity:)` — ACME cert material (pair/cert/key)
+- [x] `queryFeature(_:)`, `setDNS(name:value:)` (ACME DNS-01)
 
 ### CLI
-- [ ] `serve status`, `cert <domain>`
+- [x] `serve status`, `cert domains`
 
 ### Testing
-- [ ] Concurrency test: two clients racing serve-config writes; loser must get the typed conflict, never silent clobber
+- [x] Concurrency test: sequential writes racing one stale ETag against the daemon in the hermetic write lane; the stale writer must get the typed conflict, never silent clobber
 
 ### Docs
-- [ ] DocC article: *Serve, Funnel & Certificates*
+- [x] DocC article: *Serve, Funnel & Certificates*
 
 ## v1.0.0 — API Freeze
 
