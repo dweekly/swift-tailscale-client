@@ -28,6 +28,11 @@ jobs:
             exit 1
           fi
 
+      # The tag must agree with every place the docs advertise a version
+      # (README, DocC, agent skill, coverage matrix, CLAUDE.md, CHANGELOG).
+      - name: Verify docs agree with the tag
+        run: ./Scripts/check-release-consistency.sh "${GITHUB_REF_NAME}"
+
       - name: Run tests
         run: swift test
 

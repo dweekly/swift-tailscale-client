@@ -1,0 +1,24 @@
+# swift-tailscale-client
+
+> Unofficial Swift 6 async/await client for the Tailscale LocalAPI: query and
+> control an ALREADY-INSTALLED tailscaled daemon (status, peers, ping, prefs,
+> DNS diagnostics, serve/Funnel with ETag concurrency, certificates, auth,
+> real-time IPN-bus streaming). Not an embedded node (use TailscaleKit for
+> that) and not the api.tailscale.com admin API. MIT; not affiliated with
+> Tailscale Inc.
+
+Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.10.0")`
+Platforms: macOS 13+ and Linux connect to daemons; iOS/tvOS/watchOS build only.
+
+## Docs
+
+- [Integration guide (canonical)](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/INTEGRATING.md): usage patterns, gotchas, testing with mocks
+- [Endpoint manifest (JSON)](https://raw.githubusercontent.com/dweekly/swift-tailscale-client/main/Documentation/endpoints.json): machine-readable per-endpoint facts — symbol, read/write risk, feature gate, minimum tailscaled version, stability
+- [API reference (DocC)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/): full symbol documentation and articles (Getting Started, Streaming, Writing Safely, Login Flow, Serve & Funnel)
+- [LocalAPI coverage](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/LOCALAPI-COVERAGE.md): the package's position on every LocalAPI endpoint
+- [README](https://github.com/dweekly/swift-tailscale-client/blob/main/README.md): tool choice (this package vs TailscaleKit vs admin API vs CLI), runtime support matrix
+
+## Optional
+
+- [ROADMAP](https://github.com/dweekly/swift-tailscale-client/blob/main/ROADMAP.md): version plan, stability tiers
+- [CHANGELOG](https://github.com/dweekly/swift-tailscale-client/blob/main/CHANGELOG.md): full release history

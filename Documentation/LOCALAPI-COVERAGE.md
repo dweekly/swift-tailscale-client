@@ -2,9 +2,9 @@
 
 Complete inventory of the Tailscale LocalAPI surface and this package's position on every endpoint: implemented, planned (with target version), experimental, or deliberately unsupported (with the reason).
 
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-03
 **Upstream reference:** `tailscale/tailscale` `main` (July 2026), `ipn/localapi/` + `client/local/`
-**swift-tailscale-client version:** 0.9.0
+**swift-tailscale-client version:** 0.10.0
 
 Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
 
@@ -34,39 +34,51 @@ Three upstream facts shape everything below:
 
 ## Implemented
 
-| Endpoint | Method | Swift API | Notes |
-|----------|--------|-----------|-------|
-| `status` | GET | `status(query:)` | `?peers=false` supported via `StatusQuery` |
-| `whois` | GET | `whois(address:)` | `?addr=`; `?proto=` not yet exposed |
-| `prefs` | GET, PATCH | `prefs()`, `editPrefs(_:)` | PATCH since v0.8.0 via typed `MaskedPrefs` |
-| `ping` | POST | `ping(ip:type:size:)` | disco/TSMP/ICMP/peerAPI |
-| `metrics` | GET | `metrics()` | Prometheus text; feature-gated upstream (`HasClientMetrics`/`HasDebug`) |
-| `watch-ipn-bus` | GET (streaming) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | `AsyncThrowingStream<IPNNotify, Error>`; skip-and-report + opt-in reconnect since v0.4.0 |
-| `debug-optional-features` | POST | `daemonFeatures()` | v0.4.0 — the capability-probing foundation |
-| `derpmap` | GET | `derpMap()` | v0.6.0 — typed `DERPMap`/`DERPRegion`/`DERPNode` |
-| `suggest-exit-node` | GET, POST | `suggestExitNode(forceProbe:)` | v0.6.0 — GET by default (works on older daemons); `forceProbe: true` POSTs `?probe=true` (1.86+) |
-| `usermetrics` | GET | `userMetrics()` | v0.6.0 — stable Prometheus user metrics; 404/501 → `endpointUnavailable` |
-| `dns-osconfig` | GET | `dnsOSConfig()` | v0.7.0 — nameservers, search + split-DNS match domains |
-| `dns-query` | GET | `dnsQuery(name:type:)` | v0.7.0 — raw RFC 1035 answer + chosen resolvers |
-| `check-ip-forwarding` | GET | `checkIPForwarding()` | v0.7.0 — subnet-router/exit-node preflight |
-| `dns-config` | GET | `dnsConfig()` | netmap DNS intent (vs installed `dns-osconfig`) |
-| `peer-by-id` | GET | `peer(byID:)` | v0.7.0 — full `tailcfg.Node` via `WhoIsNode`; 404 = not in netmap |
-| `user-profile` | GET | `userProfile(byID:)` | v0.7.0 — resolves numeric `UserID` references |
-| `bugreport` / `goroutines` / `logtap` | POST / GET / stream | `experimental.*` | v0.7.0 — SemVer-exempt debug tier |
-| `check-prefs` | POST | `checkPrefs(_:)` | v0.8.0 — validate without applying |
-| `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | v0.8.0 — toggle without forgetting the selection |
-| `set-expiry-sooner` | POST | `setExpirySooner(_:)` | v0.8.0 — key hygiene |
-| `reload-config` | POST | `reloadConfig()` | v0.8.0 — config-file daemons |
-| `start` | POST | `start(options:)` | v0.8.0 — backend start / headless auth-key bring-up |
-| `login-interactive` / `logout` / `reset-auth` | POST | `loginInteractive()`, `logout()`, `resetAuth()` | v0.9.0 — BrowseToURL via IPN bus; destructive pair unit-tested only |
-| `profiles/` | GET/PUT/POST/DELETE | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` | v0.9.0 — `LoginProfile` model |
-| `id-token` | POST | `idToken(audience:)` | v0.9.0 — OIDC token, raw JSON passthrough |
-| `set-gui-visible` / `set-push-device-token` / `handle-push-message` | POST | `experimental.setGUIVisible(_:sessionID:)`, `.setPushDeviceToken(_:)`, `.handlePushMessage(_:)` | v0.9.0 — GUI-client contract, SemVer-exempt |
-| `serve-config` | GET, POST | `serveConfig()`, `setServeConfig(_:)` | v0.10.0 — ETag optimistic concurrency; stale writes throw `.preconditionFailed` |
-| `cert-domains` | GET | `certDomains()` | v0.10.0 |
-| `cert/<domain>` | GET | `certPEM(domain:kind:minValidity:)`, `certPair(domain:minValidity:)` | v0.10.0 — first fetch may block on ACME issuance |
-| `set-dns` | POST | `setDNS(name:value:)` | v0.10.0 — ACME DNS-01 TXT; control-plane rate-limited |
-| `query-feature` | POST | `queryFeature(_:)` | v0.10.0 — control-plane feature probe (serve/funnel) |
+Generated from [`endpoints.json`](endpoints.json) — the machine-readable manifest of everything this package wraps. Edit the JSON, run `Scripts/generate-endpoint-docs.py`, and CI enforces the sync.
+
+<!-- BEGIN GENERATED: implemented-endpoints (Scripts/generate-endpoint-docs.py) -->
+| Endpoint | Method(s) | Swift API | Access | Gate | Since | Min tailscaled | Tested | Notes |
+|---|---|---|---|---|---|---|---|---|
+| `status` | GET | `status(query:)` | read | core | v0.1.0 | old | matrix+live | ?peers=false via StatusQuery; interfaceName/interfaceInfo derived client-side |
+| `whois` | GET | `whois(address:)` | read | core | v0.2.0 | old | matrix+live | ?proto= not yet exposed |
+| `prefs` | GET, PATCH | `prefs(), editPrefs(_:)` | write | core | v0.2.0 | old | matrix+live (writes hermetic-only) | PATCH takes typed MaskedPrefs value+Set flag pairs (v0.8.0) |
+| `ping` | POST | `ping(ip:type:size:)` | read | core | v0.2.0 | old | matrix+live | disco/TSMP/ICMP/peerAPI ping types |
+| `metrics` | GET | `metrics()` | read | HasClientMetrics | v0.2.0 | old | matrix+live | Prometheus text; internal counters, names may churn upstream |
+| `usermetrics` | GET | `userMetrics()` | read | core | v0.6.0 | 1.78 | matrix+live | stable user-facing metrics (tailscale metrics print) |
+| `watch-ipn-bus` | GET (stream) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | read | core | v0.3.0 | old | matrix+live | NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0) |
+| `debug-optional-features` | POST | `daemonFeatures()` | read | core | v0.4.0 | 1.86 | matrix+live | capability probe: which optional features this daemon was built with |
+| `derpmap` | GET | `derpMap()` | read | core | v0.6.0 | old | matrix+live | relay regions/nodes; feeds the client-side netcheck |
+| `suggest-exit-node` | GET | `suggestExitNode(forceProbe:)` | read | core | v0.6.0 | old (POST probe: 1.86) | matrix+live | empty 200 body = no candidates |
+| `dns-osconfig` | GET | `dnsOSConfig()` | read | core | v0.7.0 | old | matrix+live (userspace daemons 500 → skip) | installed OS DNS state; 500 on userspace-networking daemons |
+| `dns-query` | GET | `dnsQuery(name:type:)` | read | core | v0.7.0 | old | matrix+live | raw RFC 1035 answer bytes + chosen resolvers |
+| `check-ip-forwarding` | GET | `checkIPForwarding()` | read | core | v0.7.0 | old | matrix+live | subnet-router/exit-node preflight |
+| `dns-config` | GET | `dnsConfig()` | read | core (added 1.98) | v0.10.0 | 1.98 | matrix (previous-stable asserts endpointUnavailable) | tailnet DNS intent from the netmap; older daemons → endpointUnavailable |
+| `peer-by-id` | GET | `peer(byID:)` | read | core (added ~1.98) | v0.7.0 | ~1.98 | matrix+live | 404 = not in netmap OR daemon predates the endpoint — indistinguishable |
+| `user-profile` | GET | `userProfile(byID:)` | read | core (added ~1.98) | v0.7.0 | ~1.98 | matrix+live | 404 = unknown user OR older daemon — indistinguishable |
+| `check-prefs` | POST | `checkPrefs(_:)` | read | core | v0.8.0 | old | matrix | fails closed: daemon-reported Error throws; malformed 200 throws .decoding |
+| `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | write | core | v0.8.0 | old | matrix (hermetic-only writes) | toggles without forgetting the selected exit node |
+| `set-expiry-sooner` | POST | `setExpirySooner(_:)` | write | core | v0.8.0 | old | unit (wire shape) | key hygiene; shortens node-key expiry |
+| `reload-config` | POST | `reloadConfig()` | write | core | v0.8.0 | old | matrix (no-config daemons return ok=false) | only meaningful for config-file daemons |
+| `start` | POST | `start(options:)` | write | core | v0.8.0 | old | matrix | backend start / headless auth-key bring-up; 204 on success |
+| `login-interactive` | POST | `loginInteractive()` | write | core | v0.9.0 | old | matrix + CLI black-box | BrowseToURL arrives on the IPN bus — subscribe before calling |
+| `logout` | POST | `logout()` | destructive | core | v0.9.0 | old | unit only (never integration-tested) | disconnects and expires the node key |
+| `reset-auth` | POST | `resetAuth()` | destructive | core | v0.9.0 | old | unit only (never integration-tested) | wipes auth state for re-login |
+| `profiles/` | GET, PUT, POST, DELETE | `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | write | core | v0.9.0 | old | matrix (reads; mutations hermetic-only) | multi-account profile management (LoginProfile/NetworkProfile models) |
+| `id-token` | POST | `idToken(audience:)` | read | HasDebug | v0.9.0 | old | unit (control-plane dependent) | OIDC token passed through as raw control-plane JSON |
+| `serve-config` | GET, POST | `serveConfig(), setServeConfig(_:)` | write | HasServe | v0.10.0 | old (ETag: 1.40+) | matrix incl. live stale-ETag 412 proof (hermetic-only writes) | ETag optimistic concurrency; stale writes throw .preconditionFailed |
+| `cert-domains` | GET | `certDomains()` | read | HasACME | v0.10.0 | old | matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball) | null body (no HTTPS) decodes as empty list |
+| `cert/` | GET | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | read | HasACME | v0.10.0 | old | unit (needs HTTPS-enabled tailnet live) | first fetch may block on ACME issuance; pair split fails closed |
+| `set-dns` | POST | `setDNS(name:value:)` | write | HasACME | v0.10.0 | old | unit (control-plane rate-limited) | ACME dns-01 TXT records only; control plane restricts names |
+| `query-feature` | POST | `queryFeature(_:)` | read | HasServe | v0.10.0 | old | matrix (headscale control plane → skip) | control-plane probe for serve/funnel enablement; 503 without a netmap |
+| `bugreport` | POST | `experimental.bugreport(note:)` | write | HasDebug | v0.7.0 | old | matrix+live | drops a marker in the daemon log; returns the marker ID |
+| `goroutines` | GET | `experimental.goroutines()` | read | HasDebug | v0.7.0 | old | matrix+live | Go stack dump for diagnostics |
+| `logtap` | GET (stream) | `experimental.logtap()` | read | HasDebug | v0.7.0 | old | matrix | live daemon log stream |
+| `set-gui-visible` | POST | `experimental.setGUIVisible(_:sessionID:)` | write | core | v0.9.0 | old | unit (wire shape) | GUI-client contract; shapes follow Tailscale's own clients |
+| `set-push-device-token` | POST | `experimental.setPushDeviceToken(_:)` | write | core | v0.9.0 | old | unit (wire shape) | APNs token registration (GUI contract) |
+| `handle-push-message` | POST | `experimental.handlePushMessage(_:)` | write | core | v0.9.0 | old | unit (wire shape) | delivers a push payload to the daemon (GUI contract) |
+
+Tested against: hermetic headscale lanes: tailscaled stable / previous-stable 1.96.4 / unstable; plus a real tailnet daemon on self-hosted macOS.
+<!-- END GENERATED: implemented-endpoints (Scripts/generate-endpoint-docs.py) -->
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 

@@ -48,6 +48,9 @@ jobs:
           </html>
           EOF
 
+          # Serve the LLM-facing index at the site root for agent retrieval.
+          cp llms.txt ./docs/llms.txt
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
