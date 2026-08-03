@@ -51,6 +51,9 @@ jobs:
           # grows, never lower without a documented reason (see TESTING.md).
           MIN=70
           echo "Library line coverage: ${PERCENT}% (floor: ${MIN}%)"
+          # Surface the number as an annotation so it is fetchable from the
+          # check-runs API without log spelunking (feeds the 85% ratchet).
+          echo "::notice title=Coverage::Library line coverage ${PERCENT}% (floor ${MIN}%)"
           if ! python3 -c "import sys; sys.exit(0 if float('$PERCENT') >= $MIN else 1)"; then
             echo "::error::Line coverage ${PERCENT}% is below the ${MIN}% floor (see Documentation/TESTING.md)"
             exit 1
