@@ -62,7 +62,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 | **v1.2** | Taildrive | `drive/fileserver-address`, `drive/shares` CRUD | |
 | **v1.3** | Tailnet Lock | 13 `tka/*` endpoints (`TailnetLock` naming) | |
 | **Post-1.0 (additive)** | Stable-gap ledger | `BugReportWithOpts` recording handle; `DialTCP`/`UserDial` duplex abstraction | Both tracked in the coverage ledger; see below |
-| **Ongoing** | Experimental debug surface | `debug` actions, `pprof`, `update/*`, `appc-route-info`, `policy/*`, `debug-bus-*`, `prefs/service-clients` | Added on demand; never SemVer-bound |
+| **Ongoing** | Experimental debug surface | `debug` actions, `pprof`, `update/install|progress`, `appc-route-info`, `policy/*`, `debug-bus-*`, `prefs/service-clients` | Added on demand; never SemVer-bound |
 
 ## v0.12.0 — Always-On Gap-Fill & 1.0 Runway
 
@@ -105,7 +105,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
   - `BugReportWithOpts` — a recording handle that keeps the POST body open until the caller ends the recording (upstream's contract); the experimental `record:` knob documents today's limitation
   - `DialTCP` / `UserDial` — raw duplex streams over HTTP upgrade; needs a Swift connection abstraction design spike first (issue draft 04)
 - **Transport-neutral core & safesocket parity** (issue drafts 05/06) — architecture tracks; timing depends on the pre-freeze audit above
-- **Ongoing Experimental** — `debug` (`?action=` multiplexer), `pprof`, `update/check|install|progress`, `appc-route-info`, `policy/<scope>` (MDM/syspolicy), `debug-bus-graph|queues|events`, `prefs/service-clients`, and whatever upstream adds next; wrapped on demand, never SemVer-bound
+- **Ongoing Experimental** — `debug` (`?action=` multiplexer), `pprof`, `update/install` + `update/progress` (`update/check` shipped supported in v0.11.0), `appc-route-info`, `policy/<scope>` (MDM/syspolicy), `debug-bus-graph|queues|events`, `prefs/service-clients`, and whatever upstream adds next; wrapped on demand, never SemVer-bound
 
 ---
 
