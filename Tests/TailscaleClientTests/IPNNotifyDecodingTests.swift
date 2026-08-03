@@ -9,6 +9,16 @@ final class IPNNotifyDecodingTests: XCTestCase {
 
   // MARK: - IPNState Tests
 
+  func testIPNStateUnknownValueDecodesAsOther() throws {
+    // Upstream adding a backend state must never fail an IPN bus decode:
+    // an unknown raw value lands on .other, and the notify line survives.
+    let notify = try JSONDecoder.tailscale().decode(
+      IPNNotify.self, from: Data(#"{"State": 99}"#.utf8))
+    XCTAssertEqual(notify.state, .other)
+    XCTAssertFalse(notify.state?.isRunning ?? true)
+    XCTAssertEqual(notify.state?.description, "Other")
+  }
+
   func testIPNStateValues() {
     XCTAssertEqual(IPNState.noState.rawValue, 0)
     XCTAssertEqual(IPNState.inUseOtherUser.rawValue, 1)

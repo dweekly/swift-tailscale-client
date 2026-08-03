@@ -133,6 +133,7 @@ drifts from it.
 | Swift API | Endpoint | Access | Stability & availability |
 |---|---|---|---|
 | `status(query:)` | `status` | read | upstream stable; supported Swift API |
+| `services()` | `services` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled recent (VIP services era; older daemons -> endpointUnavailable) |
 | `whois(address:), whois(address:protocol:), whois(nodeKey:), whois(address:scopedToDestination:), whois(address:forService:)` | `whois` | read | upstream stable; supported Swift API |
 | `prefs(), editPrefs(_:)` | `prefs` | write | upstream stable; supported Swift API |
 | `ping(ip:type:size:)` | `ping` | read | no upstream maturity note (assume unstable); supported Swift normalization layer |
@@ -156,6 +157,7 @@ drifts from it.
 | `start(options:)` | `start` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `loginInteractive()` | `login-interactive` | write | upstream stable; supported Swift API |
 | `logout()` | `logout` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
+| `shutdownTailscaled()` | `shutdown` | destructive | **destructive**; upstream unstable; supported Swift normalization layer; needs tailscaled recent (older daemons -> endpointUnavailable) |
 | `checkUpdate()` | `update/check` | read | upstream stable; supported Swift API; absent on builds without `HasClientUpdate` |
 | `disconnectControl()` | `disconnect-control` | write | upstream stable; supported Swift API; absent on builds without `HasDebug || HasAdvertiseRoutes` |
 | `resetAuth()` | `reset-auth` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |

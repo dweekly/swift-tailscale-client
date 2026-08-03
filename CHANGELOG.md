@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **`services()`** wraps `GET /localapi/v0/services` — Tailscale Services (VIP services) visible to this node, keyed by `svc:` name, with `ServiceDetails`/`ServiceAction` models (addresses, `ProtoPortRange` text-form ports, open-set action slugs with JSON attribute maps; upstream `GetServices`, unannotated). Daemons without a netmap answer 503; daemons predating the endpoint surface `.endpointUnavailable`. CLI: `tailscale-swift services` (with `--json`).
+- **`shutdownTailscaled()`** wraps `POST /localapi/v0/shutdown` (upstream `ShutdownTailscaled`, annotated unstable) — graceful daemon exit. Destructive and documented as such; requires write access **and** the `AllowTailscaledRestart` policy (403 → `.permissionDenied`); wire-shape unit tests only, never exercised against live daemons.
+- **Linux interface discovery**: `NetworkInterfaceDiscovery` (and therefore `StatusResponse.interfaceName`/`interfaceInfo`) now works on Glibc platforms — the `getifaddrs` path was Darwin-gated, silently returning nil on Linux. The whole discovery test suite now runs on Linux CI as the regression assertion.
+- **Model-conformance gate**: `Scripts/check-model-conformance.py` enforces the API conventions mechanically in CI — every Codable struct must be Sendable + Equatable with a public init, and every raw-value wire enum must decode tolerantly. Its first run caught a real bug (see Fixed).
+- **Upstream drift automation** (issue draft 07): a weekly `upstream-drift` workflow re-derives maturity/gates/capability against *current* tailscale/tailscale main (`verify-upstream-maturity.py --against-revision`) and files/updates a re-pin issue describing exactly what moved. The pinned verification in regular CI is unchanged.
+- **Strict DocC lane**: PRs now build documentation with `--warnings-as-errors` (broken symbol links and malformed directives fail before deploy time) plus an informational documentation-coverage dump.
+
+### Fixed
+
+- `IPNState` (IPN bus backend state) decodes unknown values as a new `.other` case instead of failing the notification line — upstream adding a state no longer costs you the notify. Caught by the new model-conformance gate.
+
 ## [0.11.0] - 2026-08-03
 
 ### Security

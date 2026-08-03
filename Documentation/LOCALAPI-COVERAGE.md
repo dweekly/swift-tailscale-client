@@ -29,7 +29,7 @@ Three upstream facts shape everything below:
 <!-- BEGIN GENERATED: coverage-summary (Scripts/generate-endpoint-docs.py) -->
 | Category | Count |
 |----------|-------|
-| Implemented (from `endpoints.json`) | 35 supported + 5 experimental |
+| Implemented (from `endpoints.json`) | 37 supported + 5 experimental |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 6 |
@@ -46,6 +46,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | Endpoint | Method(s) | Swift API | Access | Upstream maturity | Swift support | Gate | Since | Min tailscaled | Tested | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `status` | GET | `status(query:)` | read | stable | supported | core | v0.1.0 | old | matrix+live | ?peers=false via StatusQuery; interfaceName/interfaceInfo derived client-side |
+| `services` | GET | `services()` | read | unspecified | supported | core | v0.12.0 | recent (VIP services era; older daemons -> endpointUnavailable) | matrix (503 without netmap and absent-endpoint 404 both tolerated) | Tailscale Services (VIP services) keyed by svc: name; Ports are upstream ProtoPortRange text forms |
 | `whois` | GET | `whois(address:), whois(address:protocol:), whois(nodeKey:), whois(address:scopedToDestination:), whois(address:forService:)` | read | stable | supported | core | v0.2.0 | old | matrix+live | all stable variants wrapped; a peer miss (404) throws typed .peerNotFound |
 | `prefs` | GET, PATCH | `prefs(), editPrefs(_:)` | write | stable | supported | core | v0.2.0 | old | matrix+live (writes hermetic-only) | PATCH takes typed MaskedPrefs value+Set flag pairs (v0.8.0) |
 | `ping` | POST | `ping(ip:type:size:)` | read | unspecified | supported | core | v0.2.0 | old | matrix+live | disco/TSMP/ICMP/peerAPI ping types |
@@ -69,6 +70,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `start` | POST | `start(options:)` | write | unspecified | supported | core | v0.8.0 | old | matrix | backend start / headless auth-key bring-up; 204 on success |
 | `login-interactive` | POST | `loginInteractive()` | write | stable | supported | core | v0.9.0 | old | matrix + CLI black-box | BrowseToURL arrives on the IPN bus — subscribe before calling |
 | `logout` | POST | `logout()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | disconnects and expires the node key |
+| `shutdown` | POST | `shutdownTailscaled()` | destructive | unstable | supported | core | v0.12.0 | recent (older daemons -> endpointUnavailable) | unit only (destructive: terminates the daemon; never run live) | graceful daemon exit; requires write access AND the AllowTailscaledRestart policy (403 -> .permissionDenied) |
 | `update/check` | GET | `checkUpdate()` | read | stable | supported | HasClientUpdate | v0.11.0 | old | matrix (skips where the build omits clientupdate) | reports update availability only; installs nothing |
 | `disconnect-control` | POST | `disconnectControl()` | write | stable | supported | HasDebug || HasAdvertiseRoutes | v0.11.0 | old | unit only (administrative: never exercised against live daemons) | administrative: drains HA subnet-router/app-connector replicas before shutdown |
 | `reset-auth` | POST | `resetAuth()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | wipes auth state for re-login. Upstream: no public Go client method |

@@ -1,0 +1,94 @@
+name: Upstream drift
+
+# Weekly re-derivation of the endpoint manifest's upstream facts (API
+# maturity annotations, handler-registration gates, capability version)
+# against CURRENT tailscale/tailscale main, instead of the pinned commit
+# CI normally verifies. Drift here is expected eventually — upstream moves —
+# and the job's product is an issue describing exactly what changed, so the
+# re-pin (new SHA, manifest updates, matrix run) happens deliberately.
+#
+# This complements, never replaces, the pinned verification in ci.yml:
+# that one proves the manifest matches its recorded provenance; this one
+# notices when the world has moved on.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift-check:
+    name: Check manifest against upstream main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve current upstream main
+        id: upstream
+        run: |
+          sha=$(git ls-remote https://github.com/tailscale/tailscale refs/heads/main | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "::error::could not resolve tailscale/tailscale main"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Re-derive upstream facts at current main
+        id: drift
+        continue-on-error: true
+        run: |
+          # pipefail: without it, tee's exit code would mask the drift signal.
+          set -o pipefail
+          python3 Scripts/verify-upstream-maturity.py \
+            --against-revision "${{ steps.upstream.outputs.sha }}" \
+            | tee drift-report.txt
+
+      - name: Open or update the re-pin issue on drift
+        if: steps.drift.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const sha = '${{ steps.upstream.outputs.sha }}';
+            const report = fs.readFileSync('drift-report.txt', 'utf8').trim();
+            const title = 'Upstream drift: endpoint manifest no longer matches tailscale/tailscale main';
+            const body = [
+              `The weekly drift check re-derived the endpoint manifest's upstream facts against`,
+              `\`tailscale/tailscale@${sha.slice(0, 12)}\` and found differences from the pinned provenance:`,
+              '',
+              '```',
+              report,
+              '```',
+              '',
+              'Re-pin procedure (see the capability constant\'s doc comment and ROADMAP):',
+              '1. Update `upstream_provenance.revision` in `Documentation/endpoints.json` to the new SHA.',
+              '2. Apply the manifest changes the report implies (maturity, gates, capability).',
+              '3. Update `defaultCapabilityVersion` if the capability moved; re-run the daemon matrix as compatibility evidence.',
+              '4. Regenerate docs (`Scripts/generate-endpoint-docs.py`) and land it all in one PR.',
+              '',
+              '_Filed automatically by the upstream-drift workflow; it updates this issue on subsequent runs._',
+            ].join('\n');
+            const {data: issues} = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'upstream-drift',
+            });
+            if (issues.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issues[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['upstream-drift'],
+              });
+            }
+
+      - name: Report clean run
+        if: steps.drift.outcome == 'success'
+        run: echo "No drift — manifest facts still hold at current upstream main."

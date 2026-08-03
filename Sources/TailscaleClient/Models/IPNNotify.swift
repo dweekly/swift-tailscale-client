@@ -262,6 +262,15 @@ public enum IPNState: Int, Codable, Sendable, Equatable, CustomStringConvertible
   case starting = 5
   /// Tailscale is running and connected.
   case running = 6
+  /// A state this package doesn't model yet (upstream added a value);
+  /// decoding never fails on it.
+  case other = -1
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let rawValue = try container.decode(Int.self)
+    self = IPNState(rawValue: rawValue) ?? .other
+  }
 
   public var description: String {
     switch self {
@@ -272,6 +281,7 @@ public enum IPNState: Int, Codable, Sendable, Equatable, CustomStringConvertible
     case .stopped: return "Stopped"
     case .starting: return "Starting"
     case .running: return "Running"
+    case .other: return "Other"
     }
   }
 

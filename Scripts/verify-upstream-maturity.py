@@ -217,6 +217,19 @@ def main():
             f"ERROR: upstream_provenance.revision must be a full commit SHA, "
             f"got {revision!r}")
 
+    # Drift mode: validate the manifest's expectations against a DIFFERENT
+    # upstream revision (typically current main). Mismatches then mean
+    # "upstream moved", not "the manifest is wrong" — the scheduled
+    # upstream-drift workflow uses this to open a re-pin issue.
+    if "--against-revision" in sys.argv:
+        revision = sys.argv[sys.argv.index("--against-revision") + 1]
+        if not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise SystemExit(
+                f"ERROR: --against-revision must be a full commit SHA, "
+                f"got {revision!r}")
+        print(f"drift mode: checking manifest (pinned "
+              f"{provenance['revision'][:12]}) against {revision[:12]}")
+
     sources = load_sources(revision, source_dir)
     derived = {}
     for path in SOURCE_FILES:

@@ -24,6 +24,27 @@
       "notes": "?peers=false via StatusQuery; interfaceName/interfaceInfo derived client-side"
     },
     {
+      "endpoint": "services",
+      "methods": [
+        "GET"
+      ],
+      "symbol": "services()",
+      "access": "read",
+      "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "GetServices",
+      "since": "0.12.0",
+      "min_tailscaled": "recent (VIP services era; older daemons -> endpointUnavailable)",
+      "tested": "matrix (503 without netmap and absent-endpoint 404 both tolerated)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "Tailscale Services (VIP services) keyed by svc: name; Ports are upstream ProtoPortRange text forms"
+    },
+    {
       "endpoint": "whois",
       "methods": [
         "GET"
@@ -509,6 +530,27 @@
       ],
       "upstream": "general",
       "notes": "disconnects and expires the node key"
+    },
+    {
+      "endpoint": "shutdown",
+      "methods": [
+        "POST"
+      ],
+      "symbol": "shutdownTailscaled()",
+      "access": "destructive",
+      "gate": "core",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "ShutdownTailscaled",
+      "since": "0.12.0",
+      "min_tailscaled": "recent (older daemons -> endpointUnavailable)",
+      "tested": "unit only (destructive: terminates the daemon; never run live)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "graceful daemon exit; requires write access AND the AllowTailscaledRestart policy (403 -> .permissionDenied)"
     },
     {
       "endpoint": "update/check",
