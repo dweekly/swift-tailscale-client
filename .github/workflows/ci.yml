@@ -48,9 +48,9 @@ jobs:
             -ignore-filename-regex '(Tests/|\.build/|Sources/tailscale-swift/)' \
             > coverage-summary.json
           PERCENT=$(python3 -c "import json; print(round(json.load(open('coverage-summary.json'))['data'][0]['totals']['lines']['percent'], 1))")
-          # Ratcheted to 70 at v0.9.0 (~79% measured since); raise as coverage
+          # Ratcheted to 85 at v0.12.0 (85.9% measured); raise as coverage
           # grows, never lower without a documented reason (see TESTING.md).
-          MIN=70
+          MIN=85
           echo "Library line coverage: ${PERCENT}% (floor: ${MIN}%)"
           # Surface the number as an annotation so it is fetchable from the
           # check-runs API without log spelunking (feeds the 85% ratchet).
@@ -181,24 +181,32 @@ jobs:
       # v0.12.0: Types 93%, Members 70%, Globals 1.6%). The pre-1.0 API
       # audit raises these to 100 — the 1.0 criterion is no undocumented
       # public symbols; until then this fails any PR that loses ground.
+      # awk, not python: the swift:6.1 container ships neither python3
+      # nor perl.
       - name: Check documentation coverage floors
+        shell: bash
         run: |
-          python3 - <<'EOF'
-          import re, sys
-
-          floors = {"Types": 90.0, "Members": 68.0, "Globals": 1.0}
-          text = open("/tmp/docc-build.log").read()
-          rows = dict(
-              (m.group(1), float(m.group(2)))
-              for m in re.finditer(r"^(Types|Members|Globals)\s*\|\s*([\d.]+)% ", text, re.M))
-          if set(rows) != set(floors):
-              sys.exit(f"::error::coverage table not found in DocC output (got {rows})")
-          failed = [f"{k} {rows[k]}% < floor {floors[k]}%" for k in floors if rows[k] < floors[k]]
-          for k in floors:
-              print(f"{k}: {rows[k]}% abstract coverage (floor {floors[k]}%)")
-          if failed:
-              sys.exit("::error::documentation coverage regressed: " + "; ".join(failed))
-          EOF
+          awk '
+            $1 ~ /^(Types|Members|Globals)$/ && $2 == "|" {
+              pct = $3; sub(/%/, "", pct); rows[$1] = pct
+            }
+            END {
+              floors["Types"] = 90; floors["Members"] = 68; floors["Globals"] = 1
+              bad = 0
+              for (k in floors) {
+                if (!(k in rows)) {
+                  printf "::error::%s row missing from DocC coverage table\n", k
+                  bad = 1
+                  continue
+                }
+                printf "%s: %s%% abstract coverage (floor %s%%)\n", k, rows[k], floors[k]
+                if (rows[k] + 0 < floors[k]) {
+                  printf "::error::documentation coverage regressed: %s %s%% < floor %s%%\n", k, rows[k], floors[k]
+                  bad = 1
+                }
+              }
+              exit bad
+            }' /tmp/docc-build.log
 
   test-tsan:
     name: Test with Thread Sanitizer

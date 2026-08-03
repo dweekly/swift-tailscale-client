@@ -74,7 +74,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 - [x] **Linux `NetworkInterfaceDiscovery`** — the implementation is `#if canImport(Darwin)`-gated, so `StatusResponse.interfaceName`/`interfaceInfo` silently return nil on Linux despite Linux being a first-class daemon platform; port the `getifaddrs` path to Glibc with a Linux CI assertion
 
 ### Testing
-- [ ] Coverage floor ratchets 70 → 85 (fill the gaps the report shows; streaming path and transport parsers stay fully unit-tested)
+- [x] Coverage floor ratchets 70 → 85 (85.9% measured after the per-file report drove targeted round-trip tests; streaming path and transport parsers stay fully unit-tested)
 - [x] Scripted login lifecycle against headscale (interactive login is scriptable there) — the one open item carried from v0.9.0
 - [x] Decide and document the upstream re-pin cadence (issue draft 07): a scheduled job that re-derives maturity/gates against a newer upstream commit and opens a PR when anything drifts
 - [x] **Mechanized model-conformance audit**: a test (or scripted sweep) asserting every public model has a public memberwise init and `Sendable`/`Equatable` (+`Codable` where wire-facing), and every wire enum has a tolerant fallback case — the API-conventions section as an executable check, not a one-time review
@@ -88,7 +88,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 **Criteria (checklist, not a feature list):**
 
 - [ ] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) — after v0.12.0 this means zero unwrapped always-on handlers
-- [ ] Test coverage ≥ 85%; streaming path and transport parsers fully unit-tested
+- [x] Test coverage ≥ 85% (floor enforced in CI since v0.12.0; 85.9% measured); streaming path and transport parsers fully unit-tested
 - [x] Integration matrix green against at least two tailscaled versions (three hermetic headscale lanes — stable / previous-stable / unstable — plus a live self-hosted macOS lane, on every PR)
 - [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols — the abstract-coverage regression floors from v0.12.0 raised to 100%, which means writing the ~200 missing member abstracts in the pre-freeze audit), one tutorial (shipped in v0.12.0), at least two buildable examples in `Examples/` (StatusDemo and Recipes exist)
 - [x] Homebrew formula, Swift Package Index docs, and release automation all live
@@ -116,7 +116,7 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 The operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTING.md) and [`Documentation/RELEASING.md`](Documentation/RELEASING.md). Most of what these tracks originally listed has shipped; what's left:
 
 ### Testing
-- Coverage gate 70 now → 85 at v0.12.0/1.0
+- Coverage gate: 85 since v0.12.0; the pre-1.0 audit may ratchet further as gaps close
 - Mutation/property tests: randomized truncation and field-deletion of fixtures must throw typed errors, never crash (nice-to-have before 1.0)
 - Scripted headscale login lifecycle (v0.12.0)
 
