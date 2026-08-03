@@ -708,20 +708,22 @@ public actor TailscaleClient {
     -> TailscaleResponse
   {
     let configuration = self.configuration
-    var request = request
+    var pending = request
     if let auditReason, !auditReason.isEmpty,
-      request.additionalHeaders["X-Tailscale-Reason"] == nil
+      pending.additionalHeaders["X-Tailscale-Reason"] == nil
     {
       // Upstream contract: the justification travels Base64-encoded in
       // X-Tailscale-Reason (apitype.RequestReasonHeader).
-      request.additionalHeaders["X-Tailscale-Reason"] =
+      pending.additionalHeaders["X-Tailscale-Reason"] =
         Data(auditReason.utf8).base64EncodedString()
     }
+    // The deadline closure is @Sendable; it may only capture immutable state.
+    let finalRequest = pending
     do {
       let response = try await Self.withDeadline(
         configuration.requestTimeout, endpoint: endpoint
       ) {
-        try await configuration.transport.send(request, configuration: configuration)
+        try await configuration.transport.send(finalRequest, configuration: configuration)
       }
       // The unix transport lowercases header names; URLSession preserves them.
       if let version = response.headers.first(where: {
