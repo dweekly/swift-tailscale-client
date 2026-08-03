@@ -17,12 +17,15 @@ Checks performed:
   3. ``upstream_provenance.capability_version`` matches
      ``tailcfg.CurrentCapabilityVersion`` at the pinned revision, and the
      Swift ``defaultCapabilityVersion`` constant matches both.
-  4. Each endpoint's ``gate`` matches the handler registration in
-     ``ipn/localapi/localapi.go`` at the pinned revision: entries in the
-     static handler map are ``core``; entries registered inside an
-     ``if buildfeatures.X { ... }`` block carry that build-tag expression
-     verbatim (e.g. ``HasDebug || HasAdvertiseRoutes``). Endpoints
-     registered from feature packages outside localapi.go are skipped.
+  4. Each endpoint's ``gate`` matches the handler registration at the
+     pinned revision: entries in localapi.go's static handler map are
+     ``core``; entries registered inside an ``if buildfeatures.X { ... }``
+     block carry that build-tag expression verbatim (e.g.
+     ``HasDebug || HasAdvertiseRoutes``); and handlers that live in
+     build-tagged sibling files (cert.go, serve.go, debug.go — the
+     ``//go:build !ts_omit_x`` pattern) carry the ``Hasx`` feature their
+     file's tag implies. Endpoints with no registration in any scanned file
+     are skipped, never guessed.
 
 Usage:
   Scripts/verify-upstream-maturity.py                 # download at pinned SHA
@@ -53,6 +56,23 @@ SOURCE_FILES = [
     "ipn/localapi/localapi.go",
 ]
 
+# Handlers registered from build-tagged sibling files rather than
+# localapi.go itself; their gate is the feature the file's
+# ``//go:build !ts_omit_x`` tag implies.
+GATED_HANDLER_FILES = [
+    "ipn/localapi/cert.go",
+    "ipn/localapi/serve.go",
+    "ipn/localapi/debug.go",
+]
+SOURCE_FILES += GATED_HANDLER_FILES
+
+# ts_omit_<x> build tag -> buildfeatures.Has<X> name (irregular casings).
+OMIT_TAG_FEATURES = {
+    "ts_omit_acme": "HasACME",
+    "ts_omit_serve": "HasServe",
+    "ts_omit_debug": "HasDebug",
+}
+
 RAW_URL = "https://raw.githubusercontent.com/tailscale/tailscale/{rev}/{path}"
 
 FUNC_RE = re.compile(r"^func (?:\([^)]*\) )?([A-Za-z0-9_]+)\(")
@@ -78,7 +98,9 @@ def load_sources(revision, source_dir):
     sources = {}
     for path in SOURCE_FILES:
         if source_dir:
-            local = pathlib.Path(source_dir) / pathlib.Path(path).name
+            # Flattened path names avoid basename collisions (cert.go and
+            # serve.go exist in both client/local and ipn/localapi).
+            local = pathlib.Path(source_dir) / path.replace("/", "__")
             if not local.exists():
                 raise SystemExit(f"ERROR: {local} not found (--source-dir)")
             sources[path] = local.read_text()
@@ -158,6 +180,30 @@ def derive_gates(localapi_text):
     return gates
 
 
+def derive_file_gates(go_text, path):
+    """Map registration name -> gate for a build-tagged handler file.
+
+    These files register unconditionally in init(); the gate is the
+    ``Has<X>`` feature implied by the file's ``//go:build !ts_omit_x`` tag
+    (platform-only terms like !ios are ignored — they describe OSes with no
+    reachable LocalAPI daemon, not build features).
+    """
+    tag_line = next(
+        (l for l in go_text.splitlines() if l.startswith("//go:build")), "")
+    features = [
+        OMIT_TAG_FEATURES[t] for t in re.findall(r"!(ts_omit_[a-z0-9_]+)", tag_line)
+        if t in OMIT_TAG_FEATURES]
+    unknown = [
+        t for t in re.findall(r"!(ts_omit_[a-z0-9_]+)", tag_line)
+        if t not in OMIT_TAG_FEATURES]
+    if unknown:
+        raise SystemExit(
+            f"ERROR: {path} has unmapped build tags {unknown}; extend "
+            f"OMIT_TAG_FEATURES")
+    gate = " && ".join(features) if features else "core"
+    return {m.group(1): gate for m in REGISTER_RE.finditer(go_text)}
+
+
 def main():
     source_dir = None
     if "--source-dir" in sys.argv:
@@ -214,6 +260,8 @@ def main():
     #    Endpoints registered from feature packages (serve-config, cert/,
     #    debug-optional-features, ...) don't appear there and are skipped.
     derived_gates = derive_gates(sources["ipn/localapi/localapi.go"])
+    for path in GATED_HANDLER_FILES:
+        derived_gates.update(derive_file_gates(sources[path], path))
     skipped_gates = []
     for entry in data["endpoints"]:
         name = entry["endpoint"]

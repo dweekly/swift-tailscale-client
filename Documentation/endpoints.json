@@ -158,7 +158,7 @@
       ],
       "symbol": "daemonFeatures()",
       "access": "read",
-      "gate": "core",
+      "gate": "HasDebug",
       "upstream_maturity": "unspecified",
       "swift_support": "supported",
       "upstream_symbol": "QueryOptionalFeatures",

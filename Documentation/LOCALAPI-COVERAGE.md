@@ -48,7 +48,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `metrics` | GET | `metrics()` | read | unspecified | supported | HasClientMetrics || HasDebug | v0.2.0 | old | matrix+live | Prometheus text; internal counters, names may churn upstream |
 | `usermetrics` | GET | `userMetrics()` | read | unspecified | supported | HasUserMetrics | v0.6.0 | 1.78 | matrix+live | stable user-facing metrics (tailscale metrics print) |
 | `watch-ipn-bus` | GET (stream) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | read | unstable | supported | HasIPNBus | v0.3.0 | old | matrix+live | NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0). Upstream: our Swift facade normalizes and tolerates shape drift |
-| `debug-optional-features` | POST | `daemonFeatures()` | read | unspecified | supported | core | v0.4.0 | 1.86 | matrix+live | capability probe: which optional features this daemon was built with |
+| `debug-optional-features` | POST | `daemonFeatures()` | read | unspecified | supported | HasDebug | v0.4.0 | 1.86 | matrix+live | capability probe: which optional features this daemon was built with |
 | `derpmap` | GET | `derpMap()` | read | stable | supported | core | v0.6.0 | old | matrix+live | relay regions/nodes; feeds the client-side netcheck |
 | `suggest-exit-node` | GET | `suggestExitNode(forceProbe:)` | read | unspecified | supported | HasUseExitNode | v0.6.0 | old (POST probe: 1.86) | matrix+live | empty 200 body = no candidates |
 | `dns-osconfig` | GET | `dnsOSConfig()` | read | unstable | supported | HasDNS | v0.7.0 | old | matrix+live (userspace daemons 500 → skip) | installed OS DNS state; 500 on userspace-networking daemons |

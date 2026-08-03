@@ -139,7 +139,7 @@ drifts from it.
 | `metrics()` | `metrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasClientMetrics || HasDebug` |
 | `userMetrics()` | `usermetrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.78; absent on builds without `HasUserMetrics` |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasIPNBus` |
-| `daemonFeatures()` | `debug-optional-features` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.86 |
+| `daemonFeatures()` | `debug-optional-features` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.86; absent on builds without `HasDebug` |
 | `derpMap()` | `derpmap` | read | upstream stable; supported Swift API |
 | `suggestExitNode(forceProbe:)` | `suggest-exit-node` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasUseExitNode` |
 | `dnsOSConfig()` | `dns-osconfig` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasDNS` |
