@@ -35,6 +35,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - <doc:Streaming>
 - <doc:ErrorHandling>
 - <doc:WritingSafely>
+- <doc:LoginFlow>
 - <doc:StabilityTiers>
 - <doc:VersionCompatibility>
 
@@ -75,6 +76,10 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``WhoIsNode``
 - ``WhoIsHostinfo``
 - ``UserProfile``
+
+### Auth & Profiles
+- ``LoginProfile``
+- ``NetworkProfile``
 
 ### Preferences
 - ``Prefs``

@@ -230,6 +230,92 @@ public actor TailscaleClient {
     _ = try await performRawRequest(request, endpoint: endpoint)
   }
 
+  /// Begins an interactive login: the control plane responds with a URL the
+  /// user must open, delivered as `browseToURL` on the IPN bus.
+  ///
+  /// Watch ``watchIPNBus(options:reconnect:onUndecodableLine:)`` for
+  /// ``IPNNotify/browseToURL`` before calling this, then open the URL for
+  /// the user. Returns immediately (204); completion arrives as a state
+  /// change on the bus.
+  ///
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func loginInteractive() async throws {
+    let endpoint = "/localapi/v0/login-interactive"
+    _ = try await performRawRequest(
+      TailscaleRequest(method: "POST", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Logs this node out of the tailnet, expiring its keys. **Destructive**:
+  /// re-authentication is required afterward.
+  ///
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func logout() async throws {
+    let endpoint = "/localapi/v0/logout"
+    _ = try await performRawRequest(
+      TailscaleRequest(method: "POST", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Resets the daemon's authentication state without contacting the
+  /// control plane — the recovery hammer for a wedged login.
+  ///
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func resetAuth() async throws {
+    let endpoint = "/localapi/v0/reset-auth"
+    _ = try await performRawRequest(
+      TailscaleRequest(method: "POST", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Lists all saved login profiles.
+  public func profiles() async throws -> [LoginProfile] {
+    let endpoint = "/localapi/v0/profiles/"
+    return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
+  }
+
+  /// Fetches the currently active login profile.
+  public func currentProfile() async throws -> LoginProfile {
+    let endpoint = "/localapi/v0/profiles/current"
+    return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
+  }
+
+  /// Creates a new (empty) login profile and switches to it; follow with
+  /// ``loginInteractive()`` or ``start(options:)`` to authenticate it.
+  public func addProfile() async throws {
+    let endpoint = "/localapi/v0/profiles/"
+    _ = try await performRawRequest(
+      TailscaleRequest(method: "PUT", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Switches to the profile with the given ID (see ``LoginProfile/id``).
+  public func switchProfile(_ id: String) async throws {
+    let endpoint = "/localapi/v0/profiles/\(id)"
+    _ = try await performRawRequest(
+      TailscaleRequest(method: "POST", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Deletes the profile with the given ID. **Destructive.**
+  public func deleteProfile(_ id: String) async throws {
+    let endpoint = "/localapi/v0/profiles/\(id)"
+    _ = try await performRawRequest(
+      TailscaleRequest(method: "DELETE", path: endpoint), endpoint: endpoint)
+  }
+
+  /// Fetches an OIDC ID token for this node from the control plane.
+  ///
+  /// - Parameter audience: The token audience (`aud` claim).
+  /// - Returns: The control plane's raw JSON response (shape is
+  ///   control-plane defined; typically `{"id_token": "..."}`).
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
+  ///   daemon was built without debug support; other `TailscaleClientError`
+  ///   cases on failure.
+  public func idToken(audience: String) async throws -> String {
+    let endpoint = "/localapi/v0/id-token"
+    let request = TailscaleRequest(
+      method: "POST", path: endpoint,
+      queryItems: [URLQueryItem(name: "aud", value: audience)])
+    return try await performRawRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
+  }
+
   /// Fetches the full netmap record for a peer by its numeric node ID.
   ///
   /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the
