@@ -251,3 +251,18 @@ final class IPNNotifyDecodingTests: XCTestCase {
     XCTAssertFalse(opts.contains(.initialPrefs))
   }
 }
+extension IPNNotifyDecodingTests {
+  func testDecodesLoginFinishedMarker() throws {
+    // Upstream sends LoginFinished as an empty object marker, not a bool.
+    let json = Data(#"{"Version": "1.99.0", "LoginFinished": {}, "State": 6}"#.utf8)
+    let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: json)
+    XCTAssertNotNil(notify.loginFinished)
+    XCTAssertEqual(notify.state, .running)
+  }
+
+  func testAbsentLoginFinishedDecodesToNil() throws {
+    let notify = try JSONDecoder.tailscale().decode(
+      IPNNotify.self, from: Data(#"{"Version": "1.99.0"}"#.utf8))
+    XCTAssertNil(notify.loginFinished)
+  }
+}
