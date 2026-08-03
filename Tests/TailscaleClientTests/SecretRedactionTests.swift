@@ -13,14 +13,19 @@ final class SecretRedactionTests: XCTestCase {
 
   private let secret = "SECRETTOKEN0123456789abcdef"
 
-  /// Every ≥4-char substring of the secret counts as a leak; checking the
-  /// full value and a few windows keeps the assertion honest and fast.
+  /// Every ≥4-char substring of the secret counts as a leak. Any leaked
+  /// substring of length ≥ 4 necessarily contains a length-4 window, so
+  /// checking every length-4 window is complete — no offset can slip through.
   private func assertFree(of secret: String, _ text: String, _ label: String) {
-    XCTAssertFalse(text.contains(secret), "\(label) leaked the full secret: \(text)")
-    let head = String(secret.prefix(8))
-    XCTAssertFalse(text.contains(head), "\(label) leaked a secret prefix: \(text)")
-    let mid = String(secret.dropFirst(8).prefix(8))
-    XCTAssertFalse(text.contains(mid), "\(label) leaked a secret substring: \(text)")
+    let window = 4
+    let characters = Array(secret)
+    XCTAssertGreaterThanOrEqual(characters.count, window, "secret too short to check")
+    for start in 0...(characters.count - window) {
+      let fragment = String(characters[start..<(start + window)])
+      XCTAssertFalse(
+        text.contains(fragment),
+        "\(label) leaked secret substring '\(fragment)' (offset \(start)): \(text)")
+    }
   }
 
   func testProofPathRedactionMasksTheTokenComponent() {
@@ -61,6 +66,45 @@ final class SecretRedactionTests: XCTestCase {
     let pair = CertPair(certificatePEM: "CERT", privateKeyPEM: key)
     assertFree(of: secret, "\(pair)", "CertPair.description")
     assertFree(of: secret, String(reflecting: pair), "CertPair.debugDescription")
+  }
+
+  // MARK: - Reflection (dump / Mirror)
+
+  /// Renders every reflection surface for a value: `dump` (which descends
+  /// recursively) plus a manual walk of `Mirror(reflecting:)` children.
+  private func reflectionOutput<T>(of value: T) -> String {
+    var output = ""
+    dump(value, to: &output)
+    for child in Mirror(reflecting: value).children {
+      output += "\n\(child.label ?? "_"): \(child.value)"
+    }
+    return output
+  }
+
+  func testDumpAndMirrorRedactConfigurationAuthToken() {
+    let configuration = TailscaleClientConfiguration(
+      endpoint: .loopback(host: "127.0.0.1", port: 4242),
+      authToken: secret)
+    assertFree(of: secret, reflectionOutput(of: configuration), "dump/Mirror(configuration)")
+    // Nested inside a container: dump's recursive descent must hit the
+    // custom mirror, not the stored properties.
+    assertFree(of: secret, reflectionOutput(of: [configuration]), "dump([configuration])")
+  }
+
+  func testDumpAndMirrorRedactDiscoveryResultAuthToken() {
+    let result = LocalAPIDiscovery.Result(
+      endpoint: .loopback(host: "127.0.0.1", port: 4242),
+      authToken: secret,
+      capabilityVersion: 1)
+    assertFree(of: secret, reflectionOutput(of: result), "dump/Mirror(result)")
+    assertFree(of: secret, reflectionOutput(of: [result]), "dump([result])")
+  }
+
+  func testDumpAndMirrorRedactCertPairPrivateKey() {
+    let key = "-----BEGIN PRIVATE KEY-----\n\(secret)\n-----END PRIVATE KEY-----\n"
+    let pair = CertPair(certificatePEM: "CERT", privateKeyPEM: key)
+    assertFree(of: secret, reflectionOutput(of: pair), "dump/Mirror(pair)")
+    assertFree(of: secret, reflectionOutput(of: [pair]), "dump([pair])")
   }
 
   #if os(macOS)

@@ -50,6 +50,39 @@ if [ $# -ge 1 ]; then
   fi
 fi
 
+# Capability default: the Swift constant is the source of truth; every doc
+# that states a number must state the same one. (The constant itself is
+# verified against the pinned upstream revision by
+# Scripts/verify-upstream-maturity.py.)
+capability=$(grep -oE 'defaultCapabilityVersion = [0-9]+' \
+  Sources/TailscaleClient/Configuration/TailscaleClientConfiguration.swift \
+  | grep -oE '[0-9]+' || true)
+if [ -z "$capability" ]; then
+  echo "MISSING  defaultCapabilityVersion constant not found in Swift source"
+  fail=1
+else
+  printf '%-22s %s\n' "capability default:" "$capability"
+  check_capability() {
+    local label="$1" file="$2" pattern="$3"
+    local documented
+    documented=$(grep -oE "$pattern" "$file" | head -1 | grep -oE '[0-9]+' || true)
+    if [ -z "$documented" ]; then
+      echo "MISSING  $label: no capability default found in $file"
+      fail=1
+    elif [ "$documented" != "$capability" ]; then
+      echo "DRIFT    $label documents capability $documented, source says $capability"
+      fail=1
+    fi
+  }
+  check_capability "README env table" README.md \
+    'TAILSCALE_LOCALAPI_CAPABILITY. \| Capability version \(defaults to .[0-9]+'
+  check_capability "DocC VersionCompatibility" \
+    Sources/TailscaleClient/TailscaleClient.docc/VersionCompatibility.md \
+    'Tailscale-Cap: [0-9]+'
+  check_capability "endpoints.json provenance" Documentation/endpoints.json \
+    '"capability_version": [0-9]+'
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Release consistency check FAILED — align the files above before tagging."

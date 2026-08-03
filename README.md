@@ -198,7 +198,7 @@ When enabled, the library scans Group Containers to find `sameuserproof-<port>-<
 | `TAILSCALE_LOCALAPI_PORT` / `TAILSCALE_LOCALAPI_HOST` | Connect via loopback TCP |
 | `TAILSCALE_LOCALAPI_URL` | Full base URL override |
 | `TAILSCALE_LOCALAPI_AUTHKEY` | Auth token for TCP connections |
-| `TAILSCALE_LOCALAPI_CAPABILITY` | Capability version (defaults to `1`) |
+| `TAILSCALE_LOCALAPI_CAPABILITY` | Capability version (defaults to `144`, the pinned tested value) |
 | `TAILSCALE_DISCOVERY_DEBUG` | Set to `1` to log discovery decisions |
 
 #### App Store Discovery Options (when enabled)

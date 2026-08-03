@@ -65,9 +65,9 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `login-interactive` | POST | `loginInteractive()` | write | stable | supported | core | v0.9.0 | old | matrix + CLI black-box | BrowseToURL arrives on the IPN bus — subscribe before calling |
 | `logout` | POST | `logout()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | disconnects and expires the node key |
 | `reset-auth` | POST | `resetAuth()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | wipes auth state for re-login. Upstream: no public Go client method |
-| `profiles/` | GET, PUT, POST, DELETE | `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | write | unspecified | supported | core | v0.9.0 | old | matrix (reads; mutations hermetic-only) | multi-account profile management (LoginProfile/NetworkProfile models). Upstream: SwitchProfile/SwitchToEmptyProfile are upstream-stable; ProfileStatus/DeleteProfile carry no note - the row records the weakest promise |
+| `profiles/` | GET, PUT, POST, DELETE | `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | write | unspecified (SwitchProfile: stable, SwitchToEmptyProfile: stable) | supported | core | v0.9.0 | old | matrix (reads; mutations hermetic-only) | multi-account profile management (LoginProfile/NetworkProfile models). Upstream: mixed per-symbol maturity; addProfile() performs the same PUT /profiles/ operation as upstream SwitchToEmptyProfile (stable) |
 | `id-token` | POST | `idToken(audience:)` | read | unspecified | supported | HasDebug | v0.9.0 | old | unit (control-plane dependent) | OIDC token passed through as raw control-plane JSON |
-| `serve-config` | GET, POST | `serveConfig(), setServeConfig(_:)` | write | unstable | supported | HasServe | v0.10.0 | old (ETag: 1.40+) | matrix incl. live stale-ETag 412 proof (hermetic-only writes) | ETag optimistic concurrency; stale writes throw .preconditionFailed. Upstream: GetServeConfig is explicitly unstable upstream |
+| `serve-config` | GET, POST | `serveConfig(), setServeConfig(_:)` | write | unstable (SetServeConfig: unspecified) | supported | HasServe | v0.10.0 | old (ETag: 1.40+) | matrix incl. live stale-ETag 412 proof (hermetic-only writes) | ETag optimistic concurrency; stale writes throw .preconditionFailed. Upstream: GetServeConfig is explicitly unstable upstream; GetServeConfig is annotated unstable; SetServeConfig carries no annotation (assume unstable) |
 | `cert-domains` | GET | `certDomains()` | read | stable | supported | HasACME | v0.10.0 | old | matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball) | null body (no HTTPS) decodes as empty list |
 | `cert/` | GET | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | read | stable | supported | HasACME | v0.10.0 | old | unit (needs HTTPS-enabled tailnet live) | first fetch may block on ACME issuance; pair split fails closed |
 | `set-dns` | POST | `setDNS(name:value:)` | write | unspecified | supported | HasACME | v0.10.0 | old | unit (control-plane rate-limited) | ACME dns-01 TXT records only; control plane restricts names |
@@ -79,7 +79,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `set-push-device-token` | POST | `experimental.setPushDeviceToken(_:)` | write | unspecified | experimental | core | v0.9.0 | old | unit (wire shape) | APNs token registration (GUI contract). Upstream: GUI-client contract; no public Go client method |
 | `handle-push-message` | POST | `experimental.handlePushMessage(_:)` | write | unspecified | experimental | core | v0.9.0 | old | unit (wire shape) | delivers a push payload to the daemon (GUI contract). Upstream: GUI-client contract; no public Go client method |
 
-Upstream maturity per Tailscale's own "API maturity" annotations in `tailscale/tailscale` main, July 2026 snapshot (verified 2026-08-03); methods without an annotation must be assumed unstable, and "supported" over an upstream-unstable endpoint means this package normalizes drift — not that Tailscale guarantees the wire contract.
+Upstream maturity per Tailscale's own "API maturity" annotations in `tailscale/tailscale` 4c4d1c35f83a21c6069ae09de69b246ed1993f3e (verified 2026-08-03); methods without an annotation must be assumed unstable, and "supported" over an upstream-unstable endpoint means this package normalizes drift — not that Tailscale guarantees the wire contract.
 
 Tested against: hermetic headscale lanes: tailscaled stable / previous-stable 1.96.4 / unstable; plus a real tailnet daemon on self-hosted macOS.
 <!-- END GENERATED: implemented-endpoints (Scripts/generate-endpoint-docs.py) -->
@@ -95,8 +95,6 @@ Methods Tailscale explicitly documents as stable in `client/local` that this pac
 | `CheckUpdate` | `update/check` | reports the daemon's update availability; does not install anything |
 | `DisconnectControl` | `disconnect-control` | graceful removal of HA subnet-router/app-connector replicas before shutdown - administrative, not a test-harness tool |
 | `DialTCP / UserDial` | `dial` | raw duplex streams over HTTP upgrade; needs a Swift connection abstraction first (issue draft 04) |
-| `SwitchToEmptyProfile` | `profiles/` | logout-to-clean-slate profile variant |
-| `CheckUDPGROForwarding` | `check-udp-gro-forwarding` | subnet-router performance preflight |
 <!-- END GENERATED: upstream-stable-unimplemented (Scripts/generate-endpoint-docs.py) -->
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).

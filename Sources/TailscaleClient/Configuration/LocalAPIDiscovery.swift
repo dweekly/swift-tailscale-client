@@ -35,7 +35,7 @@ public enum TailscaleEndpoint: Sendable, Equatable {
 public struct LocalAPIDiscovery {
   /// The outcome of a discovery pass.
   public struct Result: Sendable, Equatable, CustomStringConvertible,
-    CustomDebugStringConvertible
+    CustomDebugStringConvertible, CustomReflectable
   {
     /// Where to connect.
     public var endpoint: TailscaleEndpoint
@@ -56,6 +56,19 @@ public struct LocalAPIDiscovery {
     }
 
     public var debugDescription: String { description }
+
+    /// `dump(_:)` and `Mirror` follow this instead of the stored properties,
+    /// so the auth token cannot surface through reflection either.
+    public var customMirror: Mirror {
+      Mirror(
+        self,
+        children: [
+          "endpoint": endpoint,
+          "authToken": authToken == nil ? "nil" : "<redacted>",
+          "capabilityVersion": capabilityVersion,
+        ],
+        displayStyle: .struct)
+    }
   }
 
   private let environment: [String: String]

@@ -79,11 +79,17 @@ for try await notify in try await client.watchIPNBus(options: [.initialState, .i
 
 All calls throw `TailscaleClientError` (`.transport`,
 `.unexpectedStatus(code:body:endpoint:)`, `.decoding`, `.endpointUnavailable`,
-`.timeout`, `.preconditionFailed`, `.permissionDenied`, `.rateLimited`) with
-actionable `recoverySuggestion`s. For audited operations (e.g. always-on
-mode), attach a justification with `setAuditReason(_:)`;
+`.timeout`, `.preconditionFailed`, `.permissionDenied`, `.rateLimited`,
+`.peerNotFound`) with actionable `recoverySuggestion`s. For audited
+operations (e.g. always-on mode), scope a justification with
+`TailscaleClient.withAuditReason("ticket…") { … }` — it is task-local, so
+concurrent operations never inherit each other's reasons;
 `versionDiagnostics()` reports the package version, advertised capability,
-and observed daemon version for bug reports.
+and observed daemon version for bug reports. These guarantees — typed status
+mapping, audit-reason injection, and daemon-version observation — apply to
+**unary** requests only: streaming connections (`watchIPNBus`,
+`experimental.logtap`) surface connection failures as `.transport` without
+the typed status mapping.
 
 ## Critical integration gotchas
 
@@ -150,9 +156,9 @@ drifts from it.
 | `loginInteractive()` | `login-interactive` | write | upstream stable; supported Swift API |
 | `logout()` | `logout` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `resetAuth()` | `reset-auth` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
-| `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | `profiles/` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
+| `profiles(), currentProfile(), addProfile(), switchProfile(_:), deleteProfile(_:)` | `profiles/` | write | no upstream maturity note (assume unstable) (per-symbol exceptions in the coverage matrix); supported Swift normalization layer |
 | `idToken(audience:)` | `id-token` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasDebug` |
-| `serveConfig(), setServeConfig(_:)` | `serve-config` | write | upstream unstable; supported Swift normalization layer; absent on builds without `HasServe` |
+| `serveConfig(), setServeConfig(_:)` | `serve-config` | write | upstream unstable (per-symbol exceptions in the coverage matrix); supported Swift normalization layer; absent on builds without `HasServe` |
 | `certDomains()` | `cert-domains` | read | upstream stable; supported Swift API; absent on builds without `HasACME` |
 | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | `cert/` | read | upstream stable; supported Swift API; absent on builds without `HasACME` |
 | `setDNS(name:value:)` | `set-dns` | write | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasACME` |

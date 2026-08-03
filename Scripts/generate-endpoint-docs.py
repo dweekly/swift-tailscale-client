@@ -59,10 +59,29 @@ def validate(data):
                     f"{name}: {field}={value!r} is not one of {sorted(valid)}")
         if "upstream_symbol" not in e:
             problems.append(f"{name}: missing upstream_symbol (use \"\" when none exists)")
+        listed = [s.strip() for s in e.get("upstream_symbol", "").split("/") if s.strip()]
+        for symbol, maturity in e.get("upstream_symbol_maturity", {}).items():
+            if maturity not in VALID_MATURITY:
+                problems.append(
+                    f"{name}: upstream_symbol_maturity[{symbol}]={maturity!r} "
+                    f"is not one of {sorted(VALID_MATURITY)}")
+            if symbol not in listed:
+                problems.append(
+                    f"{name}: upstream_symbol_maturity names {symbol}, "
+                    f"which is not in upstream_symbol")
     if problems:
         for p in problems:
             print(f"INVALID  {p}")
         sys.exit(1)
+
+
+def maturity_cell(e):
+    """Coverage-table cell: entry maturity plus any per-symbol exceptions."""
+    overrides = e.get("upstream_symbol_maturity", {})
+    if not overrides:
+        return e["upstream_maturity"]
+    detail = ", ".join(f"{s}: {m}" for s, m in sorted(overrides.items()))
+    return f"{e['upstream_maturity']} ({detail})"
 
 
 def maturity_phrase(e):
@@ -82,6 +101,8 @@ def maturity_phrase(e):
         swift = "preview Swift API"
     else:
         swift = "experimental Swift API (SemVer-exempt)"
+    if e.get("upstream_symbol_maturity"):
+        upstream += " (per-symbol exceptions in the coverage matrix)"
     return f"{upstream}; {swift}"
 
 
@@ -103,7 +124,7 @@ def coverage_table(data):
                 methods=", ".join(e["methods"]),
                 symbol=e["symbol"],
                 access=e["access"],
-                maturity=e["upstream_maturity"],
+                maturity=maturity_cell(e),
                 support=e["swift_support"],
                 gate=e["gate"],
                 since=e["since"],

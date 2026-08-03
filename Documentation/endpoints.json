@@ -227,7 +227,7 @@
       "upstream_symbol": "GetDNSOSConfig",
       "since": "0.7.0",
       "min_tailscaled": "old",
-      "tested": "matrix+live (userspace daemons 500 → skip)",
+      "tested": "matrix+live (userspace daemons 500 \u2192 skip)",
       "transports": [
         "unix",
         "loopback"
@@ -296,7 +296,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "tailnet DNS intent from the netmap; older daemons → endpointUnavailable"
+      "notes": "tailnet DNS intent from the netmap; older daemons \u2192 endpointUnavailable"
     },
     {
       "endpoint": "peer-by-id",
@@ -317,7 +317,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "404 = not in netmap OR daemon predates the endpoint — indistinguishable"
+      "notes": "404 = not in netmap OR daemon predates the endpoint \u2014 indistinguishable"
     },
     {
       "endpoint": "user-profile",
@@ -338,7 +338,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "404 = unknown user OR older daemon — indistinguishable"
+      "notes": "404 = unknown user OR older daemon \u2014 indistinguishable"
     },
     {
       "endpoint": "check-prefs",
@@ -465,7 +465,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "BrowseToURL arrives on the IPN bus — subscribe before calling"
+      "notes": "BrowseToURL arrives on the IPN bus \u2014 subscribe before calling"
     },
     {
       "endpoint": "logout",
@@ -523,8 +523,8 @@
       "gate": "core",
       "upstream_maturity": "unspecified",
       "swift_support": "supported",
-      "upstream_symbol": "ProfileStatus / SwitchProfile / DeleteProfile",
-      "upstream_notes": "SwitchProfile/SwitchToEmptyProfile are upstream-stable; ProfileStatus/DeleteProfile carry no note - the row records the weakest promise",
+      "upstream_symbol": "ProfileStatus / SwitchProfile / SwitchToEmptyProfile / DeleteProfile",
+      "upstream_notes": "mixed per-symbol maturity; addProfile() performs the same PUT /profiles/ operation as upstream SwitchToEmptyProfile (stable)",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "matrix (reads; mutations hermetic-only)",
@@ -533,7 +533,11 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "multi-account profile management (LoginProfile/NetworkProfile models)"
+      "notes": "multi-account profile management (LoginProfile/NetworkProfile models)",
+      "upstream_symbol_maturity": {
+        "SwitchProfile": "stable",
+        "SwitchToEmptyProfile": "stable"
+      }
     },
     {
       "endpoint": "id-token",
@@ -568,7 +572,7 @@
       "upstream_maturity": "unstable",
       "swift_support": "supported",
       "upstream_symbol": "GetServeConfig / SetServeConfig",
-      "upstream_notes": "GetServeConfig is explicitly unstable upstream",
+      "upstream_notes": "GetServeConfig is explicitly unstable upstream; GetServeConfig is annotated unstable; SetServeConfig carries no annotation (assume unstable)",
       "since": "0.10.0",
       "min_tailscaled": "old (ETag: 1.40+)",
       "tested": "matrix incl. live stale-ETag 412 proof (hermetic-only writes)",
@@ -577,7 +581,10 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "ETag optimistic concurrency; stale writes throw .preconditionFailed"
+      "notes": "ETag optimistic concurrency; stale writes throw .preconditionFailed",
+      "upstream_symbol_maturity": {
+        "SetServeConfig": "unspecified"
+      }
     },
     {
       "endpoint": "cert-domains",
@@ -592,7 +599,7 @@
       "upstream_symbol": "CertDomains",
       "since": "0.10.0",
       "min_tailscaled": "old",
-      "tested": "matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball)",
+      "tested": "matrix (ACME-less builds \u2192 endpointUnavailable, seen on 1.96.4 tarball)",
       "transports": [
         "unix",
         "loopback"
@@ -655,7 +662,7 @@
       "upstream_symbol": "QueryFeature",
       "since": "0.10.0",
       "min_tailscaled": "old",
-      "tested": "matrix (headscale control plane → skip)",
+      "tested": "matrix (headscale control plane \u2192 skip)",
       "transports": [
         "unix",
         "loopback"
@@ -796,10 +803,10 @@
   ],
   "upstream_provenance": {
     "repository": "tailscale/tailscale",
-    "revision": "main, July 2026 snapshot",
+    "revision": "4c4d1c35f83a21c6069ae09de69b246ed1993f3e",
     "capability_version": 144,
     "verified": "2026-08-03",
-    "source": "client/local/{local,cert,serve}.go 'API maturity' doc comments; unannotated methods are upstream-unstable per package documentation"
+    "source": "client/local/{local,cert,serve}.go 'API maturity' doc comments; unannotated methods are upstream-unstable per package documentation. Validated by Scripts/verify-upstream-maturity.py against this exact revision."
   },
   "upstream_stable_unimplemented": [
     {
@@ -821,16 +828,6 @@
       "go_symbol": "DialTCP / UserDial",
       "endpoint": "dial",
       "note": "raw duplex streams over HTTP upgrade; needs a Swift connection abstraction first (issue draft 04)"
-    },
-    {
-      "go_symbol": "SwitchToEmptyProfile",
-      "endpoint": "profiles/",
-      "note": "logout-to-clean-slate profile variant"
-    },
-    {
-      "go_symbol": "CheckUDPGROForwarding",
-      "endpoint": "check-udp-gro-forwarding",
-      "note": "subnet-router performance preflight"
     }
   ]
 }

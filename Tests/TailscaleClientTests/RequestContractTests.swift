@@ -112,7 +112,7 @@ final class RequestContractTests: XCTestCase {
       XCTAssertEqual(String(decoding: body, as: UTF8.self), "access denied")
       XCTAssertEqual(endpoint, "/localapi/v0/status")
       XCTAssertTrue(
-        clientError.recoverySuggestion?.contains("setAuditReason") == true,
+        clientError.recoverySuggestion?.contains("withAuditReason") == true,
         "403 recovery should mention the audit-reason escape hatch")
     }
   }
@@ -152,7 +152,97 @@ final class RequestContractTests: XCTestCase {
     }
   }
 
-  // MARK: - Audit reasons
+  // MARK: - Retry-After parsing
+
+  func testRetryAfterParsesDeltaSecondsOnly() {
+    XCTAssertEqual(TailscaleClient.parseRetryAfter("42"), 42)
+    XCTAssertEqual(TailscaleClient.parseRetryAfter("0"), 0)
+    XCTAssertEqual(TailscaleClient.parseRetryAfter(" 7 "), 7)
+    XCTAssertNil(TailscaleClient.parseRetryAfter("-5"), "negative delta is malformed")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("inf"), "non-finite must not parse")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("nan"), "non-finite must not parse")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("1e999"), "overflow to inf must not parse")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("soon"), "garbage must not parse")
+    XCTAssertNil(TailscaleClient.parseRetryAfter(""), "empty must not parse")
+  }
+
+  func testRetryAfterParsesHTTPDate() throws {
+    let now = Date(timeIntervalSince1970: 784_111_777)  // Sun, 06 Nov 1994 08:49:37 GMT
+    let future = try XCTUnwrap(
+      TailscaleClient.parseRetryAfter("Sun, 06 Nov 1994 08:50:37 GMT", now: now))
+    XCTAssertEqual(future, 60, accuracy: 1)
+    let past = try XCTUnwrap(
+      TailscaleClient.parseRetryAfter("Sun, 06 Nov 1994 08:00:00 GMT", now: now))
+    XCTAssertEqual(past, 0, "a date in the past means retry now, never negative")
+    XCTAssertNil(TailscaleClient.parseRetryAfter("Sunday, 06-Nov-94 08:49:37 GMT"))
+  }
+
+  func testMalformedRetryAfterYieldsNilNotCrash() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(
+        statusCode: 429, data: Data(), headers: ["Retry-After": "-42e999banana"])
+    }
+    await assertThrowsErrorAsync(try await self.makeClient(transport: transport).status()) {
+      error in
+      guard let clientError = error as? TailscaleClientError,
+        case .rateLimited(let retryAfter, _, _) = clientError
+      else {
+        XCTFail("Expected .rateLimited, got \(error)")
+        return
+      }
+      XCTAssertNil(retryAfter)
+      XCTAssertNotNil(clientError.description)
+      XCTAssertNotNil(clientError.recoverySuggestion)
+    }
+  }
+
+  func testHugeRetryAfterFormatsWithoutTrapping() {
+    // Int(Double) traps beyond Int64 range; description must stay total.
+    let error = TailscaleClientError.rateLimited(
+      retryAfterSeconds: 1e30, body: Data(), endpoint: "/localapi/v0/status")
+    XCTAssertTrue(error.description.contains("HTTP 429"))
+    XCTAssertNotNil(error.recoverySuggestion)
+  }
+
+  // MARK: - Typed peer-not-found (distinct from optional-endpoint 404)
+
+  func testWhois404MapsToPeerNotFound() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 404, data: Data("peer not found".utf8))
+    }
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).whois(address: "100.64.0.99")
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .peerNotFound(let endpoint) = clientError
+      else {
+        XCTFail("Expected .peerNotFound, got \(error)")
+        return
+      }
+      XCTAssertEqual(endpoint, "/localapi/v0/whois")
+      XCTAssertNotNil(clientError.recoverySuggestion)
+    }
+  }
+
+  func testOptionalEndpoint404StillMapsToEndpointUnavailable() async throws {
+    // The same status on an optional surface keeps its distinct meaning:
+    // the endpoint (not a peer) is absent.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 404, data: Data())
+    }
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).certDomains()
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .endpointUnavailable = clientError
+      else {
+        XCTFail("Expected .endpointUnavailable, got \(error)")
+        return
+      }
+    }
+  }
+
+  // MARK: - Audit reasons (task-local scope)
 
   func testAuditReasonTravelsBase64InUpstreamHeader() async throws {
     let recorder = RequestRecorder()
@@ -162,9 +252,9 @@ final class RequestContractTests: XCTestCase {
     }
     let client = makeClient(transport: transport)
 
-    await client.setAuditReason("compliance ticket 1234")
-    _ = try await client.status()
-    await client.setAuditReason(nil)
+    try await TailscaleClient.withAuditReason("compliance ticket 1234") {
+      _ = try await client.status()
+    }
     _ = try await client.status()
 
     let requests = await recorder.requests
@@ -173,6 +263,43 @@ final class RequestContractTests: XCTestCase {
     XCTAssertEqual(requests[0].additionalHeaders["X-Tailscale-Reason"], expected)
     XCTAssertNil(
       requests[1].additionalHeaders["X-Tailscale-Reason"],
-      "Clearing the reason must stop sending the header")
+      "Outside the scope the header must not be sent")
+  }
+
+  func testConcurrentTasksCarryIndependentAuditReasons() async throws {
+    // The regression the task-local design exists to prevent: two concurrent
+    // operations with different justifications (plus one with none) must
+    // each send exactly their own. Requests are told apart by the whois
+    // address they query.
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 200, data: Data("{}".utf8))
+    }
+    let client = makeClient(transport: transport)
+
+    async let first = try TailscaleClient.withAuditReason("reason-A") {
+      try await client.whois(address: "100.64.0.1")
+    }
+    async let second = try TailscaleClient.withAuditReason("reason-B") {
+      try await client.whois(address: "100.64.0.2")
+    }
+    async let third = try client.whois(address: "100.64.0.3")
+    _ = try await (first, second, third)
+
+    let requests = await recorder.requests
+    XCTAssertEqual(requests.count, 3)
+    func reason(forAddress address: String) -> String? {
+      requests.first(where: { request in
+        request.queryItems.contains(URLQueryItem(name: "addr", value: address))
+      })?.additionalHeaders["X-Tailscale-Reason"]
+    }
+    XCTAssertEqual(
+      reason(forAddress: "100.64.0.1"), Data("reason-A".utf8).base64EncodedString())
+    XCTAssertEqual(
+      reason(forAddress: "100.64.0.2"), Data("reason-B".utf8).base64EncodedString())
+    XCTAssertNil(
+      reason(forAddress: "100.64.0.3"),
+      "A task outside any withAuditReason scope must not inherit a reason")
   }
 }

@@ -29,33 +29,50 @@ public actor TailscaleClient {
   /// response header, if any request has completed yet.
   private(set) var observedDaemonVersion: String?
 
-  /// Optional audit justification attached to subsequent requests; see
-  /// ``setAuditReason(_:)``.
-  private var auditReason: String?
+  /// Task-local audit justification; see ``withAuditReason(_:operation:)``.
+  @TaskLocal private static var auditReason: String?
 
   /// Creates a client that uses the default configuration for the current platform.
   public init(configuration: TailscaleClientConfiguration = .default) {
     self.configuration = configuration
   }
 
-  /// Attaches (or clears, with `nil`) an audit justification to every
-  /// subsequent request from this client.
+  /// Attaches an audit justification to every unary request made inside
+  /// `operation`, scoped to the current task.
   ///
   /// Sent as the upstream `X-Tailscale-Reason` header (Base64-encoded, the
-  /// encoding Tailscale's own client uses). The daemon logs it for auditing
-  /// and, under some policies (e.g. always-on mode), a justification is what
-  /// makes an otherwise-denied operation permissible. The reason itself may
-  /// be logged by the daemon — never put secrets in it.
-  public func setAuditReason(_ reason: String?) {
-    auditReason = reason
+  /// encoding Tailscale's own client uses), mirroring how the upstream client
+  /// scopes reasons per request via context rather than per client. The
+  /// daemon logs it for auditing and, under some policies (e.g. always-on
+  /// mode), a justification is what makes an otherwise-denied operation
+  /// permissible. The reason itself may be logged by the daemon — never put
+  /// secrets in it.
+  ///
+  /// Because the value is task-local, concurrent tasks each carry their own
+  /// justification (or none) and can never observe each other's. Streaming
+  /// connections (``watchIPNBus(options:reconnect:onUndecodableLine:)``) do
+  /// not send the header.
+  ///
+  /// ```swift
+  /// try await TailscaleClient.withAuditReason("ticket INC-1234") {
+  ///     try await client.setUseExitNode(enabled: false)
+  /// }
+  /// ```
+  public static func withAuditReason<T>(
+    _ reason: String,
+    operation: () async throws -> T
+  ) async rethrows -> T {
+    try await $auditReason.withValue(reason, operation: operation)
   }
 
   /// Version and capability facts useful in diagnostics and bug reports.
   ///
   /// `daemonVersion` is the most recent `Tailscale-Version` response header
-  /// seen by this client (nil until a request completes). A mismatch with
-  /// the versions this package was tested against is a diagnostic signal,
-  /// never a request failure: wire-compatible requests keep working.
+  /// seen by this client (nil until a **unary** request completes — streaming
+  /// connections such as ``watchIPNBus(options:reconnect:onUndecodableLine:)``
+  /// bypass response-header observation). A mismatch with the versions this
+  /// package was tested against is a diagnostic signal, never a request
+  /// failure: wire-compatible requests keep working.
   public func versionDiagnostics() -> VersionDiagnostics {
     VersionDiagnostics(
       packageVersion: TailscaleClientConfiguration.packageVersion,
@@ -77,14 +94,16 @@ public actor TailscaleClient {
   ///
   /// - Parameter address: The Tailscale IP address (e.g., "100.64.0.1") or node key to look up.
   /// - Returns: The node and user profile information for the queried address.
-  /// - Throws: `TailscaleClientError` if the lookup fails or the address is not found.
+  /// - Throws: ``TailscaleClientError/peerNotFound(endpoint:)`` when no peer
+  ///   matches the address (the daemon's 404, upstream `ErrPeerNotFound`);
+  ///   other `TailscaleClientError` cases if the lookup fails.
   public func whois(address: String) async throws -> WhoIsResponse {
     let endpoint = "/localapi/v0/whois"
     let request = TailscaleRequest(
       path: endpoint,
       queryItems: [URLQueryItem(name: "addr", value: address)]
     )
-    return try await performRequest(request, endpoint: endpoint)
+    return try await performRequest(request, endpoint: endpoint, peerLookup: true)
   }
 
   /// Fetches the current Tailscale preferences for this node.
@@ -538,6 +557,13 @@ public actor TailscaleClient {
   /// continues transparently (the daemon re-sends initial state per the watch
   /// options on each connection).
   ///
+  /// > Note: Streaming connections bypass the unary response contract: typed
+  /// > status errors (``TailscaleClientError/permissionDenied(body:endpoint:)``,
+  /// > ``TailscaleClientError/rateLimited(retryAfterSeconds:body:endpoint:)``),
+  /// > `Tailscale-Version` observation, and audit-reason injection apply to
+  /// > unary requests only. A rejected or failed streaming connection surfaces
+  /// > as ``TailscaleClientError/transport(_:)``.
+  ///
   /// - Parameters:
   ///   - options: Watch options controlling what notifications to receive.
   ///     Defaults to `.default` which includes initial state, health, and engine updates.
@@ -681,14 +707,16 @@ public actor TailscaleClient {
     _ request: TailscaleRequest,
     endpoint: String,
     optionalEndpoint: Bool = false,
-    feature: String? = nil
+    feature: String? = nil,
+    peerLookup: Bool = false
   ) async throws -> T {
     let response = try await executeWithDeadline(request, endpoint: endpoint)
 
     // Optional surfaces signal absence as 404 (endpoint not registered) or
     // 501 (registered, but the feature was compiled out of this build).
     if let error = Self.commonStatusError(
-      response, endpoint: endpoint, optionalEndpoint: optionalEndpoint, feature: feature)
+      response, endpoint: endpoint, optionalEndpoint: optionalEndpoint, feature: feature,
+      peerLookup: peerLookup)
     {
       throw error
     }
@@ -709,13 +737,14 @@ public actor TailscaleClient {
   {
     let configuration = self.configuration
     var pending = request
-    if let auditReason, !auditReason.isEmpty,
+    if let reason = Self.auditReason, !reason.isEmpty,
       pending.additionalHeaders["X-Tailscale-Reason"] == nil
     {
       // Upstream contract: the justification travels Base64-encoded in
-      // X-Tailscale-Reason (apitype.RequestReasonHeader).
+      // X-Tailscale-Reason (apitype.RequestReasonHeader). Task-local, so
+      // concurrent operations can never contaminate each other's reasons.
       pending.additionalHeaders["X-Tailscale-Reason"] =
-        Data(auditReason.utf8).base64EncodedString()
+        Data(reason.utf8).base64EncodedString()
     }
     // The deadline closure is @Sendable; it may only capture immutable state.
     let finalRequest = pending
@@ -743,11 +772,16 @@ public actor TailscaleClient {
     _ response: TailscaleResponse,
     endpoint: String,
     optionalEndpoint: Bool = false,
-    feature: String? = nil
+    feature: String? = nil,
+    peerLookup: Bool = false
   ) -> TailscaleClientError? {
     switch response.statusCode {
     case 403:
       return .permissionDenied(body: response.data, endpoint: endpoint)
+    case 404 where peerLookup:
+      // Upstream maps whois 404 to ErrPeerNotFound: the endpoint exists,
+      // the queried peer does not.
+      return .peerNotFound(endpoint: endpoint)
     case 404 where optionalEndpoint, 501 where optionalEndpoint:
       return .endpointUnavailable(endpoint: endpoint, feature: feature)
     case 412:
@@ -755,12 +789,32 @@ public actor TailscaleClient {
     case 429:
       let retryAfter = response.headers.first(where: {
         $0.key.caseInsensitiveCompare("Retry-After") == .orderedSame
-      }).flatMap { Double($0.value) }
+      }).flatMap { Self.parseRetryAfter($0.value) }
       return .rateLimited(
         retryAfterSeconds: retryAfter, body: response.data, endpoint: endpoint)
     default:
       return nil
     }
+  }
+
+  /// Parses a `Retry-After` header value: either delta-seconds or an
+  /// HTTP-date (RFC 9110). Returns nil for anything malformed — including
+  /// negative, NaN, or infinite values — so a hostile or buggy header can
+  /// never produce a nonsensical delay or crash a formatter downstream.
+  static func parseRetryAfter(_ value: String, now: Date = Date()) -> Double? {
+    let trimmed = value.trimmingCharacters(in: .whitespaces)
+    if let seconds = Double(trimmed) {
+      guard seconds.isFinite, seconds >= 0 else { return nil }
+      return seconds
+    }
+    // IMF-fixdate, the only HTTP-date format senders may generate.
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: "GMT")
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    guard let date = formatter.date(from: trimmed) else { return nil }
+    // A date in the past means "retry now", not a negative delay.
+    return max(0, date.timeIntervalSince(now))
   }
 
   /// Races `operation` against the configured deadline, throwing
@@ -854,18 +908,23 @@ public enum TailscaleClientError: Error, Sendable {
   case preconditionFailed(body: Data, endpoint: String)
   /// The daemon denied access (HTTP 403) — the caller lacks permission or a
   /// policy restricts the operation. Some policies permit the operation when
-  /// a justification is supplied via ``TailscaleClient/setAuditReason(_:)``.
+  /// a justification is supplied via
+  /// ``TailscaleClient/withAuditReason(_:operation:)``.
   case permissionDenied(body: Data, endpoint: String)
   /// The daemon rate-limited the request (HTTP 429). `retryAfterSeconds`
-  /// carries the `Retry-After` header when the daemon sent one — certificate
+  /// carries the `Retry-After` header when the daemon sent a well-formed one
+  /// (delta-seconds or HTTP-date; malformed values yield nil) — certificate
   /// fetches use this to say when issuance may be retried.
   case rateLimited(retryAfterSeconds: Double?, body: Data, endpoint: String)
+  /// The daemon answered a peer lookup with 404: the endpoint exists, but no
+  /// peer matches the queried address or key (upstream `ErrPeerNotFound`).
+  case peerNotFound(endpoint: String)
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
     let data: Data
     switch self {
-    case .transport, .endpointUnavailable, .timeout:
+    case .transport, .endpointUnavailable, .timeout, .peerNotFound:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -912,10 +971,14 @@ extension TailscaleClientError: CustomStringConvertible {
       return "LocalAPI denied access to \(endpoint) (HTTP 403)"
     case .rateLimited(let retryAfter, _, let endpoint):
       if let retryAfter {
+        // %.0f, not Int(_:): Int conversion traps on huge finite doubles.
+        let seconds = String(format: "%.0f", retryAfter)
         return
-          "LocalAPI rate-limited \(endpoint) (HTTP 429); retry after \(Int(retryAfter))s"
+          "LocalAPI rate-limited \(endpoint) (HTTP 429); retry after \(seconds)s"
       }
       return "LocalAPI rate-limited \(endpoint) (HTTP 429)"
+    case .peerNotFound(let endpoint):
+      return "LocalAPI found no matching peer for the lookup on \(endpoint) (HTTP 404)"
     }
   }
 
@@ -987,12 +1050,16 @@ extension TailscaleClientError: LocalizedError {
         "Another client changed this configuration concurrently. Re-fetch it, re-apply your change, and retry the write."
     case .permissionDenied:
       return
-        "Check the caller's permissions. If a policy gates this operation, supply a justification via setAuditReason(_:) before retrying."
+        "Check the caller's permissions. If a policy gates this operation, supply a justification via TailscaleClient.withAuditReason(_:operation:) before retrying."
     case .rateLimited(let retryAfter, _, _):
       if let retryAfter {
-        return "Wait at least \(Int(retryAfter)) seconds before retrying."
+        let seconds = String(format: "%.0f", retryAfter)
+        return "Wait at least \(seconds) seconds before retrying."
       }
       return "Back off before retrying; the daemon is rate-limiting this operation."
+    case .peerNotFound:
+      return
+        "The queried address or key does not match any peer visible to this node. Verify the address and that the peer is on this tailnet."
     }
   }
 }

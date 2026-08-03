@@ -120,3 +120,21 @@ extension TailscaleClientConfiguration: CustomStringConvertible, CustomDebugStri
 
   public var debugDescription: String { description }
 }
+
+extension TailscaleClientConfiguration: CustomReflectable {
+  /// `dump(_:)` and `Mirror` follow this instead of the stored properties,
+  /// so the auth token cannot surface through reflection either — including
+  /// when a configuration is nested inside a reflected container.
+  public var customMirror: Mirror {
+    Mirror(
+      self,
+      children: [
+        "endpoint": endpoint,
+        "authToken": authToken == nil ? "nil" : "<redacted>",
+        "capabilityVersion": capabilityVersion,
+        "requestTimeout": requestTimeout.map { "\($0)" } ?? "nil",
+        "transport": String(describing: type(of: transport)),
+      ],
+      displayStyle: .struct)
+  }
+}
