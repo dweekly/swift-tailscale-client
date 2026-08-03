@@ -150,6 +150,9 @@ for try await notification in try await client.watchIPNBus() {
 | `checkPrefs(_:)` | Validate a full preferences object without applying it |
 | `setUseExitNode(enabled:)` | Toggle the selected exit node on/off |
 | `setExpirySooner(_:)` / `reloadConfig()` / `start(options:)` | Key hygiene, config reload, backend start (headless auth-key bring-up) |
+| `loginInteractive()` / `logout()` / `resetAuth()` | Auth lifecycle (BrowseToURL arrives on the IPN bus) |
+| `profiles()` / `switchProfile(_:)` / … | Multi-account profile management |
+| `idToken(audience:)` | OIDC ID token from the control plane |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
 | `daemonFeatures()` | Probe which optional features the daemon was compiled with (`debug-optional-features`) |
 

@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 20 (+ 3 experimental) |
+| Implemented | 25 (+ 3 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -57,6 +57,9 @@ Three upstream facts shape everything below:
 | `set-expiry-sooner` | POST | `setExpirySooner(_:)` | v0.8.0 — key hygiene |
 | `reload-config` | POST | `reloadConfig()` | v0.8.0 — config-file daemons |
 | `start` | POST | `start(options:)` | v0.8.0 — backend start / headless auth-key bring-up |
+| `login-interactive` / `logout` / `reset-auth` | POST | `loginInteractive()`, `logout()`, `resetAuth()` | v0.9.0 — BrowseToURL via IPN bus; destructive pair unit-tested only |
+| `profiles/` | GET/PUT/POST/DELETE | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` | v0.9.0 — `LoginProfile` model |
+| `id-token` | POST | `idToken(audience:)` | v0.9.0 — OIDC token, raw JSON passthrough |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 
@@ -75,7 +78,7 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | `peer-by-id` | GET | core | Stable | **v0.7.0** | `peer(byID:)` — 404 = not in netmap |
 | `user-profile` | GET | core | Stable | **v0.7.0** | `userProfile(byID:)` — endpoint added upstream 2026; older daemons 404 the path |
 | `services` | GET | core | Stable | v1.0.0 | `services()` |
-| `id-token` | GET | `HasDebug` | Stable | v0.9.0 | `idToken(audience:)` |
+| `id-token` | POST | `HasDebug` | Stable | **v0.9.0** | `idToken(audience:)` — raw control-plane JSON |
 
 ### Preferences & configuration
 
@@ -119,10 +122,10 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
-| `login-interactive` | POST | core | Stable | v0.9.0 | `loginInteractive()` — pair with `watchIPNBus` for `BrowseToURL` |
-| `logout` | POST | core | Stable | v0.9.0 | `logout()` |
-| `reset-auth` | POST | core | Stable | v0.9.0 | `resetAuth()` |
-| `profiles/` (prefix) | GET, PUT, POST, DELETE | core | Stable | v0.9.0 | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` |
+| `login-interactive` | POST | core | Stable | **v0.9.0** | `loginInteractive()` — pair with `watchIPNBus` for `BrowseToURL` |
+| `logout` | POST | core | Stable | **v0.9.0** | `logout()` — destructive; unit-tested only |
+| `reset-auth` | POST | core | Stable | **v0.9.0** | `resetAuth()` |
+| `profiles/` (prefix) | GET, PUT, POST, DELETE | core | Stable | **v0.9.0** | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` |
 | `shutdown` | POST | core | Stable | v1.0.0 | `shutdownDaemon()` |
 
 ### Serve, Funnel & certificates

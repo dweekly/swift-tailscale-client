@@ -1,0 +1,24 @@
+[
+  {
+    "ID": "48d1",
+    "Name": "admin@example.com",
+    "NetworkProfile": {
+      "MagicDNSName": "host.example-corp.ts.net",
+      "DomainName": "example-corp.org.github",
+      "DisplayName": "example-corp"
+    },
+    "UserProfile": {
+      "ID": 8646441643364,
+      "LoginName": "admin@example.com",
+      "DisplayName": "Admin Example"
+    },
+    "NodeID": "nStable123",
+    "ControlURL": "https://controlplane.tailscale.com",
+    "Created": "2025-01-15T10:00:00Z"
+  },
+  {
+    "ID": "9f2c",
+    "Name": "dev@headscale.local",
+    "ControlURL": "https://headscale.example.com"
+  }
+]

@@ -186,9 +186,9 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 ## v0.9.0 — Auth, Profiles & the GUI Contract
 
 ### Library
-- [ ] `loginInteractive()`, `logout()`, `resetAuth()` — paired with `watchIPNBus` for the `BrowseToURL` flow
-- [ ] `profiles()` / `currentProfile()` / `addProfile()` / `switchProfile(_:)` / `deleteProfile(_:)` — multi-account
-- [ ] `idToken(audience:)`
+- [x] `loginInteractive()`, `logout()`, `resetAuth()` — paired with `watchIPNBus` for the `BrowseToURL` flow
+- [x] `profiles()` / `currentProfile()` / `addProfile()` / `switchProfile(_:)` / `deleteProfile(_:)` — multi-account
+- [x] `idToken(audience:)`
 - [ ] *Experimental:* `setGUIVisible(_:)`, `setPushDeviceToken(_:)`, `handlePushMessage(_:)` — the endpoints Tailscale's own GUI clients use; relevant to any serious macOS/iOS app embedding this package
 
 ### CLI
@@ -198,7 +198,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - [ ] Full login lifecycle against headscale (interactive login is scriptable there)
 
 ### Docs
-- [ ] DocC article: *Building a Login Flow* (BrowseToURL + IPN bus state machine)
+- [x] DocC article: *The Login Flow* (BrowseToURL + IPN bus state machine, headless bring-up, profile lifecycle)
 
 ## v0.10.0 — Serve, Funnel & Certificates
 
