@@ -48,14 +48,14 @@ final class EdgeCoverageTests: XCTestCase {
 
   func testEveryErrorCaseRecoverySuggestion() {
     let body = Data()
+    let corrupted = DecodingError.dataCorrupted(
+      DecodingError.Context(codingPath: [], debugDescription: "x"))
     let expectations: [(TailscaleClientError, String?)] = [
       (.unexpectedStatus(code: 401, body: body, endpoint: "/t"), "auth token"),
       (.unexpectedStatus(code: 404, body: body, endpoint: "/t"), "Tailscale version"),
       (.unexpectedStatus(code: 503, body: body, endpoint: "/t"), "daemon"),
       (.unexpectedStatus(code: 302, body: body, endpoint: "/t"), nil),
-      (.decoding(
-        .dataCorrupted(.init(codingPath: [], debugDescription: "x")), body: body, endpoint: "/t"),
-       "report this issue"),
+      (.decoding(corrupted, body: body, endpoint: "/t"), "report this issue"),
       (.endpointUnavailable(endpoint: "/t", feature: nil), "daemonFeatures"),
       (.timeout(endpoint: "/t"), "requestTimeout"),
       (.preconditionFailed(body: body, endpoint: "/t"), "Re-fetch"),
@@ -66,9 +66,10 @@ final class EdgeCoverageTests: XCTestCase {
     ]
     for (error, needle) in expectations {
       if let needle {
+        let recovery = String(describing: error.recoverySuggestion)
         XCTAssertTrue(
           error.recoverySuggestion?.contains(needle) == true,
-          "recovery for \(error) should contain '\(needle)': \(String(describing: error.recoverySuggestion))")
+          "recovery for \(error) should contain '\(needle)': \(recovery)")
       } else {
         XCTAssertNil(error.recoverySuggestion)
       }
