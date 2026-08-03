@@ -6,6 +6,8 @@
 [![CI](https://github.com/dweekly/swift-tailscale-client/workflows/CI/badge.svg)](https://github.com/dweekly/swift-tailscale-client/actions)
 [![Documentation](https://img.shields.io/badge/Documentation-DocC-blue)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/)
 
+API documentation is published to [GitHub Pages](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/) on every push to `main`, and the [Swift Package Index](https://swiftpackageindex.com/dweekly/swift-tailscale-client) builds a versioned mirror from `.spi.yml` — see [its documentation tab](https://swiftpackageindex.com/dweekly/swift-tailscale-client/documentation) for per-release docs.
+
 > Unofficial Swift 6 client for the Tailscale LocalAPI
 
 `swift-tailscale-client` is a personal, MIT-licensed project by David E. Weekly. It is **not** an official Tailscale product and is not endorsed by Tailscale Inc. The goal is to provide an idiomatic async/await Swift interface to the LocalAPI so Apple-platform apps can query Tailscale state without shelling out to the `tailscale` CLI.
