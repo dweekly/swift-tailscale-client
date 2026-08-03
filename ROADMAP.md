@@ -71,11 +71,13 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 ### Library
 - [ ] `shutdown()` — `POST /localapi/v0/shutdown` (destructive: terminates the daemon; wire-shape unit tests only, prominent warnings, never integration-tested against live daemons)
 - [ ] `services()` — `GET /localapi/v0/services` (spike first: shape is Tailscale Services / VIP services state)
+- [ ] **Linux `NetworkInterfaceDiscovery`** — the implementation is `#if canImport(Darwin)`-gated, so `StatusResponse.interfaceName`/`interfaceInfo` silently return nil on Linux despite Linux being a first-class daemon platform; port the `getifaddrs` path to Glibc with a Linux CI assertion
 
 ### Testing
 - [ ] Coverage floor ratchets 70 → 85 (fill the gaps the report shows; streaming path and transport parsers stay fully unit-tested)
 - [ ] Scripted login lifecycle against headscale (interactive login is scriptable there) — the one open item carried from v0.9.0
 - [ ] Decide and document the upstream re-pin cadence (issue draft 07): a scheduled job that re-derives maturity/gates against a newer upstream commit and opens a PR when anything drifts
+- [ ] **Mechanized model-conformance audit**: a test (or scripted sweep) asserting every public model has a public memberwise init and `Sendable`/`Equatable` (+`Codable` where wire-facing), and every wire enum has a tolerant fallback case — the API-conventions section as an executable check, not a one-time review
 
 ### Docs
 - [ ] DocC tutorial: *Build a Tailscale menu bar app*
@@ -132,6 +134,7 @@ The operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTI
 - Announcement wave: awesome-tailscale PR, r/Tailscale, Swift Forums; Show HN + Tailscale forum at 1.0
 - homebrew-core as a post-1.0 aspiration once the notability bar is met
 - v0.11.0 release mechanics: maintainer tag push after the release PR merges (single tag — >3 tags in one push suppresses GitHub push events), then the Homebrew tap bump
+- Homebrew formula smoke test as part of release verification: `brew install` (or `brew audit` + install from the tap) against the freshly tagged release assets before announcing
 
 ---
 
