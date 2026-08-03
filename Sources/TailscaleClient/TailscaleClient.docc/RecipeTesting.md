@@ -30,7 +30,7 @@ Add the product to your test target:
         transport: transport))
 
     let status = try await client.status()
-    XCTAssertEqual(status.backendState, "Running")
+    XCTAssertEqual(status.backendState, .running)
   }
 ```
 

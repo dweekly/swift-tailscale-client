@@ -21,7 +21,7 @@
         // Seed the UI, then follow the IPN bus instead of polling.
         if let status = try? await client.status() {
           hostName = status.selfNode?.hostName ?? "?"
-          stateLabel = status.backendState ?? "Unknown"
+          stateLabel = status.backendState?.rawValue ?? "Unknown"
         }
         do {
           let stream = try await client.watchIPNBus(
