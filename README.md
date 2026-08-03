@@ -45,6 +45,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 > **Note:** The LocalAPI is not a formally stable interface — Tailscale namespaces it `/localapi/v0/` for a reason. This package tracks upstream, states which Tailscale versions each release was tested against, and uses tolerant decoding so upstream additions don't break your app. See the [stability policy](ROADMAP.md#stability--support-tiers).
 
 ## Status
+- **v0.10.0:** Serve, Funnel & certificates - `serveConfig()`/`setServeConfig(_:)` with ETag optimistic concurrency (stale writes throw the typed `.preconditionFailed`), `certDomains()`/`certPEM()`/`certPair()`, `setDNS(name:value:)` (ACME dns-01), `queryFeature(_:)`; CLI `serve status` + `cert domains`; *Serve, Funnel & Certificates* article; Thread Sanitizer CI lane.
 - **v0.9.0:** Auth & profiles - `loginInteractive()` (BrowseToURL via the IPN bus), `logout()`/`resetAuth()`, profiles CRUD with `LoginProfile` models, `idToken(audience:)`, experimental GUI-client contract, CLI `login`/`logout`/`switch`, *Login Flow* article.
 - **v0.8.0:** First write APIs - `editPrefs(_:)` with the typed `MaskedPrefs` builder, `checkPrefs(_:)`, `setUseExitNode(enabled:)`, `setExpirySooner(_:)`, `reloadConfig()`, `start(options:)`; CLI `set` commands; *Writing Safely* DocC article; hermetic-only mutation testing.
 - **v0.7.0:** DNS & routing diagnostics (`dnsOSConfig()`, `dnsQuery()`, `checkIPForwarding()`), numeric-ID lookups (`peer(byID:)`, `userProfile(byID:)`), the SemVer-exempt `client.experimental` namespace (`bugreport`, `goroutines`, streaming `logtap`), `dns`/`check-forwarding` CLI commands, and a six-article DocC set.
@@ -63,7 +64,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 Add the package to your `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.9.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.10.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.

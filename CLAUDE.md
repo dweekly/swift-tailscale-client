@@ -110,13 +110,14 @@ swift run tailscale-swift status
   - `Documentation/` - Project documentation (markdown files, analysis docs, man pages). **Committed to git.**
   - `docs/` - Generated DocC output. **Gitignored.** Never put project docs here.
 
-## Project Status (v0.9.0)
+## Project Status (v0.10.0)
 
-**Current version**: v0.9.0 - Auth & profiles (login flow, profiles CRUD, GUI contract), CLI auth commands
+**Current version**: v0.10.0 - Serve, Funnel & certificates (ETag-safe serve-config writes, cert fetching, ACME dns-01, feature probes)
 
 **Primary use case**: Network Weather (NWX) macOS app for network diagnostics.
 
 **Recent releases**:
+- v0.10.0: serveConfig/setServeConfig with ETag optimistic concurrency (typed `.preconditionFailed` on stale writes, proven live in the write lane), certDomains/certPEM/certPair, setDNS, queryFeature, CLI serve/cert commands, Serve & Funnel article, TSan CI lane
 - v0.9.0: auth lifecycle + profiles CRUD + idToken, experimental GUI contract, CLI login/logout/switch, Login Flow article
 - v0.8.0: write APIs (editPrefs/checkPrefs/setUseExitNode/setExpirySooner/reloadConfig/start), CLI set commands, Writing Safely article
 - v0.7.0: DNS diagnostics (dns-osconfig/dns-query/check-ip-forwarding), peer/user lookups, `client.experimental` (bugreport/goroutines/logtap), DocC articles
@@ -124,12 +125,12 @@ swift run tailscale-swift status
 - v0.5.0: Linux support (POSIX socket transport), extracted unit-tested HTTP parsers, Linux CI, nightly headscale integration
 - v0.4.0: Reliability foundations — `TailscaleClientMocks` product, streaming skip-and-report + reconnect, `daemonFeatures()` capability probing, request timeouts, public model inits
 
-**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding`, `set …`, `login`, `logout`, `switch` — all structured commands take `--json`; the CLI is an executable product
+**CLI commands available**: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding`, `serve status`, `cert domains`, `set …`, `login`, `logout`, `switch` — all structured commands take `--json`; the CLI is an executable product
 
 **Roadmap** (see `ROADMAP.md` for the full plan, stability tiers, and API conventions):
-- v0.10.0 (next): serve, Funnel & certificates (`serve-config` with ETag concurrency, `cert-domains`, `cert/<domain>`, `set-dns`)
-- v1.0.0: API freeze; post-1.0: Taildrop, Taildrive, Tailnet Lock
-- Open follow-ups: tailscaled version matrix in the headscale nightly; Homebrew tap repo creation + announcement wave at the v0.6.0 release moment
+- v1.0.0 (next): API freeze — gap-fill (`shutdown`), coverage ≥85%, complete DocC tree + tutorial + examples, SemVer commitment
+- Post-1.0: Taildrop (v1.1), Taildrive (v1.2), Tailnet Lock (v1.3)
+- Open follow-ups: user-side tag pushes v0.7.0–v0.10.0 (env proxy blocks agent tag pushes); Homebrew tap formula bump after tags land; announcement wave
 
 **Development practice**: Spike every new endpoint against a real tailscaled (curl over the unix socket) and cross-check `tailscale/tailscale` source (`ipn/localapi/`, `client/local/`) before implementing; capture fixtures from real responses. See `Documentation/TESTING.md`.
 

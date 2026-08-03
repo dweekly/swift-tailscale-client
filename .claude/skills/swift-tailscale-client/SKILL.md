@@ -30,7 +30,7 @@ embedded node.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.9.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.10.0")
 // target dependency:
 .product(name: "TailscaleClient", package: "swift-tailscale-client")
 ```
@@ -60,6 +60,13 @@ let dns    = try await client.dnsOSConfig()         // OS DNS config (v0.7.0+)
 let ans    = try await client.dnsQuery(name: "peer.ts.net")  // MagicDNS-path query (v0.7.0+)
 let node   = try await client.peer(byID: whois.node!.id)     // numeric-ID lookups (v0.7.0+)
 // client.experimental.{bugreport,goroutines,logtap} — SemVer-exempt debug tier (v0.7.0+)
+
+// Serve/Funnel config with ETag optimistic concurrency (v0.10.0+):
+// snapshot -> mutate -> write; a concurrent change throws .preconditionFailed.
+var serve = try await client.serveConfig()
+serve.tcp[8443] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
+try await client.setServeConfig(serve)
+let certs  = try await client.certDomains()         // tailnet TLS domains (v0.10.0+)
 
 // Real-time updates (preferred over polling)
 for try await notify in try await client.watchIPNBus(options: [.initialState, .initialHealthState]) {
