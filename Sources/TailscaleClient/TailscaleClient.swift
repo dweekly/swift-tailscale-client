@@ -332,7 +332,9 @@ public actor TailscaleClient {
   /// The numeric ID is `WhoIsNode.id` (or the `User`/`ID` fields seen on the
   /// IPN bus) — not the stable string ID shown in `status`. A 404 surfaces as
   /// ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` and means the
-  /// peer is not in the current netmap, not that the endpoint is missing.
+  /// peer is not in the current netmap — or, on daemons that predate this
+  /// 2026 endpoint (added around Tailscale 1.98), that the path itself is
+  /// unknown; the two are indistinguishable.
   ///
   /// - Parameter id: The peer's numeric node ID.
   /// - Returns: The peer's `tailcfg.Node` record decoded as ``WhoIsNode``.

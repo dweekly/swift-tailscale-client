@@ -318,9 +318,16 @@ import XCTest
         throw XCTSkip("whois returned no node for self")
       }
 
-      let fetched = try await client.peer(byID: node.id)
-      XCTAssertEqual(fetched.id, node.id)
-      XCTAssertEqual(fetched.stableID, node.stableID)
+      do {
+        let fetched = try await client.peer(byID: node.id)
+        XCTAssertEqual(fetched.id, node.id)
+        XCTAssertEqual(fetched.stableID, node.stableID)
+      } catch let error as TailscaleClientError {
+        // peer-by-id is also a 2026 addition; a 404 for our own known-valid
+        // node ID means the daemon predates the endpoint (seen on 1.96.4).
+        guard case .unexpectedStatus(404, _, _) = error else { throw error }
+        throw XCTSkip("Daemon predates the peer-by-id endpoint; skipping")
+      }
 
       if let userID = node.user {
         do {
