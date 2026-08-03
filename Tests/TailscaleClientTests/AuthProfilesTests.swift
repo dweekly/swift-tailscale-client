@@ -60,7 +60,8 @@ final class AuthProfilesTests: XCTestCase {
     XCTAssertEqual(profiles.last?.controlURL, "https://headscale.example.com")
     XCTAssertNil(profiles.last?.networkProfile)
 
-    XCTAssertEqual((await recorder.requests).first?.path, "/localapi/v0/profiles/")
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/profiles/")
   }
 
   func testCurrentProfileDecodes() async throws {
@@ -70,7 +71,8 @@ final class AuthProfilesTests: XCTestCase {
 
     let current = try await client.currentProfile()
     XCTAssertEqual(current.id, "48d1")
-    XCTAssertEqual((await recorder.requests).first?.path, "/localapi/v0/profiles/current")
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/profiles/current")
   }
 
   func testProfileLifecycleShapes() async throws {
