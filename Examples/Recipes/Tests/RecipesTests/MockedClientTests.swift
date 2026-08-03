@@ -22,7 +22,7 @@ final class MockedClientTests: XCTestCase {
         transport: transport))
 
     let status = try await client.status()
-    XCTAssertEqual(status.backendState, "Running")
+    XCTAssertEqual(status.backendState, .running)
   }
 
   func testRecordingWritesForAssertions() async throws {

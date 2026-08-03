@@ -50,7 +50,7 @@ let client = TailscaleClient()  // auto-discovers the LocalAPI (unix socket firs
 
 let status = try await client.status()
 print(status.selfNode?.hostName ?? "unknown")
-print("Backend: \(status.backendState ?? "?")")       // "Running", "Stopped", ...
+print("Backend: \(status.backendState?.rawValue ?? "?")")  // "Running", "Stopped", ...
 print("Interface: \(status.interfaceName ?? "n/a")")  // e.g., "utun16"
 
 let whoIs = try await client.whois(address: "100.64.0.5")
