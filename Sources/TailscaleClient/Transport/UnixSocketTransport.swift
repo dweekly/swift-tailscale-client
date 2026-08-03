@@ -57,6 +57,8 @@ struct UnixSocketTransport {
       }
     } catch let error as TailscaleTransportError {
       throw error
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw TailscaleTransportError.networkFailure(underlying: error)
     }

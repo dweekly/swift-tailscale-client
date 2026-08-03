@@ -16,6 +16,14 @@ import Foundation
       var source: String
     }
 
+    /// Liveness probe for a loopback candidate; injectable for tests.
+    /// Defaults to an authenticated status request against the port.
+    var probeOverride: (@Sendable (UInt16, String) -> Bool)?
+
+    /// Candidate directories to scan; injectable for tests. Defaults to
+    /// Tailscale's Group Containers (plus `TAILSCALE_SAMEUSER_DIR`).
+    var directoriesOverride: [URL]?
+
     /// Locates the sameuserproof file asynchronously.
     ///
     /// Uses a two-tier discovery strategy:
@@ -150,7 +158,7 @@ import Foundation
 
     // MARK: - Filesystem discovery (fallback)
 
-    private func locateViaFilesystem() -> Result? {
+    func locateViaFilesystem() -> Result? {
       let fm = FileManager.default
       var candidates: [(url: URL, port: UInt16, token: String, modified: Date)] = []
       for dir in candidateDirectories() {
@@ -172,24 +180,44 @@ import Foundation
           candidates.append((fileURL, parsed.port, parsed.token, modified))
         }
       }
-      // Proof files from previously installed flavors linger; try newest
-      // first and require a live, authenticated answer before selecting.
-      for candidate in candidates.sorted(by: { $0.modified > $1.modified }) {
-        if probeLocalAPI(port: candidate.port, token: candidate.token) {
+      // Proof files from previously installed flavors linger, so candidates
+      // are liveness-probed — concurrently, under one overall deadline, so a
+      // pile of stale files cannot stack sequential waits and freeze a
+      // synchronous caller. Newest live candidate wins.
+      let probe = probeOverride ?? Self.liveProbe
+      let ordered = candidates.sorted { $0.modified > $1.modified }
+      guard !ordered.isEmpty else { return nil }
+
+      let results = OSAllocatedUnfairLock(initialState: [Int: Bool]())
+      let group = DispatchGroup()
+      for (index, candidate) in ordered.enumerated() {
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+          let alive = probe(candidate.port, candidate.token)
+          results.withLock { $0[index] = alive }
+          group.leave()
+        }
+      }
+      _ = group.wait(timeout: .now() + 1.5)
+
+      let snapshot = results.withLock { $0 }
+      for (index, candidate) in ordered.enumerated() {
+        if snapshot[index] == true {
           return Result(
             port: candidate.port, token: candidate.token, source: candidate.url.path)
         }
-        log("Ignoring stale sameuserproof at \(candidate.url.path) (port not answering)")
+        let reason = snapshot[index] == nil ? "probe timed out" : "port not answering"
+        log("Ignoring sameuserproof at \(candidate.url.path) (\(reason))")
       }
       return nil
     }
 
     /// Confirms a loopback LocalAPI candidate actually answers an
     /// authenticated status request before it is selected.
-    private func probeLocalAPI(port: UInt16, token: String) -> Bool {
+    private static let liveProbe: @Sendable (UInt16, String) -> Bool = { port, token in
       guard let url = URL(string: "http://127.0.0.1:\(port)/localapi/v0/status?peers=false")
       else { return false }
-      var request = URLRequest(url: url, timeoutInterval: 1.5)
+      var request = URLRequest(url: url, timeoutInterval: 0.8)
       let credentials = Data(":\(token)".utf8).base64EncodedString()
       request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
       let semaphore = DispatchSemaphore(value: 0)
@@ -200,11 +228,12 @@ import Foundation
         }
         semaphore.signal()
       }.resume()
-      _ = semaphore.wait(timeout: .now() + 2.0)
+      _ = semaphore.wait(timeout: .now() + 1.0)
       return alive.withLock { $0 }
     }
 
     private func candidateDirectories() -> [URL] {
+      if let directoriesOverride { return directoriesOverride }
       var urls: [URL] = []
       let fm = FileManager.default
       if let dirOverride = ProcessInfo.processInfo.environment["TAILSCALE_SAMEUSER_DIR"] {

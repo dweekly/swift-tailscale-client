@@ -6,13 +6,17 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
-- `dnsConfig()` wraps `GET /localapi/v0/dns-config` — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
-- Hermetic headscale nightly now runs a tailscaled version matrix (stable and unstable tracks).
+- `dnsConfig()` wraps `GET /localapi/v0/dns-config` (requires Tailscale 1.98+; older daemons surface as `endpointUnavailable`, exercised by the new previous-stable CI lane) — the tailnet's DNS *intent* from the netmap (`DNSConfig`/`DNSRecord` models: resolvers, split-DNS routes, MagicDNS proxying, cert domains, extra records), complementing `dnsOSConfig()`'s installed state.
+- Hermetic headscale nightly now runs a tailscaled version matrix: stable, previous-stable (pinned), and unstable.
+- Hostile-transport test suite: a real Unix fault server exercises accept-then-silence (unary + streaming deadlines), missing/refused sockets, and non-200 streaming heads; CLI black-box tests run the built binary to pin `login --timeout` behavior and `watch --json` NDJSON framing; discovery staleness selection is tested with injected probes.
+
+### Breaking
+
+- `IPNNotify.loginFinished` changed from `Bool?` to `EmptyMessage?` to match the wire format (upstream sends `{}` as a presence marker). Replace `if notify.loginFinished == true` with `if notify.loginFinished != nil`.
 
 ### Fixed
 
-- `checkPrefs(_:)` now surfaces validation failures: the daemon reports them as HTTP 200 with an `Error` body field, previously discarded.
-- `IPNNotify.loginFinished` is now `EmptyMessage?` matching the wire format (upstream sends `{}`, not a boolean), so login-completion notifications decode instead of being skipped.
+- `checkPrefs(_:)` now decodes its response **strictly** and fails closed: daemon-reported failures (HTTP 200 + `Error` field, previously discarded entirely) throw with the daemon's reason, and a malformed 200 body throws `.decoding` instead of silently passing validation.
 - Unix-socket unary requests now poll with cancellation checks and bridge task cancellation into the transport, so `requestTimeout` interrupts a daemon that accepts but never answers.
 - Unix-socket streaming now connects and validates the HTTP response head *before* `watchIPNBus()`/`logtap()` return, restoring the promised throw-on-connect-failure semantics.
 - CLI `login --timeout` races a real timer against the IPN bus (a silent bus now times out) and rejects non-positive values.

@@ -56,3 +56,13 @@ public struct StartOptions: Sendable, Equatable, Encodable {
     try container.encodeIfPresent(authKey, forKey: .authKey)
   }
 }
+
+/// Wire shape of `POST /localapi/v0/check-prefs`: HTTP 200 with an `Error`
+/// field carrying the rejection reason (empty/absent when valid).
+struct CheckPrefsResult: Decodable {
+  let error: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case error = "Error"
+  }
+}

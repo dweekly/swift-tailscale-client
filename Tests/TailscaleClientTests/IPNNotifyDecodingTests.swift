@@ -266,3 +266,15 @@ extension IPNNotifyDecodingTests {
     XCTAssertNil(notify.loginFinished)
   }
 }
+
+extension IPNNotifyDecodingTests {
+  func testAllInitialContainsEveryInitialFlag() {
+    let all = NotifyWatchOpt.allInitial
+    for flag: NotifyWatchOpt in [
+      .initialState, .initialPrefs, .initialNetMap, .initialHealthState,
+      .initialSuggestedExitNode, .initialDriveShares, .initialOutgoingFiles,
+    ] {
+      XCTAssertTrue(all.contains(flag), "allInitial is missing \(flag.rawValue)")
+    }
+  }
+}

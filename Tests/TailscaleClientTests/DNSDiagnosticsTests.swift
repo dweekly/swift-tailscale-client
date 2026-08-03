@@ -96,6 +96,23 @@ final class DNSDiagnosticsTests: XCTestCase {
     XCTAssertEqual(captured.first?.path, "/localapi/v0/dns-config")
   }
 
+  func testDNSConfigMaps404ToEndpointUnavailable() async {
+    // dns-config was added in Tailscale 1.98; the previous stable 404s it.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 404, data: Data("404 page not found".utf8))
+    }
+    let client = makeClient(transport: transport)
+    await assertThrowsErrorAsync(try await client.dnsConfig()) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .endpointUnavailable(let endpoint, _) = clientError
+      else {
+        XCTFail("Expected endpointUnavailable, got \(error)")
+        return
+      }
+      XCTAssertEqual(endpoint, "/localapi/v0/dns-config")
+    }
+  }
+
   func testDNSConfigToleratesEmptyObject() throws {
     let config = try JSONDecoder.tailscale().decode(DNSConfig.self, from: Data("{}".utf8))
     XCTAssertTrue(config.resolvers.isEmpty)

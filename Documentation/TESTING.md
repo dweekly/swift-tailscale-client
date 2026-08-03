@@ -88,7 +88,7 @@ Every transport/decoding change runs against this list; each item becomes a name
 ## Coverage policy
 
 - Coverage measured in CI (`swift test --enable-code-coverage` + `llvm-cov export`), with a hard floor enforced in `ci.yml` — no external service required. Codecov upload is a possible later addition for badges/patch checks.
-- Floor: **55%** at v0.4.0 (measured baseline: 56.8% — `UnixSocketTransport` and `MacClientInfo` are integration-only until their v0.5.0 parser extraction), ratcheting to **75%** once those land and **85%** by v1.0. The floor tracks just under the measured baseline so regressions fail while honest measurement stays possible.
+- Floor: **70%** at v0.4.0 (measured baseline: 56.8% — `UnixSocketTransport` and `MacClientInfo` are integration-only until their v0.5.0 parser extraction), ratcheting to **75%** once those land and **85%** by v1.0. The floor tracks just under the measured baseline so regressions fail while honest measurement stays possible.
 - Streaming path and transport parsers must reach full branch coverage — they are the historical blind spot (the v0.3.x headline features shipped untested).
 
 ## Integration testing
@@ -117,7 +117,7 @@ The self-hosted runner gives one real macOS daemon; the version matrix and mutat
 
 Why headscale rather than the real control plane: hermetic, no secrets, safe on fork PRs, free to create/destroy tailnets per run. A separate, optional monthly job with an ephemeral auth key (repo secret) can sanity-check against the production control plane.
 
-**Version matrix:** {current stable, previous stable, unstable} tailscaled. A matrix failure on unstable is an early warning of upstream drift, not a release blocker; failures on stable versions block release. Each release's notes state exactly which versions it was tested against.
+**Version matrix:** {stable, previous-stable (pinned), unstable} — implemented as the headscale matrix lanes tailscaled. A matrix failure on unstable is an early warning of upstream drift, not a release blocker; failures on stable versions block release. Each release's notes state exactly which versions it was tested against.
 
 ### Mutation tests for write APIs (v0.8.0+)
 

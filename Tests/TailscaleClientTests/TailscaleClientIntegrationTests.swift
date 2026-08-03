@@ -386,10 +386,16 @@ import XCTest
         let config = try await client.dnsConfig()
         print("dns-config: proxied=\(config.proxied) domains=\(config.domains.count)")
       } catch let error as TailscaleClientError {
-        if case .unexpectedStatus(503, _, _) = error {
+        switch error {
+        case .endpointUnavailable:
+          // The typed unavailability is the asserted contract on daemons
+          // older than 1.98 (exercised by the previous-stable lane).
+          throw XCTSkip("Daemon predates dns-config (Tailscale 1.98+); skipping")
+        case .unexpectedStatus(503, _, _):
           throw XCTSkip("No netmap available yet; skipping")
+        default:
+          throw error
         }
-        throw error
       }
     }
 

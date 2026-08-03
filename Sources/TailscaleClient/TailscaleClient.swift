@@ -160,22 +160,18 @@ public actor TailscaleClient {
   /// - Throws: ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` with the
   ///   daemon's explanation when the prefs are invalid (the daemon reports
   ///   validation failures as HTTP 200 with an `Error` field, surfaced here
-  ///   as `unexpectedStatus(200, <reason>, …)`); nothing on success.
+  ///   as `unexpectedStatus(200, <reason>, …)`);
+  ///   ``TailscaleClientError/decoding(_:body:endpoint:)`` when the response
+  ///   is malformed — a validity check must fail closed, never open.
   public func checkPrefs(_ prefs: Prefs) async throws {
     let endpoint = "/localapi/v0/check-prefs"
     let body = try JSONEncoder().encode(prefs)
     let request = TailscaleRequest(method: "POST", path: endpoint, body: body)
-    let raw = try await performRawRequest(request, endpoint: endpoint)
-    // The daemon answers 200 even for invalid prefs, with the reason in
-    // {"Error": "..."} — an empty or absent Error means valid.
-    struct CheckResult: Decodable {
-      let error: String?
-      enum CodingKeys: String, CodingKey { case error = "Error" }
-    }
-    if let data = raw.data(using: .utf8),
-      let result = try? JSONDecoder().decode(CheckResult.self, from: data),
-      let reason = result.error, !reason.isEmpty
-    {
+    // Strict decode: the daemon answers 200 even for invalid prefs, with the
+    // reason in {"Error": "..."} — an empty or absent Error means valid, and
+    // anything that is not that shape is an error, not a pass.
+    let result: CheckPrefsResult = try await performRequest(request, endpoint: endpoint)
+    if let reason = result.error, !reason.isEmpty {
       throw TailscaleClientError.unexpectedStatus(
         code: 200, body: Data(reason.utf8), endpoint: endpoint)
     }
@@ -408,12 +404,19 @@ public actor TailscaleClient {
   /// what the control plane wants DNS to be, versus ``dnsOSConfig()``
   /// which reports what is installed on the OS.
   ///
+  /// Requires Tailscale 1.98+ — the endpoint does not exist on earlier
+  /// daemons, which surface as
+  /// ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``.
+  ///
   /// - Returns: The parsed response from `/localapi/v0/dns-config`.
-  /// - Throws: `TailscaleClientError` if the request fails
-  ///   (`.unexpectedStatus(503, …)` when the daemon has no netmap yet).
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` on daemons
+  ///   older than 1.98; `.unexpectedStatus(503, …)` when the daemon has no
+  ///   netmap yet; other `TailscaleClientError` cases on failure.
   public func dnsConfig() async throws -> DNSConfig {
     let endpoint = "/localapi/v0/dns-config"
-    return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
+    return try await performRequest(
+      TailscaleRequest(path: endpoint), endpoint: endpoint, optionalEndpoint: true,
+      feature: "dns")
   }
 
   /// Checks whether the host is configured to forward IP traffic — the

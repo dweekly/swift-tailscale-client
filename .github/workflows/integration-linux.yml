@@ -23,7 +23,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        track: [stable, unstable]
+        include:
+          - track: stable
+            pin: ""
+          - track: unstable
+            pin: ""
+          # Previous stable, pinned: drift on this lane is a signal that a
+          # newly-wrapped endpoint needs optional-endpoint gating (as
+          # dns-config demonstrated before this lane existed).
+          - track: previous-stable
+            pin: "1.96.5"
     steps:
       - uses: actions/checkout@v7
 
@@ -35,8 +44,17 @@ jobs:
           curl -fsSL -o /tmp/headscale.deb \
             "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_amd64.deb"
           apt-get install -y /tmp/headscale.deb
-          # install.sh honors TRACK for the stable/unstable package repos.
-          curl -fsSL https://tailscale.com/install.sh | TRACK=${{ matrix.track }} sh
+          if [ -n "${{ matrix.pin }}" ]; then
+            # Pinned versions install from the static tarball archive.
+            curl -fsSL -o /tmp/tailscale.tgz \
+              "https://pkgs.tailscale.com/stable/tailscale_${{ matrix.pin }}_amd64.tgz"
+            tar -xzf /tmp/tailscale.tgz -C /tmp
+            install -m755 /tmp/tailscale_${{ matrix.pin }}_amd64/tailscaled /usr/sbin/tailscaled
+            install -m755 /tmp/tailscale_${{ matrix.pin }}_amd64/tailscale /usr/bin/tailscale
+          else
+            # install.sh honors TRACK for the stable/unstable package repos.
+            curl -fsSL https://tailscale.com/install.sh | TRACK=${{ matrix.track }} sh
+          fi
           headscale version
           tailscale version
 

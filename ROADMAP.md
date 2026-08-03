@@ -120,7 +120,7 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 ### Testing
 - [x] Parser corner-case suite: chunk-size lines split across reads, trailers, chunk extensions, oversized (>1 MB) payloads, UTF-8 sequences split across read boundaries, oversized heads
 - [x] `integration-linux.yml`: nightly + on-demand hermetic workflow — headscale control plane + real tailscaled (`--tun=userspace-networking`), pre-auth key minted locally, no secrets
-- [x] Matrix over tailscaled versions in the headscale workflow (stable + unstable tracks; explicit previous-stable pinning if drift bites)
+- [x] Matrix over tailscaled versions in the headscale workflow: stable, previous-stable (pinned 1.96.5), unstable
 
 ### Docs
 - [ ] [`Documentation/TESTING.md`](Documentation/TESTING.md) is the reference for the harness and fixture process

@@ -123,7 +123,8 @@ public struct DNSResolver: Codable, Sendable, Equatable {
 /// `GET /localapi/v0/dns-config` — what the control plane *wants* DNS to be,
 /// as opposed to ``DNSOSConfig`` (what is installed on the OS).
 ///
-/// Upstream: `tailcfg.DNSConfig`.
+/// Upstream: a tolerant **subset** of `tailcfg.DNSConfig` — rarely-used
+/// upstream fields not modeled here are ignored on decode, never fatal.
 public struct DNSConfig: Codable, Sendable, Equatable {
   /// Global resolvers to use when not proxying through quad-100.
   public var resolvers: [DNSResolver]
@@ -146,6 +147,10 @@ public struct DNSConfig: Codable, Sendable, Equatable {
   /// Extra DNS records the tailnet defines.
   public var extraRecords: [DNSRecord]
 
+  /// App connectors/exit nodes whose DNS answers are filtered (CIDR
+  /// prefixes as strings).
+  public var exitNodeFilteredSet: [String]
+
   /// Creates an instance for tests, previews, or fixtures.
   public init(
     resolvers: [DNSResolver] = [],
@@ -154,7 +159,8 @@ public struct DNSConfig: Codable, Sendable, Equatable {
     domains: [String] = [],
     proxied: Bool = false,
     certDomains: [String] = [],
-    extraRecords: [DNSRecord] = []
+    extraRecords: [DNSRecord] = [],
+    exitNodeFilteredSet: [String] = []
   ) {
     self.resolvers = resolvers
     self.routes = routes
@@ -163,6 +169,7 @@ public struct DNSConfig: Codable, Sendable, Equatable {
     self.proxied = proxied
     self.certDomains = certDomains
     self.extraRecords = extraRecords
+    self.exitNodeFilteredSet = exitNodeFilteredSet
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -173,6 +180,7 @@ public struct DNSConfig: Codable, Sendable, Equatable {
     case proxied = "Proxied"
     case certDomains = "CertDomains"
     case extraRecords = "ExtraRecords"
+    case exitNodeFilteredSet = "ExitNodeFilteredSet"
   }
 
   public init(from decoder: Decoder) throws {
@@ -188,6 +196,8 @@ public struct DNSConfig: Codable, Sendable, Equatable {
     proxied = try container.decodeIfPresent(Bool.self, forKey: .proxied) ?? false
     certDomains = try container.decodeIfPresent([String].self, forKey: .certDomains) ?? []
     extraRecords = try container.decodeIfPresent([DNSRecord].self, forKey: .extraRecords) ?? []
+    exitNodeFilteredSet =
+      try container.decodeIfPresent([String].self, forKey: .exitNodeFilteredSet) ?? []
   }
 }
 
