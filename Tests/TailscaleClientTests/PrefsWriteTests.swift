@@ -292,23 +292,39 @@ final class PrefsWriteTests: XCTestCase {
     XCTAssertEqual(body["AuthKey"] as? String, "tskey-auth-xyz")
   }
 
-  func testStartEncodesUpdatePrefsWithWireKeys() async throws {
+  func testStartFreshProfileEncodesNewPrefsDefaults() async throws {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
       return TailscaleResponse(statusCode: 204, data: Data())
     }
     let client = makeClient(transport: transport)
-    try await client.start(
-      options: StartOptions(
-        updatePrefs: Prefs(controlURL: "http://127.0.0.1:8080", wantRunning: true)))
+    try await client.startFreshProfile(controlURL: "http://127.0.0.1:8080")
 
-    let body = try jsonObject((await recorder.requests).first?.body)
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.method, "POST")
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/start")
+    let body = try jsonObject(captured.first?.body)
     XCTAssertNil(body["AuthKey"], "unset fields must stay off the wire")
+    // The seeded prefs mirror ipn.NewPrefs() at the pinned revision, plus
+    // the control URL and WantRunning.
     let updatePrefs = try XCTUnwrap(body["UpdatePrefs"] as? [String: Any])
     XCTAssertEqual(updatePrefs["ControlURL"] as? String, "http://127.0.0.1:8080")
     XCTAssertEqual(updatePrefs["WantRunning"] as? Bool, true)
-    XCTAssertNil(updatePrefs["CorpDNS"], "nil prefs fields must stay off the wire")
+    XCTAssertEqual(updatePrefs["CorpDNS"] as? Bool, true)
+    XCTAssertEqual(updatePrefs["NetfilterMode"] as? Int, 2)
+    let autoUpdate = try XCTUnwrap(updatePrefs["AutoUpdate"] as? [String: Any])
+    XCTAssertEqual(autoUpdate["Check"] as? Bool, true)
+    XCTAssertNil(updatePrefs["RouteAll"], "route acceptance must stay unset")
+  }
+
+  func testStartOptionsPublicSurfaceCarriesOnlyAuthKey() throws {
+    // The UpdatePrefs carrier is internal (a re-encoded Prefs snapshot
+    // would zero unmodeled fields); the public init must not grow it back
+    // without a lossless Prefs.
+    let encoded = try JSONEncoder().encode(StartOptions(authKey: "tskey-x"))
+    let body = try jsonObject(encoded)
+    XCTAssertEqual(body.keys.sorted(), ["AuthKey"])
   }
 
   func testStartWithDefaultsSendsEmptyObject() async throws {

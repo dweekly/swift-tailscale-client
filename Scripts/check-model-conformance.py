@@ -86,17 +86,24 @@ def main():
             enums += 1
             if name in REQUEST_ONLY_ENUMS:
                 continue
-            tolerant = (
-                re.search(r"case (other|unknown)\b", body)
-                or "init(from decoder" in body
-                or "init(from:" in body)
-            if not tolerant:
+            # A custom init(from:) alone proves nothing — a strict decoder
+            # that throws on unknown raw values would pass, which is the
+            # exact failure this gate exists to prevent. Tolerant means the
+            # decoder demonstrably falls back: `?? .other` /
+            # `self = .other` (or .unknown) inside the enum body. A bare
+            # fallback case without a custom decoder is also insufficient,
+            # because synthesized raw-value decoding still throws.
+            has_custom_init = re.search(r"init\s*\(\s*from", body)
+            has_fallback_assignment = re.search(
+                r"(\?\?\s*\.(other|unknown)\b|self\s*=\s*\.(other|unknown)\b)", body)
+            if not (has_custom_init and has_fallback_assignment):
                 problems.append(
-                    f"{rel}:{line}: enum {name} (raw-value, Codable) decodes from the "
-                    f"wire but has no tolerant fallback (case other/unknown or "
-                    f"custom init(from:)) — upstream adding a value would break "
-                    f"decoding. Allowlist it in REQUEST_ONLY_ENUMS only if it is "
-                    f"never decoded.")
+                    f"{rel}:{line}: enum {name} (raw-value, Codable) decodes from "
+                    f"the wire but lacks a demonstrably tolerant decoder — it "
+                    f"needs a custom init(from:) that falls back to .other/"
+                    f".unknown (`?? .other` or `self = .other`); upstream adding "
+                    f"a value must never break decoding. Allowlist it in "
+                    f"REQUEST_ONLY_ENUMS only if it is never decoded.")
 
     if problems:
         for p in problems:

@@ -49,6 +49,13 @@ final class ModelRoundTripTests: XCTestCase {
     XCTAssertEqual(String(decoding: data, as: UTF8.self), "\"Other\"")
   }
 
+  func testBackendStateUnknownValueDecodesAsOther() throws {
+    // Executable proof of the tolerant-decoding convention the conformance
+    // gate checks textually: an unknown raw value must never throw.
+    let decoded = try JSONDecoder().decode(BackendState.self, from: Data("\"Quantum\"".utf8))
+    XCTAssertEqual(decoded, .other)
+  }
+
   func testWhoIsResponseRoundTrips() throws {
     let response = WhoIsResponse(
       node: WhoIsNode(

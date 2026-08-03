@@ -67,7 +67,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `set-use-exit-node-enabled` | POST | `setUseExitNode(enabled:)` | write | stable | supported | HasUseExitNode | v0.8.0 | old | matrix (hermetic-only writes) | toggles without forgetting the selected exit node |
 | `set-expiry-sooner` | POST | `setExpirySooner(_:)` | write | unstable | supported | core | v0.8.0 | old | unit (wire shape) | key hygiene; shortens node-key expiry. Upstream: upstream files this under debug |
 | `reload-config` | POST | `reloadConfig()` | write | unspecified | supported | core | v0.8.0 | old | matrix (no-config daemons return ok=false) | only meaningful for config-file daemons |
-| `start` | POST | `start(options:)` | write | unspecified | supported | core | v0.8.0 | old | matrix | backend start / headless auth-key bring-up; 204 on success |
+| `start` | POST | `start(options:) / startFreshProfile(controlURL:authKey:)` | write | unspecified | supported | core | v0.8.0 | old | matrix | backend start / headless auth-key bring-up; 204 on success |
 | `login-interactive` | POST | `loginInteractive()` | write | stable | supported | core | v0.9.0 | old | matrix + CLI black-box | BrowseToURL arrives on the IPN bus — subscribe before calling |
 | `logout` | POST | `logout()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | disconnects and expires the node key |
 | `shutdown` | POST | `shutdownTailscaled()` | destructive | unstable | supported | core | v0.12.0 | recent (older daemons -> endpointUnavailable) | unit only (destructive: terminates the daemon; never run live) | graceful daemon exit; requires write access AND the AllowTailscaledRestart policy (403 -> .permissionDenied) |

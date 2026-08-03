@@ -64,13 +64,11 @@ import XCTest
       // 2. logout() deletes the profile, and with it the control URL — a
       //    plain loginInteractive() here would dial the default control
       //    plane (observed live: BrowseToURL pointed at login.tailscale.com,
-      //    which headscale can never approve). Re-seed prefs the way GUIs
-      //    do, via start(options:) with UpdatePrefs.
+      //    which headscale can never approve). startFreshProfile is the
+      //    public API for exactly this moment.
       let loginServer =
         ProcessInfo.processInfo.environment["TAILSCALE_LOGIN_SERVER"] ?? "http://127.0.0.1:8080"
-      try await client.start(
-        options: StartOptions(
-          updatePrefs: Prefs(controlURL: loginServer, corpDNS: false, wantRunning: true)))
+      try await client.startFreshProfile(controlURL: loginServer)
 
       // 3. Interactive login: the daemon asks control for an auth URL and
       //    delivers it as BrowseToURL on the bus.

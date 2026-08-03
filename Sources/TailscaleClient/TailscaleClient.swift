@@ -293,6 +293,42 @@ public actor TailscaleClient {
     _ = try await performRawRequest(request, endpoint: endpoint)
   }
 
+  /// Points a **fresh or logged-out** profile at a control server and starts
+  /// the backend — the LocalAPI equivalent of `tailscale up --login-server`,
+  /// and the required step between ``logout()`` (which deletes the profile,
+  /// control URL included) and ``loginInteractive()``.
+  ///
+  /// The preferences the backend starts with are upstream's `ipn.NewPrefs()`
+  /// defaults at the pinned revision (MagicDNS on, netfilter on, auto-update
+  /// check on; route acceptance stays off, matching upstream's default on
+  /// Linux/macOS daemons) plus the given control URL, `WantRunning`, and
+  /// optional auth key.
+  ///
+  /// > Warning: This **replaces all stored preferences** for the current
+  /// > profile (upstream `UpdatePrefs` semantics — everything but the login
+  /// > identity). Only call it on a profile with nothing to keep: a fresh
+  /// > install, after ``logout()``, or after ``switchToEmptyProfile()``.
+  /// > To change settings on a configured profile, use ``editPrefs(_:)``.
+  ///
+  /// - Parameters:
+  ///   - controlURL: Coordination server base URL (e.g. a headscale
+  ///     instance); empty is invalid.
+  ///   - authKey: Optional auth key for non-interactive bring-up; omit it
+  ///     and follow with ``loginInteractive()`` for the browser flow.
+  /// - Throws: `TailscaleClientError` if the request fails.
+  public func startFreshProfile(controlURL: String, authKey: String? = nil) async throws {
+    // Mirrors ipn.NewPrefs() at the pinned upstream revision; fields this
+    // package doesn't model decode upstream as zero values, which for a
+    // fresh profile is what NewPrefs leaves them as or safely off.
+    let prefs = Prefs(
+      controlURL: controlURL,
+      corpDNS: true,
+      wantRunning: true,
+      netfilterMode: 2,  // preftype.NetfilterOn, upstream's default
+      autoUpdate: AutoUpdatePrefs(check: true, apply: nil))
+    try await start(options: StartOptions(authKey: authKey, updatePrefs: prefs))
+  }
+
   /// Begins an interactive login: the control plane responds with a URL the
   /// user must open, delivered as `browseToURL` on the IPN bus.
   ///

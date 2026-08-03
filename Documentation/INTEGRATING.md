@@ -154,7 +154,7 @@ drifts from it.
 | `setUseExitNode(enabled:)` | `set-use-exit-node-enabled` | write | upstream stable; supported Swift API; absent on builds without `HasUseExitNode` |
 | `setExpirySooner(_:)` | `set-expiry-sooner` | write | upstream unstable; supported Swift normalization layer |
 | `reloadConfig()` | `reload-config` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
-| `start(options:)` | `start` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
+| `start(options:) / startFreshProfile(controlURL:authKey:)` | `start` | write | no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `loginInteractive()` | `login-interactive` | write | upstream stable; supported Swift API |
 | `logout()` | `logout` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `shutdownTailscaled()` | `shutdown` | destructive | **destructive**; upstream unstable; supported Swift normalization layer; needs tailscaled recent (older daemons -> endpointUnavailable) |

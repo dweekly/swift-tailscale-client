@@ -36,26 +36,35 @@ public struct ReloadConfigResult: Codable, Sendable, Equatable {
 /// Options for ``TailscaleClient/start(options:)``.
 ///
 /// Mirrors upstream `ipn.Options`; most callers need nothing (the daemon
-/// starts with its stored preferences), an auth key for headless bring-up,
-/// or `updatePrefs` to seed preferences before an interactive login.
+/// starts with its stored preferences) or an auth key for headless
+/// bring-up. To point a fresh or logged-out profile at a control server,
+/// use ``TailscaleClient/startFreshProfile(controlURL:authKey:)``.
 public struct StartOptions: Sendable, Equatable, Encodable {
   /// Auth key used to authenticate the node non-interactively.
   public var authKey: String?
 
   /// Preferences that **replace** the stored ones when the backend starts
   /// (upstream `ipn.Options.UpdatePrefs`; the daemon keeps only the saved
-  /// login identity). This is how a client points a fresh or logged-out
-  /// profile at a control server before ``TailscaleClient/loginInteractive()``
-  /// — after `logout()` the profile is deleted, so a later login would
-  /// otherwise dial the default control plane.
+  /// login identity).
   ///
-  /// Replacement is total: fields left `nil` become the daemon's zero
-  /// values, not its defaults. Start from `prefs()` (or construct every
-  /// field you care about) rather than sending a sparse value casually.
-  public var updatePrefs: Prefs?
+  /// Deliberately internal: this package's ``Prefs`` models a *subset* of
+  /// upstream `ipn.Prefs`, so re-encoding a fetched snapshot here would
+  /// silently zero every field Swift doesn't model (services advertisement,
+  /// stateful filtering, remote config, drive shares, …). It is only safe
+  /// on a profile with no preferences worth keeping — which is exactly the
+  /// scope ``TailscaleClient/startFreshProfile(controlURL:authKey:)``
+  /// exposes. Going public requires a lossless `Prefs` first (tracked in
+  /// ROADMAP's pre-freeze audit).
+  var updatePrefs: Prefs?
 
   /// Creates start options.
-  public init(authKey: String? = nil, updatePrefs: Prefs? = nil) {
+  public init(authKey: String? = nil) {
+    self.authKey = authKey
+  }
+
+  /// Internal variant carrying `UpdatePrefs`; see `updatePrefs` for why
+  /// this is not public.
+  init(authKey: String? = nil, updatePrefs: Prefs?) {
     self.authKey = authKey
     self.updatePrefs = updatePrefs
   }

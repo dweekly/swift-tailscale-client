@@ -287,6 +287,37 @@ def main():
                 f"{name}: gate is {entry.get('gate')!r}, but localapi.go at "
                 f"{revision[:12]} registers it under {expected_gate!r}")
 
+    # 4b. Inventory completeness: every handler derivable from the upstream
+    #     sources must be either a manifest endpoint or an entry in the
+    #     unwrapped_upstream_handlers inventory. Without this, a NEW
+    #     upstream handler derives cleanly, is compared with nothing, and
+    #     the weekly drift run reports clean — the exact blind spot this
+    #     check closes. Unwrapped entries also pin their gate, so a gate
+    #     change on an unwrapped handler is drift too, and entries for
+    #     handlers upstream removed must be deleted.
+    manifest_names = {e["endpoint"] for e in data["endpoints"]}
+    unwrapped = {u["endpoint"]: u for u in data["unwrapped_upstream_handlers"]}
+    for name in sorted(set(derived_gates) - manifest_names - set(unwrapped)):
+        problems.append(
+            f"{name}: registered upstream at {revision[:12]} (gate "
+            f"{derived_gates[name]!r}) but absent from both the endpoint "
+            f"manifest and unwrapped_upstream_handlers — new upstream "
+            f"endpoint? Document its status before this check passes.")
+    for name, entry in sorted(unwrapped.items()):
+        if name in manifest_names:
+            problems.append(
+                f"{name}: listed as both a manifest endpoint and an "
+                f"unwrapped handler — it must be exactly one")
+        derived_gate = derived_gates.get(name)
+        if derived_gate is None:
+            problems.append(
+                f"{name}: in unwrapped_upstream_handlers but not registered "
+                f"upstream at {revision[:12]} — remove the stale entry")
+        elif entry.get("gate") != derived_gate:
+            problems.append(
+                f"{name}: unwrapped handler gate is {entry.get('gate')!r}, "
+                f"upstream registers it under {derived_gate!r}")
+
     # 3. Capability version: upstream constant == provenance == Swift default.
     capability_match = re.search(
         r"CurrentCapabilityVersion CapabilityVersion = (\d+)",
@@ -316,8 +347,10 @@ def main():
         len(symbols(e.get("upstream_symbol", ""))) for e in data["endpoints"])
     gates_checked = len(data["endpoints"]) - len(skipped_gates)
     print(f"ok: {checked} endpoint symbols + {gates_checked} gates + "
-          f"stable-gap ledger + capability version verified against "
-          f"{revision[:12]} (gates skipped, registered outside localapi.go: "
+          f"{len(unwrapped)} unwrapped handlers + stable-gap ledger + "
+          f"capability version verified against {revision[:12]}; all "
+          f"{len(derived_gates)} derivable handlers accounted for "
+          f"(gates skipped, registered outside localapi.go: "
           f"{', '.join(skipped_gates) or 'none'})")
 
 
