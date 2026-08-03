@@ -6,6 +6,8 @@ import XCTest
 
 @testable import TailscaleClient
 
+private let whoisBody = Data(#"{"Node": {"ID": 1, "StableID": "n1"}}"#.utf8)
+
 /// Tests for the stable-parity surface (upstream-readiness issue 04): whois
 /// variants, checkUpdate, disconnectControl, the addProfile() 201 contract
 /// (upstream SwitchToEmptyProfile), checkUDPGROForwarding, and the supported
@@ -20,15 +22,13 @@ final class StableParityTests: XCTestCase {
     return TailscaleClient(configuration: configuration)
   }
 
-  private let whoisBody = Data(#"{"Node": {"ID": 1, "StableID": "n1"}}"#.utf8)
-
   // MARK: - WhoIs variants
 
   func testWhoIsProtoSendsProtoAndAddr() async throws {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
-      return TailscaleResponse(statusCode: 200, data: self.whoisBody)
+      return TailscaleResponse(statusCode: 200, data: whoisBody)
     }
     _ = try await makeClient(transport: transport)
       .whois(address: "100.64.0.5:443", protocol: .tcp)
@@ -48,7 +48,7 @@ final class StableParityTests: XCTestCase {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
-      return TailscaleResponse(statusCode: 200, data: self.whoisBody)
+      return TailscaleResponse(statusCode: 200, data: whoisBody)
     }
     let key = "nodekey:aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
     _ = try await makeClient(transport: transport).whois(nodeKey: key)
@@ -62,7 +62,7 @@ final class StableParityTests: XCTestCase {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
-      return TailscaleResponse(statusCode: 200, data: self.whoisBody)
+      return TailscaleResponse(statusCode: 200, data: whoisBody)
     }
     _ = try await makeClient(transport: transport)
       .whois(address: "100.64.0.5", scopedToDestination: "100.100.5.1")
@@ -81,7 +81,7 @@ final class StableParityTests: XCTestCase {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in
       await recorder.record(request: request)
-      return TailscaleResponse(statusCode: 200, data: self.whoisBody)
+      return TailscaleResponse(statusCode: 200, data: whoisBody)
     }
     _ = try await makeClient(transport: transport)
       .whois(address: "100.64.0.5", forService: "svc:web")
