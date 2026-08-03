@@ -3,6 +3,7 @@
 // Docs: Sources/TailscaleClient/TailscaleClient.docc/RecipeMenuBar.md
 
 #if os(macOS) && canImport(SwiftUI)
+  import AppKit
   import SwiftUI
   import TailscaleClient
 
