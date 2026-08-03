@@ -36,6 +36,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - <doc:ErrorHandling>
 - <doc:WritingSafely>
 - <doc:LoginFlow>
+- <doc:ServeAndFunnel>
 - <doc:StabilityTiers>
 - <doc:VersionCompatibility>
 
@@ -110,6 +111,16 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``DNSQueryResponse``
 - ``DNSResolver``
 - ``IPForwardingCheck``
+
+### Serve, Funnel & Certificates
+- ``ServeConfig``
+- ``TCPPortHandler``
+- ``WebServerConfig``
+- ``HTTPHandler``
+- ``ServiceConfig``
+- ``CertPair``
+- ``CertKind``
+- ``QueryFeatureResponse``
 
 ### Experimental (SemVer-Exempt)
 - ``ExperimentalClient``
