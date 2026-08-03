@@ -19,6 +19,7 @@ jobs:
   linux-binary:
     name: Attach Linux CLI binary
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     container: swift:6.1
     steps:
       - uses: actions/checkout@v7
