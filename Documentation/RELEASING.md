@@ -29,6 +29,10 @@ Keep-a-Changelog format (already in place):
 1. `[Unreleased]` → `[x.y.z]` in CHANGELOG; README Status + install pin updated; `Documentation/LOCALAPI-COVERAGE.md` status column updated for anything shipped; `.claude/skills/swift-tailscale-client/SKILL.md` refreshed if the API surface changed
 2. `swift build && swift test` and `swift format lint --recursive Sources Tests` green; integration matrix green on stable versions
 3. Merge the release PR; `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`
+   — **push at most three tags per `git push`**: GitHub emits no push events at
+   all for a push containing more than three tags, so `release.yml` silently
+   never runs (bit us on the v0.7.0–v0.10.0 batch; repair via
+   `backfill-releases.yml` + `attach-binaries.yml` dispatches)
 4. The `release.yml` workflow (from v0.4.0) then:
    - verifies tag ↔ CHANGELOG entry match and that the tag is annotated
    - runs the full test suite
