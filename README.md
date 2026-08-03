@@ -82,7 +82,7 @@ swift build -c release --product tailscale-swift
 brew tap dweekly/tap && brew install tailscale-swift
 ```
 
-Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding`. All structured commands accept `--json`.
+Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetrics`, `watch`, `features`, `derpmap`, `suggest-exit`, `netcheck`, `dns status`, `dns query`, `check-forwarding`, `set …`, `login`, `logout`, `switch`. All structured commands accept `--json`.
 
 > **Using an AI coding agent?** This repo ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md) that teaches agents what the package offers and how to integrate it correctly.
 

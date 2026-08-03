@@ -67,6 +67,53 @@ public struct ExperimentalClient: Sendable {
       request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
   }
 
+  /// Tells the daemon whether the client UI is currently visible — part of
+  /// the contract Tailscale's own GUI clients use to tune notification and
+  /// polling behavior.
+  ///
+  /// - Parameters:
+  ///   - visible: Whether the UI is presented to the user.
+  ///   - sessionID: The last `SessionID` received on the IPN bus, when known.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` on daemon
+  ///   builds without this surface; other `TailscaleClientError` cases on failure.
+  public func setGUIVisible(_ visible: Bool, sessionID: String? = nil) async throws {
+    let endpoint = "/localapi/v0/set-gui-visible"
+    var payload: [String: JSONValue] = ["IsVisible": .bool(visible)]
+    if let sessionID { payload["SessionID"] = .string(sessionID) }
+    let request = TailscaleRequest(
+      method: "POST", path: endpoint, body: try JSONEncoder().encode(payload))
+    _ = try await client.performRawRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
+  }
+
+  /// Registers an APNs/FCM push device token with the daemon so the control
+  /// plane can wake this device.
+  ///
+  /// - Parameter token: The platform push token string.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` on daemon
+  ///   builds without this surface; other `TailscaleClientError` cases on failure.
+  public func setPushDeviceToken(_ token: String) async throws {
+    let endpoint = "/localapi/v0/set-push-device-token"
+    let payload: [String: JSONValue] = ["PushDeviceToken": .string(token)]
+    let request = TailscaleRequest(
+      method: "POST", path: endpoint, body: try JSONEncoder().encode(payload))
+    _ = try await client.performRawRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
+  }
+
+  /// Forwards a received push-notification payload to the daemon.
+  ///
+  /// - Parameter payload: The push message body as arbitrary JSON.
+  /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` on daemon
+  ///   builds without this surface; other `TailscaleClientError` cases on failure.
+  public func handlePushMessage(_ payload: [String: JSONValue]) async throws {
+    let endpoint = "/localapi/v0/handle-push-message"
+    let request = TailscaleRequest(
+      method: "POST", path: endpoint, body: try JSONEncoder().encode(payload))
+    _ = try await client.performRawRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
+  }
+
   /// Streams the daemon's live log output, one entry per line.
   ///
   /// The stream ends with an error if the connection drops; there is no

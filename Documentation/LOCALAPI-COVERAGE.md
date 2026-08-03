@@ -24,7 +24,7 @@ Three upstream facts shape everything below:
 
 | Category | Count |
 |----------|-------|
-| Implemented | 25 (+ 3 experimental) |
+| Implemented | 25 (+ 6 experimental) |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 7 |
@@ -60,6 +60,7 @@ Three upstream facts shape everything below:
 | `login-interactive` / `logout` / `reset-auth` | POST | `loginInteractive()`, `logout()`, `resetAuth()` | v0.9.0 — BrowseToURL via IPN bus; destructive pair unit-tested only |
 | `profiles/` | GET/PUT/POST/DELETE | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` | v0.9.0 — `LoginProfile` model |
 | `id-token` | POST | `idToken(audience:)` | v0.9.0 — OIDC token, raw JSON passthrough |
+| `set-gui-visible` / `set-push-device-token` / `handle-push-message` | POST | `experimental.setGUIVisible(_:sessionID:)`, `.setPushDeviceToken(_:)`, `.handlePushMessage(_:)` | v0.9.0 — GUI-client contract, SemVer-exempt |
 
 Non-endpoint features: `NetworkInterfaceDiscovery` (TUN interface via `getifaddrs`), `MacClientInfo` (opt-in macOS App Store GUI discovery).
 

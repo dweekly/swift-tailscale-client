@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file. The format 
 ### Added
 
 - **Auth & profiles**: `loginInteractive()` (BrowseToURL arrives on the IPN bus — see the new *Login Flow* article), `logout()` and `resetAuth()` (destructive; wire-shape unit tests only, never integration-tested), the `profiles/` family (`profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` with new `LoginProfile`/`NetworkProfile` models), and `idToken(audience:)` (OIDC token as raw control-plane JSON).
+- **Experimental GUI contract**: `experimental.setGUIVisible(_:sessionID:)`, `.setPushDeviceToken(_:)`, and `.handlePushMessage(_:)` — the endpoints Tailscale's own GUI clients use (SemVer-exempt).
+- CLI: `login` (streams the IPN bus and prints the auth URL), `logout --yes` (guarded), and `switch` (list profiles or switch by ID).
 - DocC article *The Login Flow*: subscribe-then-start ordering, headless auth-key bring-up, profile lifecycle, and handling the destructive pair.
 
 ## [0.8.0] - 2026-08-03

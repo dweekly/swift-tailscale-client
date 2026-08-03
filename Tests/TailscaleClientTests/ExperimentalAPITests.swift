@@ -95,6 +95,40 @@ final class ExperimentalAPITests: XCTestCase {
     XCTAssertEqual(captured.first?.path, "/localapi/v0/goroutines")
   }
 
+  // MARK: - GUI contract
+
+  func testGUIContractRequestShapes() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      let code = request.path.hasSuffix("push-message") ? 204 : 200
+      return TailscaleResponse(statusCode: code, data: Data())
+    }
+    let client = makeClient(transport: transport)
+
+    try await client.experimental.setGUIVisible(true, sessionID: "sess-1")
+    try await client.experimental.setPushDeviceToken("apns-token-abc")
+    try await client.experimental.handlePushMessage(["op": .string("wake")])
+
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.map(\.method), ["POST", "POST", "POST"])
+    XCTAssertEqual(
+      captured.map(\.path),
+      [
+        "/localapi/v0/set-gui-visible",
+        "/localapi/v0/set-push-device-token",
+        "/localapi/v0/handle-push-message",
+      ])
+
+    let visible = try JSONSerialization.jsonObject(with: captured[0].body ?? Data())
+    XCTAssertEqual((visible as? [String: Any])?["IsVisible"] as? Bool, true)
+    XCTAssertEqual((visible as? [String: Any])?["SessionID"] as? String, "sess-1")
+    let token = try JSONSerialization.jsonObject(with: captured[1].body ?? Data())
+    XCTAssertEqual((token as? [String: Any])?["PushDeviceToken"] as? String, "apns-token-abc")
+    let push = try JSONSerialization.jsonObject(with: captured[2].body ?? Data())
+    XCTAssertEqual((push as? [String: Any])?["op"] as? String, "wake")
+  }
+
   // MARK: - logtap
 
   func testLogtapStreamsEntriesAndToleratesNonJSON() async throws {
