@@ -2,8 +2,10 @@
 
 Complete inventory of the Tailscale LocalAPI surface and this package's position on every endpoint: implemented, planned (with target version), experimental, or deliberately unsupported (with the reason).
 
+<!-- BEGIN GENERATED: coverage-provenance (Scripts/generate-endpoint-docs.py) -->
 **Last updated:** 2026-08-03
-**Upstream reference:** `tailscale/tailscale` `main` (July 2026), `ipn/localapi/` + `client/local/`
+**Upstream reference:** `tailscale/tailscale` pinned commit `4c4d1c35f83a` (verified 2026-08-03; full SHA and validation in [`endpoints.json`](endpoints.json)), `ipn/localapi/` + `client/local/`
+<!-- END GENERATED: coverage-provenance (Scripts/generate-endpoint-docs.py) -->
 **swift-tailscale-client version:** 0.10.0
 
 Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
@@ -24,13 +26,15 @@ Three upstream facts shape everything below:
 
 ## Summary
 
+<!-- BEGIN GENERATED: coverage-summary (Scripts/generate-endpoint-docs.py) -->
 | Category | Count |
 |----------|-------|
-| Implemented | 31 (+ 6 experimental) |
+| Implemented (from `endpoints.json`) | 35 supported + 5 experimental |
 | Planned Stable (v0.4.0–v1.3) | ~40 |
 | Planned Experimental | ~15 |
-| Unsupported (documented, with reasons) | 7 |
+| Unsupported (documented, with reasons) | 6 |
 | No LocalAPI equivalent (client-side features) | netcheck (implemented client-side in v0.6.0 as `Netcheck`), captive portal detection |
+<!-- END GENERATED: coverage-summary (Scripts/generate-endpoint-docs.py) -->
 
 ---
 
