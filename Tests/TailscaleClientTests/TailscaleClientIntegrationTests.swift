@@ -256,6 +256,17 @@ import XCTest
       }
     }
 
+    // MARK: - Profiles (read-only)
+
+    func testProfilesAgainstLiveDaemon() async throws {
+      let profiles = try await client.profiles()
+      XCTAssertFalse(profiles.isEmpty, "A logged-in daemon should have at least one profile")
+      let current = try await client.currentProfile()
+      XCTAssertTrue(
+        profiles.contains { $0.id == current.id },
+        "Current profile should appear in the list")
+    }
+
     // MARK: - Write API Tests (hermetic daemons ONLY)
 
     /// Write tests mutate daemon state, so they carry their own gate on top

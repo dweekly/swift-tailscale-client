@@ -189,13 +189,13 @@ Every version below carries the same four subsections — **Library**, **CLI**, 
 - [x] `loginInteractive()`, `logout()`, `resetAuth()` — paired with `watchIPNBus` for the `BrowseToURL` flow
 - [x] `profiles()` / `currentProfile()` / `addProfile()` / `switchProfile(_:)` / `deleteProfile(_:)` — multi-account
 - [x] `idToken(audience:)`
-- [ ] *Experimental:* `setGUIVisible(_:)`, `setPushDeviceToken(_:)`, `handlePushMessage(_:)` — the endpoints Tailscale's own GUI clients use; relevant to any serious macOS/iOS app embedding this package
+- [x] *Experimental:* `setGUIVisible(_:sessionID:)`, `setPushDeviceToken(_:)`, `handlePushMessage(_:)` — the endpoints Tailscale's own GUI clients use; relevant to any serious macOS/iOS app embedding this package
 
 ### CLI
-- [ ] `login`, `logout`, `switch <profile>`
+- [x] `login`, `logout` (guarded by --yes), `switch <profile>` (lists when bare)
 
 ### Testing
-- [ ] Full login lifecycle against headscale (interactive login is scriptable there)
+- [ ] Full login lifecycle against headscale (interactive login is scriptable there) — read-only profiles checks run live everywhere; the scripted login remains open
 
 ### Docs
 - [x] DocC article: *The Login Flow* (BrowseToURL + IPN bus state machine, headless bring-up, profile lifecycle)
