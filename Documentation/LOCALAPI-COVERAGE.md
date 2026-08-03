@@ -140,7 +140,7 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
 | `serve-config` | GET, POST | `HasServe` | Stable | **v0.10.0** | `serveConfig()` → snapshot with `etag`; `setServeConfig(_:)` sends `If-Match` — a stale write throws `.preconditionFailed(body:endpoint:)` (proven against a live daemon in the write lane) |
-| `cert-domains` | GET | `HasACME` | Stable | **v0.10.0** | `certDomains()` |
+| `cert-domains` | GET | `HasACME` | Stable | **v0.10.0** | `certDomains()` — optional-endpoint gated; 404 on ACME-less builds (seen on the 1.96.4 tarball) → `endpointUnavailable` |
 | `cert/<domain>` (prefix) | GET | `HasACME` | Stable | **v0.10.0** | `certPEM(domain:kind:minValidity:)` (`?type=pair\|cert\|key`), `certPair(domain:minValidity:)` splits key/cert |
 | `set-dns` | POST | `HasACME` | Stable | **v0.10.0** | `setDNS(name:value:)` — ACME DNS-01 TXT |
 | `query-feature` | POST | `HasServe` | Stable | **v0.10.0** | `queryFeature(_:)` — `QueryFeatureResponse` |

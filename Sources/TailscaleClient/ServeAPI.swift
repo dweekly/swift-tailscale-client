@@ -74,13 +74,17 @@ extension TailscaleClient {
   /// The DNS names this node can obtain TLS certificates for, sorted
   /// ascending. Empty when HTTPS is not enabled for the tailnet.
   ///
-  /// Wraps `GET /localapi/v0/cert-domains`.
+  /// Wraps `GET /localapi/v0/cert-domains`. Daemons built without ACME
+  /// support don't register the endpoint (404 on tailscaled 1.96.x
+  /// tarball builds, seen live) and surface as
+  /// ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``.
   public func certDomains() async throws -> [String] {
     let endpoint = "/localapi/v0/cert-domains"
     let request = TailscaleRequest(method: "GET", path: endpoint)
     // Go serializes a nil slice as JSON `null` when the tailnet has no
     // cert domains (seen live against headscale tailnets).
-    let domains: [String]? = try await performRequest(request, endpoint: endpoint)
+    let domains: [String]? = try await performRequest(
+      request, endpoint: endpoint, optionalEndpoint: true, feature: "acme")
     return domains ?? []
   }
 

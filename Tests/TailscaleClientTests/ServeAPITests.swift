@@ -164,6 +164,25 @@ final class ServeAPITests: XCTestCase {
     XCTAssertEqual(domains, ["node.tail1234.ts.net"])
   }
 
+  func testCertDomainsMaps404ToEndpointUnavailable() async throws {
+    // ACME-less builds (1.96.x tarballs, seen live) never register the
+    // endpoint; that must surface as the typed optional-endpoint signal.
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 404, data: Data("404 page not found".utf8))
+    }
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).certDomains()
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .endpointUnavailable(_, let feature) = clientError
+      else {
+        XCTFail("Expected .endpointUnavailable, got \(error)")
+        return
+      }
+      XCTAssertEqual(feature, "acme")
+    }
+  }
+
   func testCertDomainsToleratesNullBody() async throws {
     // Go emits a nil slice as top-level `null` when HTTPS is not enabled
     // for the tailnet (regression caught live on all headscale lanes).

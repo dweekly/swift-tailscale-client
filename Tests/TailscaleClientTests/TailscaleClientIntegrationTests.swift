@@ -675,9 +675,16 @@ import XCTest
     func testCertDomainsAgainstLiveDaemon() async throws {
       // Hermetic headscale tailnets have no HTTPS certificates enabled, so
       // an empty list is the expected healthy answer; the call must decode.
-      let domains = try await client.certDomains()
-      for domain in domains {
-        XCTAssertFalse(domain.isEmpty)
+      do {
+        let domains = try await client.certDomains()
+        for domain in domains {
+          XCTAssertFalse(domain.isEmpty)
+        }
+      } catch let error as TailscaleClientError {
+        // Some builds omit the ACME feature entirely (404 seen live on the
+        // 1.96.4 tarball); that is the documented optional-endpoint signal.
+        guard case .endpointUnavailable = error else { throw error }
+        throw XCTSkip("Daemon built without ACME support; skipping")
       }
     }
 
