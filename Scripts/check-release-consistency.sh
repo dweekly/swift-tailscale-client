@@ -34,7 +34,8 @@ extract "DocC GettingStarted" Sources/TailscaleClient/TailscaleClient.docc/Getti
   'from: "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "Coverage matrix" Documentation/LOCALAPI-COVERAGE.md \
   'swift-tailscale-client version:\*\* [0-9]+\.[0-9]+\.[0-9]+'
-extract "CLAUDE.md status" CLAUDE.md 'Project Status \(v[0-9]+\.[0-9]+\.[0-9]+\)'
+# CLAUDE.md deliberately states no version: it indexes authoritative
+# sources (CHANGELOG for versions) instead of duplicating them.
 extract "packageVersion const" Sources/TailscaleClient/Configuration/TailscaleClientConfiguration.swift \
   'packageVersion = "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "CHANGELOG top entry" CHANGELOG.md '## \[[0-9]+\.[0-9]+\.[0-9]+\]'
