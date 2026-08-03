@@ -40,6 +40,13 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - <doc:StabilityTiers>
 - <doc:VersionCompatibility>
 
+### Recipes (compiled from Examples/Recipes)
+- <doc:RecipeMenuBar>
+- <doc:RecipeMonitoring>
+- <doc:RecipeExitNode>
+- <doc:RecipeServe>
+- <doc:RecipeTesting>
+
 ### Essentials
 - ``TailscaleClient``
 - ``TailscaleClientConfiguration``
