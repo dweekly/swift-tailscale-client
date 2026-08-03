@@ -62,6 +62,11 @@ jobs:
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
 
+      - name: Build and test recipes (compiled documentation snippets)
+        run: |
+          swift build --package-path Examples/Recipes
+          swift test --package-path Examples/Recipes
+
   test-linux:
     name: Test on Linux
     runs-on: ubuntu-24.04
@@ -81,6 +86,34 @@ jobs:
 
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
+
+      - name: Build and test recipes (compiled documentation snippets)
+        run: |
+          swift build --package-path Examples/Recipes
+          swift test --package-path Examples/Recipes
+
+  docs-consistency:
+    name: Docs consistency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Version drift across README/DocC/SKILL/coverage/CHANGELOG has
+      # slipped through review three separate times; a 5-second grep gate
+      # is cheaper than another review round.
+      - name: Check advertised versions agree
+        run: ./Scripts/check-release-consistency.sh
+
+      # The endpoint tables in LOCALAPI-COVERAGE.md and INTEGRATING.md are
+      # rendered from Documentation/endpoints.json; hand-edits must go
+      # through the manifest.
+      - name: Check generated endpoint tables are in sync
+        run: python3 Scripts/generate-endpoint-docs.py --check
+
+      # Recipe articles may only show code that Examples/Recipes compiles.
+      - name: Check recipe snippets match compiled sources
+        run: python3 Scripts/check-recipe-snippets.py
 
   test-tsan:
     name: Test with Thread Sanitizer

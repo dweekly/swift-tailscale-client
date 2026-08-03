@@ -4,7 +4,7 @@ Thanks for your interest in improving this unofficial Swift client for the Tails
 
 ## Ground Rules
 - Be respectful and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
-- Keep discussions and contributions focused on the library; CLI tooling intentionally remains out of scope.
+- Contributions to the library **and** the `tailscale-swift` CLI (a shipped executable product since v0.6.0) are both welcome; the CLI doubles as the library's reference consumer, so keep its commands thin wrappers over public library APIs.
 - Make sure all public-facing docs (README, DocC, commit messages) preserve the project's unofficial disclaimer.
 
 ## Development Workflow

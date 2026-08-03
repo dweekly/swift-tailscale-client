@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Documentation as a product** (post-review overhaul):
+  - `Documentation/INTEGRATING.md` is the canonical integration guide; the Claude skill, new root `AGENTS.md`, new `.github/copilot-instructions.md`, and an `llms.txt` (served at the DocC site root) are thin adapters pointing at it.
+  - `Documentation/endpoints.json` — machine-readable manifest of every implemented endpoint (Swift symbol, read/write risk, feature gate, min/tested tailscaled versions, transports, stability); `Scripts/generate-endpoint-docs.py` renders the coverage and quick-reference tables from it, enforced by CI.
+  - Five task-oriented recipe articles (menu-bar status app, monitoring without polling, exit-node control, Serve + certificates, testing with mocks) whose every Swift snippet is an excerpt of the new compiled `Examples/Recipes` package — `Scripts/check-recipe-snippets.py` fails CI on drift, and CI builds and tests the package on macOS and Linux.
+  - `Scripts/check-release-consistency.sh`: CI and the release workflow fail when README, DocC, the agent skill, coverage metadata, CLAUDE.md, CHANGELOG, and the release tag disagree on the version.
+- README restructured task-first: install line and task sections (status, watch, safe writes, Serve) directly after the tool-choice table; a runtime-support matrix separating "builds" from "connects to a daemon"; history trimmed to the CHANGELOG.
+
+### Fixed
+
+- Version drift: DocC *Getting Started* recommended 0.7.0; the coverage matrix identified itself as 0.9.0; CONTRIBUTING.md declared the (shipped) CLI out of scope.
+
 ## [0.10.0] - 2026-08-03
 
 ### Added
