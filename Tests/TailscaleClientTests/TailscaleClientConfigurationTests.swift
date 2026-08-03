@@ -26,7 +26,8 @@ final class TailscaleClientConfigurationTests: XCTestCase {
     let result = discovery.discover()
     XCTAssertEqual(result.endpoint, .unixSocket(path: "/tmp/tailscaled.sock"))
     XCTAssertEqual(result.authToken, "alpha")
-    XCTAssertEqual(result.capabilityVersion, 1)
+    XCTAssertEqual(
+      result.capabilityVersion, TailscaleClientConfiguration.defaultCapabilityVersion)
   }
 
   func testEnvironmentLoopbackOverride() {
@@ -38,7 +39,8 @@ final class TailscaleClientConfigurationTests: XCTestCase {
     let result = discovery.discover()
     XCTAssertEqual(result.endpoint, .loopback(host: "127.0.0.2", port: 8081))
     XCTAssertEqual(result.authToken, "beta")
-    XCTAssertEqual(result.capabilityVersion, 1)
+    XCTAssertEqual(
+      result.capabilityVersion, TailscaleClientConfiguration.defaultCapabilityVersion)
   }
 
   func testDefaultFallsBackWhenNoOverridesPresent() {
