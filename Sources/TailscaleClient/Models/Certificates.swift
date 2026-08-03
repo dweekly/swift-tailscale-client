@@ -30,6 +30,16 @@ public struct CertPair: Sendable, Equatable {
   }
 }
 
+extension CertPair: CustomStringConvertible, CustomDebugStringConvertible {
+  /// Never includes the private key: printing a `CertPair` in logs or a
+  /// debugger must not leak credential material.
+  public var description: String {
+    "CertPair(certificatePEM: \(certificatePEM.count) chars, privateKeyPEM: <redacted>)"
+  }
+
+  public var debugDescription: String { description }
+}
+
 /// The control plane's answer to a feature availability probe, from
 /// `POST /localapi/v0/query-feature` (e.g. `feature=funnel` or `serve`).
 ///

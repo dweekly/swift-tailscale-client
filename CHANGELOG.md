@@ -4,7 +4,23 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Security
+
+- **No authentication-token material is logged anymore** (upstream-readiness issue 01): discovery debug logging previously printed the first eight characters of the macOS sameuserproof token, and several log lines included proof-file *paths whose filename embeds the full token*. All discovery logging now flows through a capturable sink with proof-path redaction, and regression tests inject a recognizable secret and assert no diagnostic surface emits any substring of it. `TailscaleClientConfiguration`, `LocalAPIDiscovery.Result`, and `CertPair` gained redacting `description`s so printing them cannot leak `authToken`/private-key material. Integrators: treat `authToken`, `idToken(audience:)` responses, `CertPair.privateKeyPEM`, and audit reasons as secrets in your own logs.
+
 ### Added
+
+- **Upstream request/version/error contract** (upstream-readiness issue 03):
+  - The default `Tailscale-Cap` is now **144**, pinned to a verified upstream revision with documented provenance and an update procedure (`TailscaleClientConfiguration.defaultCapabilityVersion`); `TAILSCALE_LOCALAPI_CAPABILITY` and explicit configuration still override.
+  - The client observes the daemon's `Tailscale-Version` response header; `versionDiagnostics()` reports package version, advertised capability, and daemon version — mismatches are diagnostic, never request failures.
+  - New typed errors: `.permissionDenied(body:endpoint:)` (HTTP 403) and `.rateLimited(retryAfterSeconds:body:endpoint:)` (HTTP 429 with `Retry-After`, e.g. certificate issuance).
+  - `setAuditReason(_:)` attaches a justification to subsequent requests via the upstream `X-Tailscale-Reason` header (Base64), the mechanism always-on-mode policies use to permit audited operations.
+- **Dual-axis endpoint stability** (upstream-readiness issue 02): `Documentation/endpoints.json` now records Tailscale's own per-method "API maturity" (`upstream_maturity`: stable/unstable/unspecified, verified against a pinned upstream revision) independently from this package's `swift_support` promise, plus the corresponding Go `upstream_symbol` and an `upstream_stable_unimplemented` ledger seed (WhoIs variants, CheckUpdate, DisconnectControl, DialTCP/UserDial, SwitchToEmptyProfile, CheckUDPGROForwarding). The generated coverage and quick-reference tables render both axes; the generator validates classifications in CI. `disconnect-control` reclassified from "test-harness tool" to upstream-stable administrative operation.
+
+### Breaking
+
+- `TailscaleClientError` gained cases (`.permissionDenied`, `.rateLimited`); exhaustive switches need new arms. HTTP 403 responses that previously surfaced as `.unexpectedStatus(403, …)` now throw `.permissionDenied`.
+- The default advertised capability changed from `1` to `144`. Daemon behavior gated on capability may differ; pin `capabilityVersion: 1` or set `TAILSCALE_LOCALAPI_CAPABILITY=1` to restore the old wire behavior.
 
 - **Documentation as a product** (post-review overhaul):
   - `Documentation/INTEGRATING.md` is the canonical integration guide; the Claude skill, new root `AGENTS.md`, new `.github/copilot-instructions.md`, and an `llms.txt` (served at the DocC site root) are thin adapters pointing at it.

@@ -18,7 +18,16 @@ resolves the LocalAPI endpoint in this order:
    permission prompts**.
 3. **macOS App Store GUI discovery** — only when explicitly enabled (below).
 
-Set `TAILSCALE_DISCOVERY_DEBUG=1` to log every decision to stderr.
+Set `TAILSCALE_DISCOVERY_DEBUG=1` to log every decision to stderr. Discovery
+logging never emits authentication-token material — proof-file paths are
+redacted because the filename embeds the token — and is regression-tested to
+stay that way.
+
+> Important: Some values this package hands **you** are secrets, and your
+> logging is outside our control. Treat
+> ``TailscaleClientConfiguration/authToken``, `idToken(audience:)` responses,
+> ``CertPair/privateKeyPEM``, and any audit reason you supply as credentials:
+> never log them or include them in bug reports.
 
 ## The App Store caveat (TCC)
 

@@ -30,6 +30,8 @@ extract "DocC GettingStarted" Sources/TailscaleClient/TailscaleClient.docc/Getti
 extract "Coverage matrix" Documentation/LOCALAPI-COVERAGE.md \
   'swift-tailscale-client version:\*\* [0-9]+\.[0-9]+\.[0-9]+'
 extract "CLAUDE.md status" CLAUDE.md 'Project Status \(v[0-9]+\.[0-9]+\.[0-9]+\)'
+extract "packageVersion const" Sources/TailscaleClient/Configuration/TailscaleClientConfiguration.swift \
+  'packageVersion = "[0-9]+\.[0-9]+\.[0-9]+"'
 extract "CHANGELOG top entry" CHANGELOG.md '## \[[0-9]+\.[0-9]+\.[0-9]+\]'
 
 reference="${versions[CHANGELOG top entry]:-}"
