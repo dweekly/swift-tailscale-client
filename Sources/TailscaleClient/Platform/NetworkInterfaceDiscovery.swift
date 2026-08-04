@@ -5,6 +5,8 @@ import Foundation
 
 #if canImport(Darwin)
   import Darwin
+#elseif canImport(Glibc)
+  import Glibc
 #endif
 
 /// Discovers network interface information by matching IP addresses to system interfaces.
@@ -42,7 +44,7 @@ public enum NetworkInterfaceDiscovery {
   ///
   /// - Returns: Array of interface information for all active interfaces.
   public static func allInterfaces() -> [InterfaceInfo] {
-    #if canImport(Darwin)
+    #if canImport(Darwin) || canImport(Glibc)
       return enumerateInterfaces()
     #else
       return []
@@ -78,7 +80,15 @@ public enum NetworkInterfaceDiscovery {
 
   // MARK: - Private Implementation
 
-  #if canImport(Darwin)
+  #if canImport(Darwin) || canImport(Glibc)
+    // IFF_* interface-flag values are identical on BSD/Darwin and Linux, but
+    // the C constants import inconsistently across Glibc versions (anonymous
+    // enums vs macros), so we pin the shared numeric values here.
+    private static let iffUp: UInt32 = 0x1
+    private static let iffLoopback: UInt32 = 0x8
+    private static let iffPointToPoint: UInt32 = 0x10
+    private static let iffRunning: UInt32 = 0x40
+
     private static func enumerateInterfaces() -> [InterfaceInfo] {
       var interfaces: [InterfaceInfo] = []
       var ifaddrsPtr: UnsafeMutablePointer<ifaddrs>?
@@ -98,7 +108,7 @@ public enum NetworkInterfaceDiscovery {
         // Only process IPv4 and IPv6 addresses
         guard family == AF_INET || family == AF_INET6 else { continue }
 
-        let flags = Int32(ifaddr.pointee.ifa_flags)
+        let flags = UInt32(truncatingIfNeeded: ifaddr.pointee.ifa_flags)
         let name = String(cString: ifaddr.pointee.ifa_name)
 
         // Extract the IP address string
@@ -108,10 +118,10 @@ public enum NetworkInterfaceDiscovery {
           name: name,
           address: addressString,
           isIPv6: family == AF_INET6,
-          isUp: (flags & IFF_UP) != 0,
-          isRunning: (flags & IFF_RUNNING) != 0,
-          isLoopback: (flags & IFF_LOOPBACK) != 0,
-          isPointToPoint: (flags & IFF_POINTOPOINT) != 0
+          isUp: (flags & iffUp) != 0,
+          isRunning: (flags & iffRunning) != 0,
+          isLoopback: (flags & iffLoopback) != 0,
+          isPointToPoint: (flags & iffPointToPoint) != 0
         )
         interfaces.append(info)
       }

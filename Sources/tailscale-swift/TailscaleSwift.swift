@@ -11,6 +11,7 @@ struct TailscaleSwift: AsyncParsableCommand {
     abstract: "Inspect a local Tailscale daemon (built on swift-tailscale-client)",
     subcommands: [
       Status.self,
+      ServicesCommand.self,
       WhoIs.self,
       PrefsCommand.self,
       PingCommand.self,

@@ -24,6 +24,27 @@
       "notes": "?peers=false via StatusQuery; interfaceName/interfaceInfo derived client-side"
     },
     {
+      "endpoint": "services",
+      "methods": [
+        "GET"
+      ],
+      "symbol": "services()",
+      "access": "read",
+      "gate": "core",
+      "upstream_maturity": "unspecified",
+      "swift_support": "supported",
+      "upstream_symbol": "GetServices",
+      "since": "0.12.0",
+      "min_tailscaled": "recent (VIP services era; older daemons -> endpointUnavailable)",
+      "tested": "matrix (503 without netmap and absent-endpoint 404 both tolerated)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "Tailscale Services (VIP services) keyed by svc: name; Ports are upstream ProtoPortRange text forms"
+    },
+    {
       "endpoint": "whois",
       "methods": [
         "GET"
@@ -227,7 +248,7 @@
       "upstream_symbol": "GetDNSOSConfig",
       "since": "0.7.0",
       "min_tailscaled": "old",
-      "tested": "matrix+live (userspace daemons 500 \u2192 skip)",
+      "tested": "matrix+live (userspace daemons 500 → skip)",
       "transports": [
         "unix",
         "loopback"
@@ -318,7 +339,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "tailnet DNS intent from the netmap; older daemons \u2192 endpointUnavailable"
+      "notes": "tailnet DNS intent from the netmap; older daemons → endpointUnavailable"
     },
     {
       "endpoint": "peer-by-id",
@@ -339,7 +360,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "404 = not in netmap OR daemon predates the endpoint \u2014 indistinguishable"
+      "notes": "404 = not in netmap OR daemon predates the endpoint — indistinguishable"
     },
     {
       "endpoint": "user-profile",
@@ -360,7 +381,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "404 = unknown user OR older daemon \u2014 indistinguishable"
+      "notes": "404 = unknown user OR older daemon — indistinguishable"
     },
     {
       "endpoint": "check-prefs",
@@ -452,7 +473,7 @@
       "methods": [
         "POST"
       ],
-      "symbol": "start(options:)",
+      "symbol": "start(options:) / startFreshProfile(controlURL:authKey:)",
       "access": "write",
       "gate": "core",
       "upstream_maturity": "unspecified",
@@ -487,7 +508,7 @@
         "loopback"
       ],
       "upstream": "general",
-      "notes": "BrowseToURL arrives on the IPN bus \u2014 subscribe before calling"
+      "notes": "BrowseToURL arrives on the IPN bus — subscribe before calling"
     },
     {
       "endpoint": "logout",
@@ -509,6 +530,27 @@
       ],
       "upstream": "general",
       "notes": "disconnects and expires the node key"
+    },
+    {
+      "endpoint": "shutdown",
+      "methods": [
+        "POST"
+      ],
+      "symbol": "shutdownTailscaled()",
+      "access": "destructive",
+      "gate": "core",
+      "upstream_maturity": "unstable",
+      "swift_support": "supported",
+      "upstream_symbol": "ShutdownTailscaled",
+      "since": "0.12.0",
+      "min_tailscaled": "recent (older daemons -> endpointUnavailable)",
+      "tested": "unit only (destructive: terminates the daemon; never run live)",
+      "transports": [
+        "unix",
+        "loopback"
+      ],
+      "upstream": "general",
+      "notes": "graceful daemon exit; requires write access AND the AllowTailscaledRestart policy (403 -> .permissionDenied)"
     },
     {
       "endpoint": "update/check",
@@ -663,7 +705,7 @@
       "upstream_symbol": "CertDomains",
       "since": "0.10.0",
       "min_tailscaled": "old",
-      "tested": "matrix (ACME-less builds \u2192 endpointUnavailable, seen on 1.96.4 tarball)",
+      "tested": "matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball)",
       "transports": [
         "unix",
         "loopback"
@@ -726,7 +768,7 @@
       "upstream_symbol": "QueryFeature",
       "since": "0.10.0",
       "min_tailscaled": "old",
-      "tested": "matrix (headscale control plane \u2192 skip)",
+      "tested": "matrix (headscale control plane → skip)",
       "transports": [
         "unix",
         "loopback"
@@ -882,6 +924,108 @@
       "go_symbol": "DialTCP / UserDial",
       "endpoint": "dial",
       "note": "raw duplex streams over HTTP upgrade; needs a Swift connection abstraction first (issue draft 04)"
+    }
+  ],
+  "unwrapped_upstream_handlers": [
+    {
+      "endpoint": "alpha-set-device-attrs",
+      "gate": "HasDebug",
+      "note": "Alpha device-attribute push; unsupported until upstream stabilizes it."
+    },
+    {
+      "endpoint": "appc-route-info",
+      "gate": "HasAppConnectors",
+      "note": "App-connector route diagnostics; experimental candidate on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "check-so-mark-in-use",
+      "gate": "core",
+      "note": "Linux SO_MARK availability probe for tailscaled's own tooling; no client use case."
+    },
+    {
+      "endpoint": "component-debug-logging",
+      "gate": "HasDebug",
+      "note": "Debug surface; added to client.experimental on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug",
+      "gate": "HasDebug",
+      "note": "Debug action multiplexer; individual actions wrapped on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-bus-events",
+      "gate": "HasDebug",
+      "note": "Event-bus debug stream; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-bus-graph",
+      "gate": "HasDebug",
+      "note": "Event-bus debug graph; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-bus-queues",
+      "gate": "HasDebug",
+      "note": "Event-bus debug queues; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-derp-region",
+      "gate": "HasDebug",
+      "note": "DERP region debug probe; netcheck covers the monitoring use case."
+    },
+    {
+      "endpoint": "debug-dial-types",
+      "gate": "HasDebug",
+      "note": "Dial-path debug probe; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-log",
+      "gate": "HasDebug",
+      "note": "Debug log injection; logtap (experimental) covers log observation."
+    },
+    {
+      "endpoint": "debug-packet-filter-matches",
+      "gate": "HasDebug",
+      "note": "Packet-filter debug dump; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-packet-filter-rules",
+      "gate": "HasDebug",
+      "note": "Packet-filter debug dump; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-peer-endpoint-changes",
+      "gate": "HasDebug",
+      "note": "Peer endpoint-change history; on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "debug-rotate-disco-key",
+      "gate": "HasDebug",
+      "note": "Disco-key rotation trigger; test-harness tool, no client use case."
+    },
+    {
+      "endpoint": "dev-set-state-store",
+      "gate": "HasDebug",
+      "note": "Developer state-store override; unsupported (can corrupt daemon state)."
+    },
+    {
+      "endpoint": "dial",
+      "gate": "HasOutboundProxy || HasSSH",
+      "note": "Connection-hijacking duplex endpoint; needs the DialTCP/UserDial abstraction (post-1.0 ledger)."
+    },
+    {
+      "endpoint": "pprof",
+      "gate": "HasDebug",
+      "note": "Go pprof profiles; goroutines (experimental) covers the diagnostic use case."
+    },
+    {
+      "endpoint": "set-udp-gro-forwarding",
+      "gate": "HasAdvertiseRoutes",
+      "note": "Mutating sibling of check-udp-gro-forwarding; upstream-unstable, no monitoring use case."
+    },
+    {
+      "endpoint": "upload-client-metrics",
+      "gate": "HasClientMetrics",
+      "note": "GUI-client metrics upload; a monitoring library reads metrics, it does not submit them."
     }
   ]
 }

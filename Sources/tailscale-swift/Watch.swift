@@ -144,6 +144,7 @@ struct WatchCommand: AsyncParsableCommand {
     case .stopped: return "⏹️"
     case .starting: return "🔄"
     case .running: return "✅"
+    case .other: return "❔"
     }
   }
 

@@ -1,0 +1,65 @@
+@Tutorial(time: 15) {
+  @Intro(title: "Build a Tailscale menu bar app") {
+    Put live Tailscale status in the macOS menu bar: an observable model
+    that seeds itself from `status()`, then follows the IPN notification
+    bus so the UI updates the moment the backend state changes — no
+    polling. The finished code matches the compiled
+    `Examples/Recipes` menu-bar recipe, so every step builds.
+  }
+
+  @Section(title: "Create the status model") {
+    @ContentAndMedia {
+      The model owns one ``TailscaleClient`` and publishes the three
+      things the menu needs: a state label, the host name, and an
+      online flag. The client auto-discovers the LocalAPI (unix socket
+      first), so there is nothing to configure on a machine with
+      Tailscale installed.
+    }
+
+    @Steps {
+      @Step {
+        Start with an observable model that owns the client. `@MainActor`
+        keeps the published properties UI-safe; the client itself is an
+        actor and safe to call from anywhere.
+
+        @Code(name: "TailscaleStatusModel.swift", file: "menubar-01.swift")
+      }
+
+      @Step {
+        Seed the UI with one `status()` call when the model starts: the
+        self node's host name and the current backend state. A `try?`
+        here is deliberate — a daemon that isn't running yet just leaves
+        the placeholder label.
+
+        @Code(name: "TailscaleStatusModel.swift", file: "menubar-02.swift")
+      }
+
+      @Step {
+        Replace polling with the IPN bus. `watchIPNBus` streams state
+        changes as they happen; `reconnect: .default` re-dials with
+        backoff if the daemon restarts, and the daemon re-sends initial
+        state on each connection so the UI heals itself.
+
+        @Code(name: "TailscaleStatusModel.swift", file: "menubar-03.swift")
+      }
+    }
+  }
+
+  @Section(title: "Put it in the menu bar") {
+    @ContentAndMedia {
+      SwiftUI's `MenuBarExtra` turns the model into a resident menu bar
+      item. The shield icon flips with the online flag, and the menu
+      shows the host and state the model publishes.
+    }
+
+    @Steps {
+      @Step {
+        Wrap the model in a `MenuBarExtra` scene. Add `@main` in your
+        app target, call `model.start()` on appear, and you have a
+        live Tailscale indicator.
+
+        @Code(name: "TailscaleMenuBarApp.swift", file: "menubar-04.swift")
+      }
+    }
+  }
+}

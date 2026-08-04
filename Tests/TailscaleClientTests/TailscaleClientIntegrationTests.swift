@@ -747,6 +747,28 @@ import XCTest
     // after them (empty profile logs the node out; disconnect-control drops
     // the control connection). Wire shapes are pinned in StableParityTests.
 
+    func testServicesAgainstLiveDaemon() async throws {
+      do {
+        let services = try await client.services()
+        // Most test tailnets have none; the decoded (possibly empty) map is
+        // the contract.
+        _ = services.count
+      } catch let error as TailscaleClientError {
+        switch error {
+        case .endpointUnavailable:
+          throw XCTSkip("Daemon predates the services endpoint; skipping")
+        case .unexpectedStatus(503, _, _):
+          throw XCTSkip("No netmap available yet; skipping")
+        default:
+          throw error
+        }
+      }
+    }
+
+    // shutdownTailscaled() is deliberately NOT integration-tested: it
+    // terminates the daemon for everything on the machine. Wire shapes are
+    // pinned in DaemonControlAPITests.
+
     func testQueryFeatureAgainstLiveDaemon() async throws {
       do {
         let response = try await client.queryFeature("serve")

@@ -292,6 +292,62 @@ final class PrefsWriteTests: XCTestCase {
     XCTAssertEqual(body["AuthKey"] as? String, "tskey-auth-xyz")
   }
 
+  func testStartFreshProfileEncodesNewPrefsDefaults() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 204, data: Data())
+    }
+    let client = makeClient(transport: transport)
+    try await client.startFreshProfile(controlURL: "http://127.0.0.1:8080")
+
+    let captured = await recorder.requests
+    XCTAssertEqual(captured.first?.method, "POST")
+    XCTAssertEqual(captured.first?.path, "/localapi/v0/start")
+    let body = try jsonObject(captured.first?.body)
+    XCTAssertNil(body["AuthKey"], "unset fields must stay off the wire")
+    // The seeded prefs mirror ipn.NewPrefs() at the pinned revision, plus
+    // the control URL and WantRunning.
+    let updatePrefs = try XCTUnwrap(body["UpdatePrefs"] as? [String: Any])
+    XCTAssertEqual(updatePrefs["ControlURL"] as? String, "http://127.0.0.1:8080")
+    XCTAssertEqual(updatePrefs["WantRunning"] as? Bool, true)
+    XCTAssertEqual(updatePrefs["CorpDNS"] as? Bool, true)
+    XCTAssertEqual(updatePrefs["NetfilterMode"] as? Int, 2)
+    XCTAssertEqual(
+      updatePrefs["NoStatefulFiltering"] as? Bool, true,
+      "NewPrefs sets NoStatefulFiltering=true; omitting it would change subnet-router behavior")
+    let autoUpdate = try XCTUnwrap(updatePrefs["AutoUpdate"] as? [String: Any])
+    XCTAssertEqual(autoUpdate["Check"] as? Bool, true)
+    XCTAssertNil(updatePrefs["RouteAll"], "route acceptance must stay unset")
+  }
+
+  func testStartFreshProfileRejectsInvalidControlURLs() async throws {
+    let transport = MockTransport { _, _ in
+      XCTFail("an invalid control URL must never reach the daemon")
+      return TailscaleResponse(statusCode: 204, data: Data())
+    }
+    let client = makeClient(transport: transport)
+    // Empty means "default Tailscale control plane" upstream — never what
+    // an explicit call to this method intends.
+    for bad in ["", "   ", "headscale.example.com", "ftp://headscale.example.com"] {
+      await assertThrowsErrorAsync(try await client.startFreshProfile(controlURL: bad)) { error in
+        guard case TailscaleClientError.transport(.invalidURL) = error else {
+          XCTFail("expected .transport(.invalidURL) for \(bad.debugDescription), got \(error)")
+          return
+        }
+      }
+    }
+  }
+
+  func testStartOptionsPublicSurfaceCarriesOnlyAuthKey() throws {
+    // The UpdatePrefs carrier is internal (a re-encoded Prefs snapshot
+    // would zero unmodeled fields); the public init must not grow it back
+    // without a lossless Prefs.
+    let encoded = try JSONEncoder().encode(StartOptions(authKey: "tskey-x"))
+    let body = try jsonObject(encoded)
+    XCTAssertEqual(body.keys.sorted(), ["AuthKey"])
+  }
+
   func testStartWithDefaultsSendsEmptyObject() async throws {
     let recorder = RequestRecorder()
     let transport = MockTransport { request, _ in

@@ -57,6 +57,12 @@ public struct Prefs: Sendable, Codable, Equatable {
   /// Whether SNAT is disabled.
   public let noSNAT: Bool?
 
+  /// Whether stateful packet filtering for subnet routers is disabled.
+  /// Upstream this is `opt.Bool` (three-state): JSON `true`/`false`, or
+  /// `null`/absent for "unset" — modeled here as `nil`. Upstream's
+  /// `ipn.NewPrefs()` default is `true` (stateful filtering off).
+  public let noStatefulFiltering: Bool?
+
   /// Netfilter mode on Linux.
   public let netfilterMode: Int?
 
@@ -93,6 +99,7 @@ public struct Prefs: Sendable, Codable, Equatable {
     forceDaemon: Bool? = nil,
     advertiseRoutes: [String] = [],
     noSNAT: Bool? = nil,
+    noStatefulFiltering: Bool? = nil,
     netfilterMode: Int? = nil,
     operatorUser: String? = nil,
     profileName: String? = nil,
@@ -116,6 +123,7 @@ public struct Prefs: Sendable, Codable, Equatable {
     self.forceDaemon = forceDaemon
     self.advertiseRoutes = advertiseRoutes
     self.noSNAT = noSNAT
+    self.noStatefulFiltering = noStatefulFiltering
     self.netfilterMode = netfilterMode
     self.operatorUser = operatorUser
     self.profileName = profileName
@@ -141,6 +149,7 @@ public struct Prefs: Sendable, Codable, Equatable {
     case forceDaemon = "ForceDaemon"
     case advertiseRoutes = "AdvertiseRoutes"
     case noSNAT = "NoSNAT"
+    case noStatefulFiltering = "NoStatefulFiltering"
     case netfilterMode = "NetfilterMode"
     case operatorUser = "OperatorUser"
     case profileName = "ProfileName"
@@ -168,6 +177,7 @@ public struct Prefs: Sendable, Codable, Equatable {
     forceDaemon = try container.decodeIfPresent(Bool.self, forKey: .forceDaemon)
     advertiseRoutes = try container.decodeIfPresent([String].self, forKey: .advertiseRoutes) ?? []
     noSNAT = try container.decodeIfPresent(Bool.self, forKey: .noSNAT)
+    noStatefulFiltering = try container.decodeIfPresent(Bool.self, forKey: .noStatefulFiltering)
     netfilterMode = try container.decodeIfPresent(Int.self, forKey: .netfilterMode)
     operatorUser = try container.decodeIfPresent(String.self, forKey: .operatorUser)
     profileName = try container.decodeIfPresent(String.self, forKey: .profileName)

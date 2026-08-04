@@ -43,14 +43,34 @@ jobs:
           PROFDATA="$BIN_DIR/codecov/default.profdata"
           XCTEST_BIN=$(find "$BIN_DIR" -maxdepth 1 -name '*PackageTests.xctest' | head -1)
           BIN="$XCTEST_BIN/Contents/MacOS/$(basename "$XCTEST_BIN" .xctest)"
-          PERCENT=$(xcrun llvm-cov export -summary-only "$BIN" \
+          xcrun llvm-cov export -summary-only "$BIN" \
             -instr-profile "$PROFDATA" \
             -ignore-filename-regex '(Tests/|\.build/|Sources/tailscale-swift/)' \
-            | python3 -c "import json,sys; print(round(json.load(sys.stdin)['data'][0]['totals']['lines']['percent'], 1))")
-          # Ratcheted to 70 at v0.9.0 (~79% measured since); raise as coverage
+            > coverage-summary.json
+          PERCENT=$(python3 -c "import json; print(round(json.load(open('coverage-summary.json'))['data'][0]['totals']['lines']['percent'], 1))")
+          # Ratcheted to 85 at v0.12.0 (85.9% measured); raise as coverage
           # grows, never lower without a documented reason (see TESTING.md).
-          MIN=70
+          MIN=85
           echo "Library line coverage: ${PERCENT}% (floor: ${MIN}%)"
+          # Surface the number as an annotation so it is fetchable from the
+          # check-runs API without log spelunking (feeds the 85% ratchet).
+          echo "::notice title=Coverage::Library line coverage ${PERCENT}% (floor ${MIN}%)"
+          # Name the worst-covered files so ratchet work aims at the actual
+          # gaps instead of guessing (one annotation; %0A = newline).
+          python3 - <<'EOF'
+          import json
+
+          data = json.load(open("coverage-summary.json"))["data"][0]
+          rows = sorted(
+              (f["summary"]["lines"]["percent"],
+               f["summary"]["lines"]["count"] - f["summary"]["lines"]["covered"],
+               f["filename"].split("Sources/", 1)[-1])
+              for f in data["files"])[:10]
+          lines = [f"{pct:5.1f}% ({missed} lines missed) {name}" for pct, missed, name in rows]
+          for line in lines:
+              print(line)
+          print("::notice title=Worst-covered files::" + "%0A".join(lines))
+          EOF
           if ! python3 -c "import sys; sys.exit(0 if float('$PERCENT') >= $MIN else 1)"; then
             echo "::error::Line coverage ${PERCENT}% is below the ${MIN}% floor (see Documentation/TESTING.md)"
             exit 1
@@ -127,6 +147,66 @@ jobs:
       # caught one hand-transcription error).
       - name: Verify upstream maturity ledger against pinned revision
         run: python3 Scripts/verify-upstream-maturity.py
+
+      # The API-conventions section of ROADMAP.md as an executable check:
+      # model inits, Sendable/Equatable, and tolerant wire-enum decoding.
+      # Its first run caught a real bug (IPNState had no fallback case).
+      - name: Check model conformance to API conventions
+        run: python3 Scripts/check-model-conformance.py
+
+  docs-build-strict:
+    name: DocC (strict)
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Warnings-as-errors catches broken ``symbol`` links and malformed
+      # directives on every PR instead of at deploy time.
+      # shell: bash because the swift:6.1 container's default `sh` is dash,
+      # which rejects `set -o pipefail`.
+      - name: Build documentation strictly
+        shell: bash
+        run: |
+          set -o pipefail
+          swift package --allow-writing-to-directory /tmp/docs-strict \
+            generate-documentation --target TailscaleClient \
+            --output-path /tmp/docs-strict \
+            --warnings-as-errors \
+            --experimental-documentation-coverage --coverage-summary-level brief \
+            2>&1 | tee /tmp/docc-build.log
+
+      # Regression floors on the abstract-coverage table above (measured
+      # v0.12.0: Types 93%, Members 70%, Globals 1.6%). The pre-1.0 API
+      # audit raises these to 100 — the 1.0 criterion is no undocumented
+      # public symbols; until then this fails any PR that loses ground.
+      # awk, not python: the swift:6.1 container ships neither python3
+      # nor perl.
+      - name: Check documentation coverage floors
+        shell: bash
+        run: |
+          awk '
+            $1 ~ /^(Types|Members|Globals)$/ && $2 == "|" {
+              pct = $3; sub(/%/, "", pct); rows[$1] = pct
+            }
+            END {
+              floors["Types"] = 90; floors["Members"] = 68; floors["Globals"] = 1
+              bad = 0
+              for (k in floors) {
+                if (!(k in rows)) {
+                  printf "::error::%s row missing from DocC coverage table\n", k
+                  bad = 1
+                  continue
+                }
+                printf "%s: %s%% abstract coverage (floor %s%%)\n", k, rows[k], floors[k]
+                if (rows[k] + 0 < floors[k]) {
+                  printf "::error::documentation coverage regressed: %s %s%% < floor %s%%\n", k, rows[k], floors[k]
+                  bad = 1
+                }
+              }
+              exit bad
+            }' /tmp/docc-build.log
 
   test-tsan:
     name: Test with Thread Sanitizer

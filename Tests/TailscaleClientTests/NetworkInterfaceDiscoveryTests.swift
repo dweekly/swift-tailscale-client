@@ -6,9 +6,21 @@ import XCTest
 @testable import TailscaleClient
 
 final class NetworkInterfaceDiscoveryTests: XCTestCase {
+  /// The platform's loopback interface name ("lo0" on Darwin, "lo" on Linux).
+  private var loopbackName: String {
+    #if canImport(Darwin)
+      return "lo0"
+    #else
+      return "lo"
+    #endif
+  }
+
   override func setUpWithError() throws {
-    #if !canImport(Darwin)
-      throw XCTSkip("Interface enumeration is Darwin-only; Linux returns empty results")
+    // Interface enumeration runs on Darwin and Glibc platforms; the whole
+    // suite (loopback presence, address lookup, flag semantics) is the
+    // Linux CI assertion that the getifaddrs port actually works.
+    #if !canImport(Darwin) && !canImport(Glibc)
+      throw XCTSkip("Interface enumeration is unsupported on this platform")
     #endif
   }
 
@@ -33,7 +45,7 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
       return
     }
 
-    XCTAssertEqual(loopback.name, "lo0")
+    XCTAssertEqual(loopback.name, loopbackName)
     XCTAssertEqual(loopback.address, "127.0.0.1")
     XCTAssertTrue(loopback.isUp)
     XCTAssertTrue(loopback.isRunning)
@@ -45,14 +57,14 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
   func testInterfaceWithLoopbackAddress() {
     let result = NetworkInterfaceDiscovery.interface(withAddress: "127.0.0.1")
     XCTAssertNotNil(result, "Expected to find loopback by IP")
-    XCTAssertEqual(result?.name, "lo0")
+    XCTAssertEqual(result?.name, loopbackName)
     XCTAssertTrue(result?.isLoopback ?? false)
   }
 
   func testInterfaceWithIPv6LoopbackAddress() {
     let result = NetworkInterfaceDiscovery.interface(withAddress: "::1")
     XCTAssertNotNil(result, "Expected to find IPv6 loopback")
-    XCTAssertEqual(result?.name, "lo0")
+    XCTAssertEqual(result?.name, loopbackName)
     XCTAssertTrue(result?.isIPv6 ?? false)
   }
 
@@ -77,7 +89,7 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
     // Using loopback as a stand-in for Tailscale IP matching logic
     let result = NetworkInterfaceDiscovery.tailscaleInterface(matching: ["127.0.0.1"])
     XCTAssertNotNil(result, "Should find interface matching loopback")
-    XCTAssertEqual(result?.name, "lo0")
+    XCTAssertEqual(result?.name, loopbackName)
   }
 
   func testTailscaleInterfaceWithMultipleIPs() {
@@ -85,7 +97,7 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
     let result = NetworkInterfaceDiscovery.tailscaleInterface(
       matching: ["192.0.2.1", "127.0.0.1", "::1"])
     XCTAssertNotNil(result, "Should find first matching interface")
-    XCTAssertEqual(result?.name, "lo0")
+    XCTAssertEqual(result?.name, loopbackName)
   }
 
   func testTailscaleInterfaceWithNonexistentIPs() {
@@ -157,8 +169,7 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
       tailscaleIPs: ["127.0.0.1"]
     )
 
-    // The interface should be discovered as lo0
-    XCTAssertEqual(status.interfaceName, "lo0")
+    XCTAssertEqual(status.interfaceName, loopbackName)
   }
 
   func testStatusResponseInterfaceNameWithNoMatchingIPs() {
@@ -184,7 +195,7 @@ final class NetworkInterfaceDiscoveryTests: XCTestCase {
 
     let info = status.interfaceInfo
     XCTAssertNotNil(info)
-    XCTAssertEqual(info?.name, "lo0")
+    XCTAssertEqual(info?.name, loopbackName)
     XCTAssertTrue(info?.isLoopback ?? false)
   }
 }
