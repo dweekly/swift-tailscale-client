@@ -47,7 +47,7 @@ public struct TailscaleClientConfiguration: Sendable {
   /// This package's own release version, surfaced in
   /// ``TailscaleClient/versionDiagnostics()``. Kept in sync with the
   /// CHANGELOG by `Scripts/check-release-consistency.sh`.
-  public static let packageVersion = "0.11.0"
+  public static let packageVersion = "0.12.0"
 
   /// Creates a new configuration with explicit settings.
   ///

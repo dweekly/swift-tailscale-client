@@ -13,7 +13,7 @@ TailscaleKit instead.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.11.0"),
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.12.0"),
 
 // target dependencies:
 .product(name: "TailscaleClient", package: "swift-tailscale-client"),

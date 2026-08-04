@@ -52,11 +52,10 @@ The spike workflow and fixture-capture script are documented in [`Documentation/
 
 ## Version Plan (remaining)
 
-v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.md`](CHANGELOG.md). What remains:
+v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.md`](CHANGELOG.md). What remains:
 
 | Version | Theme | New endpoints | Key non-feature work |
 |---------|-------|---------------|----------------------|
-| **v0.12.0** | Always-on gap-fill & 1.0 runway | `shutdown`, `services` | Coverage floor 70 → 85; the menu-bar DocC tutorial; scripted headscale login-lifecycle test |
 | **v1.0.0** | API freeze | — | Pre-freeze naming audit; drop deprecated `addProfile()`; 1.0 criteria below; SemVer commitment |
 | **v1.1** | Taildrop | `file-put/`, `files/` (incl. long-poll), `file-targets` | Upload/download progress via IPN bus |
 | **v1.2** | Taildrive | `drive/fileserver-address`, `drive/shares` CRUD | |
@@ -64,30 +63,11 @@ v0.4.0 through v0.11.0 have shipped; their contents are recorded in [`CHANGELOG.
 | **Post-1.0 (additive)** | Stable-gap ledger | `BugReportWithOpts` recording handle; `DialTCP`/`UserDial` duplex abstraction | Both tracked in the coverage ledger; see below |
 | **Ongoing** | Experimental debug surface | `debug` actions, `pprof`, `update/install|progress`, `appc-route-info`, `policy/*`, `debug-bus-*`, `prefs/service-clients` | Added on demand; never SemVer-bound |
 
-## v0.12.0 — Always-On Gap-Fill & 1.0 Runway
-
-**Goal:** wrap the last two always-registered handlers, get test coverage to the 1.0 bar, and finish the documentation set so v1.0.0 is purely a freeze-and-commit release.
-
-### Library
-- [x] `shutdown()` — `POST /localapi/v0/shutdown` (destructive: terminates the daemon; wire-shape unit tests only, prominent warnings, never integration-tested against live daemons)
-- [x] `services()` — `GET /localapi/v0/services` (spike first: shape is Tailscale Services / VIP services state)
-- [x] **Linux `NetworkInterfaceDiscovery`** — the implementation is `#if canImport(Darwin)`-gated, so `StatusResponse.interfaceName`/`interfaceInfo` silently return nil on Linux despite Linux being a first-class daemon platform; port the `getifaddrs` path to Glibc with a Linux CI assertion
-
-### Testing
-- [x] Coverage floor ratchets 70 → 85 (85.9% measured after the per-file report drove targeted round-trip tests; streaming path and transport parsers stay fully unit-tested)
-- [x] Scripted login lifecycle against headscale (interactive login is scriptable there) — the one open item carried from v0.9.0
-- [x] Decide and document the upstream re-pin cadence (issue draft 07): a scheduled job that re-derives maturity/gates against a newer upstream commit and opens a PR when anything drifts
-- [x] **Mechanized model-conformance audit**: a test (or scripted sweep) asserting every public model has a public memberwise init and `Sendable`/`Equatable` (+`Codable` where wire-facing), and every wire enum has a tolerant fallback case — the API-conventions section as an executable check, not a one-time review
-
-### Docs
-- [x] DocC tutorial: *Build a Tailscale menu bar app*
-- [x] Verify docs CI *can* hard-fail on undocumented public symbols — confirmed: the strict DocC lane's abstract-coverage table is parseable and now gates as **regression floors** (Types 90 / Members 68 / Globals 1, measured 93/70/1.6). Raising the floors to 100 means writing ~200 missing member abstracts — that's the pre-1.0 API audit's job, tracked in the 1.0 checklist
-
 ## v1.0.0 — API Freeze
 
 **Criteria (checklist, not a feature list):**
 
-- [ ] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) — after v0.12.0 this means zero unwrapped always-on handlers
+- [x] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) — done at v0.12.0: `services`/`shutdown` wrapped, and every one of the 62 handlers derivable from the pinned upstream source is either a manifest endpoint or an inventoried unwrapped handler with a reason (CI-enforced)
 - [x] Test coverage ≥ 85% (floor enforced in CI since v0.12.0; 85.9% measured); streaming path and transport parsers fully unit-tested
 - [x] Integration matrix green against at least two tailscaled versions (three hermetic headscale lanes — stable / previous-stable / unstable — plus a live self-hosted macOS lane, on every PR)
 - [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols — the abstract-coverage regression floors from v0.12.0 raised to 100%, which means writing the ~200 missing member abstracts in the pre-freeze audit), one tutorial (shipped in v0.12.0), at least two buildable examples in `Examples/` (StatusDemo and Recipes exist)

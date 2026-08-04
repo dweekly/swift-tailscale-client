@@ -36,7 +36,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 ## Installation
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.11.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.12.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
@@ -103,7 +103,7 @@ See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.
 
 ## Status
 
-**Current release: v0.11.0** — Upstream-readiness: secret redaction through print *and* reflection, task-scoped audit reasons (`withAuditReason`), typed `.permissionDenied`/`.rateLimited`/`.peerNotFound` errors, capability pinned to a verified upstream commit (144), stable-parity gap-fill (`whois` variants, `checkUpdate()`, `disconnectControl()`, `checkUDPGROForwarding()`, `bugReport(note:)`, `switchToEmptyProfile()`), and CI validators that verify endpoint maturity *and* feature gates against pinned upstream source.
+**Current release: v0.12.0** — Always-on gap-fill & 1.0 runway: `services()` (Tailscale Services state) and `shutdownTailscaled()` wrap the last always-registered LocalAPI handlers; `startFreshProfile(controlURL:)` completes the interactive login lifecycle (proven end-to-end against headscale in CI); Linux `interfaceName`/`interfaceInfo` discovery; test-coverage floor raised to 85% and documentation-coverage floors in CI; model-conformance and full upstream-handler inventory gates; weekly upstream-drift automation; a menu-bar DocC tutorial.
 
 The full version-by-version history lives in [`CHANGELOG.md`](CHANGELOG.md). The path to 1.0 — API freeze, ≥85% coverage, complete DocC tree — is laid out in [`ROADMAP.md`](ROADMAP.md), with the endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
 
