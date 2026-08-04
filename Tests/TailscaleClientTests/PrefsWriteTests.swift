@@ -313,9 +313,30 @@ final class PrefsWriteTests: XCTestCase {
     XCTAssertEqual(updatePrefs["WantRunning"] as? Bool, true)
     XCTAssertEqual(updatePrefs["CorpDNS"] as? Bool, true)
     XCTAssertEqual(updatePrefs["NetfilterMode"] as? Int, 2)
+    XCTAssertEqual(
+      updatePrefs["NoStatefulFiltering"] as? Bool, true,
+      "NewPrefs sets NoStatefulFiltering=true; omitting it would change subnet-router behavior")
     let autoUpdate = try XCTUnwrap(updatePrefs["AutoUpdate"] as? [String: Any])
     XCTAssertEqual(autoUpdate["Check"] as? Bool, true)
     XCTAssertNil(updatePrefs["RouteAll"], "route acceptance must stay unset")
+  }
+
+  func testStartFreshProfileRejectsInvalidControlURLs() async throws {
+    let transport = MockTransport { _, _ in
+      XCTFail("an invalid control URL must never reach the daemon")
+      return TailscaleResponse(statusCode: 204, data: Data())
+    }
+    let client = makeClient(transport: transport)
+    // Empty means "default Tailscale control plane" upstream — never what
+    // an explicit call to this method intends.
+    for bad in ["", "   ", "headscale.example.com", "ftp://headscale.example.com"] {
+      await assertThrowsErrorAsync(try await client.startFreshProfile(controlURL: bad)) { error in
+        guard case TailscaleClientError.transport(.invalidURL) = error else {
+          XCTFail("expected .transport(.invalidURL) for \(bad.debugDescription), got \(error)")
+          return
+        }
+      }
+    }
   }
 
   func testStartOptionsPublicSurfaceCarriesOnlyAuthKey() throws {

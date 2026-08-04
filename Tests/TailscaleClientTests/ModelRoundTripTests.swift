@@ -122,6 +122,7 @@ final class ModelRoundTripTests: XCTestCase {
       forceDaemon: true,
       advertiseRoutes: ["10.0.0.0/24"],
       noSNAT: true,
+      noStatefulFiltering: true,
       netfilterMode: 2,
       operatorUser: "dave",
       profileName: "work",

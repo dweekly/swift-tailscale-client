@@ -312,18 +312,32 @@ public actor TailscaleClient {
   ///
   /// - Parameters:
   ///   - controlURL: Coordination server base URL (e.g. a headscale
-  ///     instance); empty is invalid.
+  ///     instance). Must be a non-empty `http`/`https` URL: upstream
+  ///     treats an empty control URL as "use the default Tailscale
+  ///     control plane", which is never what an explicit call to this
+  ///     method means, so it is rejected here instead.
   ///   - authKey: Optional auth key for non-interactive bring-up; omit it
   ///     and follow with ``loginInteractive()`` for the browser flow.
-  /// - Throws: `TailscaleClientError` if the request fails.
+  /// - Throws: ``TailscaleClientError/transport(_:)`` with `.invalidURL`
+  ///   when `controlURL` is empty or not an `http`/`https` URL;
+  ///   `TailscaleClientError` if the request fails.
   public func startFreshProfile(controlURL: String, authKey: String? = nil) async throws {
-    // Mirrors ipn.NewPrefs() at the pinned upstream revision; fields this
-    // package doesn't model decode upstream as zero values, which for a
-    // fresh profile is what NewPrefs leaves them as or safely off.
+    guard let url = URL(string: controlURL),
+      let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+      url.host != nil
+    else {
+      throw TailscaleClientError.transport(.invalidURL)
+    }
+    // Mirrors ipn.NewPrefs() at the pinned upstream revision, field for
+    // field: CorpDNS on, NetfilterOn, stateful filtering disabled
+    // (NoStatefulFiltering=true), auto-update check on. Fields NewPrefs
+    // leaves at their zero values are omitted and decode upstream as
+    // exactly those zero values.
     let prefs = Prefs(
       controlURL: controlURL,
       corpDNS: true,
       wantRunning: true,
+      noStatefulFiltering: true,
       netfilterMode: 2,  // preftype.NetfilterOn, upstream's default
       autoUpdate: AutoUpdatePrefs(check: true, apply: nil))
     try await start(options: StartOptions(authKey: authKey, updatePrefs: prefs))
