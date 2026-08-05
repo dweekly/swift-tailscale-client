@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-04
+
 ### Added
 
 - **`services()`** wraps `GET /localapi/v0/services` — Tailscale Services (VIP services) visible to this node, keyed by `svc:` name, with `ServiceDetails`/`ServiceAction` models (addresses, `ProtoPortRange` text-form ports, open-set action slugs with JSON attribute maps; upstream `GetServices`, unannotated). Daemons without a netmap answer 503; daemons predating the endpoint surface `.endpointUnavailable`. CLI: `tailscale-swift services` (with `--json`).
