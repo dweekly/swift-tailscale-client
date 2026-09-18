@@ -15,7 +15,7 @@ final class IPNBusStreamContext: @unchecked Sendable {
   deinit {
     task.cancel()
     Task { [queue] in
-      await queue.finish()
+      await queue.cancelConsumer()
     }
   }
 }

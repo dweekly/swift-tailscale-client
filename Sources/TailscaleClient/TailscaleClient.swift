@@ -666,8 +666,23 @@ public actor TailscaleClient {
       var attempt = 0
       var isFirstConnection = true
 
+      func shouldExit() async -> Bool {
+        if Task.isCancelled { return true }
+        return await queue.isClosed
+      }
+
       while !Task.isCancelled {
+        if await shouldExit() {
+          await queue.finish()
+          return
+        }
+
         if currentStream == nil {
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
+
           attempt += 1
           if let maxAttempts = retryPolicy.maxAttempts, attempt > maxAttempts {
             await queue.finish()
@@ -679,11 +694,15 @@ public actor TailscaleClient {
 
           do {
             try await Task.sleep(for: delay)
-            if Task.isCancelled {
+            if await shouldExit() {
               await queue.finish()
               return
             }
             let resp = try await openStream()
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
             await client.recordObservedDaemonVersion(from: resp.headers)
             guard (200..<300).contains(resp.statusCode) else {
               let errorBody = await Self.consumeBoundedErrorBody(resp.body)
@@ -711,6 +730,10 @@ public actor TailscaleClient {
             await queue.finish()
             return
           } catch {
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
             if StreamRetryPolicy.classify(error) == .fatal {
               await queue.fail(error)
               return
@@ -718,6 +741,11 @@ public actor TailscaleClient {
             currentStream = nil
             continue
           }
+        }
+
+        if await shouldExit() {
+          await queue.finish()
+          return
         }
 
         // Connection established
@@ -729,7 +757,7 @@ public actor TailscaleClient {
 
         do {
           for try await lineData in currentStream! {
-            if Task.isCancelled {
+            if await shouldExit() {
               await queue.finish()
               return
             }
@@ -743,11 +771,23 @@ public actor TailscaleClient {
               onUndecodableLine?(lineData, clientErr)
               await queue.enqueue(.lifecycle(.stateGap(reason: "undecodable_line")), byteSize: 64)
             }
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
           }
           // Server closed the stream (e.g. daemon restart).
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
           await queue.enqueue(
             .lifecycle(.disconnected(underlying: "server_closed")), byteSize: 64)
           if retryPolicy.maxAttempts == 0 {
+            await queue.finish()
+            return
+          }
+          if await shouldExit() {
             await queue.finish()
             return
           }
@@ -756,8 +796,16 @@ public actor TailscaleClient {
           await queue.finish()
           return
         } catch {
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
           await queue.enqueue(.lifecycle(.disconnected(underlying: "\(error)")), byteSize: 64)
           if StreamRetryPolicy.classify(error) == .fatal || retryPolicy.maxAttempts == 0 {
+            await queue.fail(error)
+            return
+          }
+          if await shouldExit() {
             await queue.fail(error)
             return
           }
@@ -766,6 +814,8 @@ public actor TailscaleClient {
       }
       await queue.finish()
     }
+
+    await queue.setProducerTask(task)
 
     let context = IPNBusStreamContext(queue: queue, task: task)
     return AsyncThrowingStream<IPNBusEvent, Error>(unfolding: {

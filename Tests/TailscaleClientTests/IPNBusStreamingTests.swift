@@ -6,6 +6,36 @@ import XCTest
 @testable import TailscaleClient
 @testable import TailscaleClientMocks
 
+private final class StreamCancellationTracker: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _yieldedCount = 0
+  private var _wasCancelled = false
+
+  var yieldedCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return _yieldedCount
+  }
+
+  var wasCancelled: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return _wasCancelled
+  }
+
+  func recordYield() {
+    lock.lock()
+    defer { lock.unlock() }
+    _yieldedCount += 1
+  }
+
+  func recordCancelled() {
+    lock.lock()
+    defer { lock.unlock() }
+    _wasCancelled = true
+  }
+}
+
 final class IPNBusStreamingTests: XCTestCase {
 
   // MARK: - Lifecycle Events
@@ -286,22 +316,114 @@ final class IPNBusStreamingTests: XCTestCase {
   // MARK: - Cancellation & Cooperative Cleanup
 
   func testConsumerBreakCancelsProducerTask() async throws {
-    let events: [MockStreamEvent] = (1...100).map { .jsonLine("{\"Version\":\"\($0)\"}") }
-    let transport = MockTransport.scriptedStream(events)
+    let tracker = StreamCancellationTracker()
+    let transport = MockTransport.streaming { _, _ in
+      let bodyStream = AsyncThrowingStream<Data, Error> { continuation in
+        let streamTask = Task {
+          for i in 1...100 {
+            if Task.isCancelled {
+              tracker.recordCancelled()
+              break
+            }
+            tracker.recordYield()
+            continuation.yield(Data("{\"Version\":\"\(i)\"}\n".utf8))
+            try? await Task.sleep(for: .milliseconds(10))
+          }
+          continuation.finish()
+        }
+        continuation.onTermination = { _ in
+          streamTask.cancel()
+          tracker.recordCancelled()
+        }
+      }
+      return StreamingResponse(statusCode: 200, headers: [:], body: bodyStream)
+    }
+
     let client = E2ETestSupport.makeClient(transport: transport)
 
-    let stream = try await client.watchIPNBusEvents()
     var count = 0
-    for try await event in stream {
-      if case .notification = event {
-        count += 1
-        if count == 3 { break }
+    do {
+      let stream = try await client.watchIPNBusEvents()
+      for try await event in stream {
+        if case .notification = event {
+          count += 1
+          if count == 3 { break }
+        }
       }
     }
 
     XCTAssertEqual(count, 3)
-    // Wait briefly to confirm producer deallocation/cancellation
-    try await Task.sleep(for: .milliseconds(50))
+
+    // Wait for cancellation to propagate to producer task and transport
+    let deadline = ContinuousClock.now + .seconds(1)
+    while !tracker.wasCancelled && ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+
+    XCTAssertTrue(
+      tracker.wasCancelled,
+      "Underlying transport stream task should be cancelled on consumer break"
+    )
+    XCTAssertLessThan(
+      tracker.yieldedCount, 20,
+      "Producer should stop yielding after consumer break and not process all 100 events"
+    )
+  }
+
+  func testConsumerTaskCancellationCancelsProducerTask() async throws {
+    let tracker = StreamCancellationTracker()
+    let transport = MockTransport.streaming { _, _ in
+      let bodyStream = AsyncThrowingStream<Data, Error> { continuation in
+        let streamTask = Task {
+          for i in 1...100 {
+            if Task.isCancelled {
+              tracker.recordCancelled()
+              break
+            }
+            tracker.recordYield()
+            continuation.yield(Data("{\"Version\":\"\(i)\"}\n".utf8))
+            try? await Task.sleep(for: .milliseconds(10))
+          }
+          continuation.finish()
+        }
+        continuation.onTermination = { _ in
+          streamTask.cancel()
+          tracker.recordCancelled()
+        }
+      }
+      return StreamingResponse(statusCode: 200, headers: [:], body: bodyStream)
+    }
+
+    let client = E2ETestSupport.makeClient(transport: transport)
+    let consumerTask = Task {
+      let stream = try await client.watchIPNBusEvents()
+      var count = 0
+      for try await event in stream {
+        if case .notification = event {
+          count += 1
+        }
+      }
+      return count
+    }
+
+    // Allow consumer to start and receive at least one event
+    try await Task.sleep(for: .milliseconds(30))
+    consumerTask.cancel()
+    _ = await consumerTask.result
+
+    let deadline = ContinuousClock.now + .seconds(1)
+    while !tracker.wasCancelled && ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+
+    XCTAssertTrue(
+      tracker.wasCancelled,
+      "Underlying transport stream task should be cancelled when consumer task is cancelled"
+    )
+    XCTAssertLessThan(
+      tracker.yieldedCount, 20,
+      "Producer should stop yielding after consumer task cancellation"
+    )
   }
 
   // MARK: - Backward Compatibility watchIPNBus

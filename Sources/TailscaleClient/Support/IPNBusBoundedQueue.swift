@@ -15,9 +15,21 @@ actor IPNBusBoundedQueue {
   private var consumerContinuation: CheckedContinuation<IPNBusEvent?, Error>?
   private var isFinished: Bool = false
   private var terminalError: Error?
+  private var producerTask: Task<Void, Never>?
 
   init(bounds: StreamBufferBounds) {
     self.bounds = bounds
+  }
+
+  var isClosed: Bool {
+    isFinished || terminalError != nil
+  }
+
+  func setProducerTask(_ task: Task<Void, Never>) {
+    self.producerTask = task
+    if isClosed {
+      task.cancel()
+    }
   }
 
   func enqueue(_ event: IPNBusEvent, byteSize: Int) {
@@ -32,6 +44,7 @@ actor IPNBusBoundedQueue {
         buffer.removeAll()
         currentByteCount = 0
         terminalError = TailscaleClientError.streamOverflow
+        producerTask?.cancel()
         if let cont = consumerContinuation {
           consumerContinuation = nil
           cont.resume(throwing: TailscaleClientError.streamOverflow)
@@ -70,6 +83,8 @@ actor IPNBusBoundedQueue {
   }
 
   func next() async throws -> IPNBusEvent? {
+    try Task.checkCancellation()
+
     if !buffer.isEmpty {
       let entry = buffer.removeFirst()
       currentByteCount -= entry.byteSize
@@ -86,6 +101,22 @@ actor IPNBusBoundedQueue {
 
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { cont in
+        if Task.isCancelled {
+          cont.resume(throwing: CancellationError())
+          return
+        }
+        if let error = self.terminalError {
+          cont.resume(throwing: error)
+          return
+        }
+        if self.isFinished {
+          cont.resume(returning: nil)
+          return
+        }
+        if let existing = self.consumerContinuation {
+          self.consumerContinuation = nil
+          existing.resume(throwing: CancellationError())
+        }
         self.consumerContinuation = cont
       }
     } onCancel: {
@@ -97,6 +128,7 @@ actor IPNBusBoundedQueue {
 
   func finish() {
     isFinished = true
+    producerTask?.cancel()
     if let cont = consumerContinuation {
       consumerContinuation = nil
       cont.resume(returning: nil)
@@ -105,6 +137,7 @@ actor IPNBusBoundedQueue {
 
   func fail(_ error: Error) {
     terminalError = error
+    producerTask?.cancel()
     if let cont = consumerContinuation {
       consumerContinuation = nil
       cont.resume(throwing: error)
@@ -113,6 +146,7 @@ actor IPNBusBoundedQueue {
 
   func cancelConsumer() {
     isFinished = true
+    producerTask?.cancel()
     if let cont = consumerContinuation {
       consumerContinuation = nil
       cont.resume(throwing: CancellationError())
