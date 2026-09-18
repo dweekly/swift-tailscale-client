@@ -309,7 +309,8 @@ public struct LocalAPIDiscovery {
     }
 
     // 4. Offload filesystem and socket probing to a detached task
-    return try await Task.detached(priority: .userInitiated) {
+    try Task.checkCancellation()
+    let detached = Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
       var candidateError: LocalAPIDiscoveryError?
 
@@ -332,8 +333,7 @@ public struct LocalAPIDiscovery {
               candidateError = err
             }
           } else {
-            let (isAlive, err) = Self.probeUnixSocket(
-              path: expanded, fileExistsCheck: self.fileExists)
+            let (isAlive, err) = Self.probeUnixSocket(path: expanded)
             if isAlive {
               if debug { Self.debugLog("[LocalAPIDiscovery] using live Unix socket: \(expanded)") }
               return Result(
@@ -407,20 +407,26 @@ public struct LocalAPIDiscovery {
         throw candidateError
       }
       throw LocalAPIDiscoveryError.notInstalled
-    }.value
+    }
+
+    do {
+      let result = try await withTaskCancellationHandler {
+        try await detached.value
+      } onCancel: {
+        detached.cancel()
+      }
+      try Task.checkCancellation()
+      return result
+    } catch {
+      try Task.checkCancellation()
+      throw error
+    }
   }
 
   #if canImport(Darwin) || canImport(Glibc)
     private static func probeUnixSocket(
-      path: String,
-      fileExistsCheck: (String) -> Bool
+      path: String
     ) -> (isAlive: Bool, error: LocalAPIDiscoveryError?) {
-      // If the file does not exist on disk according to FileManager,
-      // but fileExistsCheck returned true, it's an injected test mock.
-      if !FileManager.default.fileExists(atPath: path) && fileExistsCheck(path) {
-        return (true, nil)
-      }
-
       let fd = socket(AF_UNIX, SOCK_STREAM, 0)
       guard fd >= 0 else {
         return (false, nil)
@@ -480,8 +486,7 @@ public struct LocalAPIDiscovery {
     }
   #else
     private static func probeUnixSocket(
-      path: String,
-      fileExistsCheck: (String) -> Bool
+      path: String
     ) -> (isAlive: Bool, error: LocalAPIDiscoveryError?) {
       return (true, nil)
     }

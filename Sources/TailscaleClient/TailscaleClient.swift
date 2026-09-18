@@ -97,10 +97,14 @@ public actor TailscaleClient {
     }
 
     if let inFlight = rediscoveryTask {
-      let config = try await inFlight.value
-      self.activeConfiguration = config
-      self.configurationBox.update(config)
-      return config
+      do {
+        let config = try await inFlight.value
+        self.activeConfiguration = config
+        self.configurationBox.update(config)
+        return config
+      } catch let discError as LocalAPIDiscoveryError {
+        throw TailscaleClientError.discovery(discError)
+      }
     }
 
     let timeout = activeConfiguration.requestTimeout
@@ -1130,7 +1134,10 @@ public actor TailscaleClient {
     attempt: Int
   ) async throws -> TailscaleResponse {
     if let inFlight = rediscoveryTask {
-      _ = try? await inFlight.value
+      if let config = try? await inFlight.value {
+        self.activeConfiguration = config
+        self.configurationBox.update(config)
+      }
     }
     let currentConfig = self.activeConfiguration
     var pending = request

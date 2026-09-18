@@ -434,7 +434,10 @@ import Foundation
         }
       }
 
-      guard let portString, let port = UInt16(portString), port > 0 else {
+      guard let portString,
+        let port = UInt16(portString.trimmingCharacters(in: .whitespacesAndNewlines)),
+        port > 0
+      else {
         return nil
       }
       return port
@@ -463,7 +466,7 @@ import Foundation
       } catch let error as NSError {
         let reason: String
         if (error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoPermissionError)
-          || error.code == 257 /* EACCES */
+          || error.code == 257  // EACCES
         {
           reason = "Permission denied (file is 0640 root:admin)"
         } else {

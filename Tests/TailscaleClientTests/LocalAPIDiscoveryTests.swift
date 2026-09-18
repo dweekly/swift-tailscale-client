@@ -178,12 +178,11 @@ final class LocalAPIDiscoveryTests: XCTestCase {
 
     do {
       _ = try await task.value
-      XCTFail("Expected cancellation error")
+      XCTFail("Expected CancellationError")
     } catch is CancellationError {
-      XCTAssertTrue(true)
+      // Success: task cancellation properly surfaces CancellationError
     } catch {
-      // In Swift concurrency, Task cancellation might surface as CancellationError or task failure
-      XCTAssertTrue(task.isCancelled)
+      XCTFail("Expected CancellationError, got \(error)")
     }
   }
 
