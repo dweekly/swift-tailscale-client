@@ -1383,9 +1383,9 @@ final class Tier1FeatureTests: XCTestCase {
         TailscaleResponse(statusCode: 200, data: Data(E2ETestSupport.statusJSON().utf8))
       }
       func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
-        async throws -> AsyncThrowingStream<Data, Error>
+        async throws -> StreamingResponse
       {
-        AsyncThrowingStream { $0.finish() }
+        StreamingResponse(statusCode: 200, headers: [:], body: AsyncThrowingStream { $0.finish() })
       }
     }
     let config = TailscaleClientConfiguration(

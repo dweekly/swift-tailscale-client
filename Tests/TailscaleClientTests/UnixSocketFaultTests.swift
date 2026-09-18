@@ -96,13 +96,13 @@ import XCTest
 
       await assertThrowsErrorAsync(try await client.watchIPNBus()) { error in
         guard let clientError = error as? TailscaleClientError,
-          case .transport(let transportError) = clientError,
-          case .malformedResponse(let detail) = transportError
+          case .endpointUnavailable(let endpoint, let feature) = clientError
         else {
-          XCTFail("Expected malformedResponse for a non-200 head, got \(error)")
+          XCTFail("Expected endpointUnavailable for a 404 head, got \(error)")
           return
         }
-        XCTAssertTrue(detail.contains("404"), "Detail should name the status: \(detail)")
+        XCTAssertEqual(endpoint, "/localapi/v0/watch-ipn-bus")
+        XCTAssertEqual(feature, "HasIPNBus")
       }
     }
 

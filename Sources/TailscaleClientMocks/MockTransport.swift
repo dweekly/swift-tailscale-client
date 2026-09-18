@@ -29,10 +29,10 @@ public struct MockTransport: TailscaleTransport {
   public typealias Handler =
     @Sendable (TailscaleRequest, TailscaleClientConfiguration) async throws -> TailscaleResponse
 
-  /// Produces the line stream for a streaming request.
+  /// Produces the streaming response for a streaming request.
   public typealias StreamHandler =
     @Sendable (TailscaleRequest, TailscaleClientConfiguration) async throws
-    -> AsyncThrowingStream<Data, Error>
+    -> StreamingResponse
 
   private let handler: Handler?
   private let streamHandler: StreamHandler?
@@ -74,7 +74,7 @@ public struct MockTransport: TailscaleTransport {
 
   public func sendStreaming(
     _ request: TailscaleRequest, configuration: TailscaleClientConfiguration
-  ) async throws -> AsyncThrowingStream<Data, Error> {
+  ) async throws -> StreamingResponse {
     guard let streamHandler else { throw TailscaleTransportError.unimplemented }
     return try await streamHandler(request, configuration)
   }
@@ -95,23 +95,78 @@ public enum MockStreamEvent: Sendable {
   }
 }
 
+/// A scripted response for a streaming request, specifying status code, headers, and events.
+public struct MockStreamingScript: Sendable {
+  /// The HTTP status code returned for this streaming response.
+  public var statusCode: Int
+  /// The HTTP headers returned for this streaming response.
+  public var headers: [String: String]
+  /// The stream events yielded for this streaming response.
+  public var events: [MockStreamEvent]
+
+  public init(
+    statusCode: Int = 200,
+    headers: [String: String] = [:],
+    events: [MockStreamEvent] = []
+  ) {
+    self.statusCode = statusCode
+    self.headers = headers
+    self.events = events
+  }
+}
+
 extension MockTransport {
   /// A transport whose streaming side replays the given events in order and then
   /// finishes (unless an event terminates it early with `.failure`).
-  public static func scriptedStream(_ events: [MockStreamEvent]) -> MockTransport {
-    .streaming { _, _ in makeStream(events) }
+  public static func scriptedStream(
+    _ events: [MockStreamEvent],
+    statusCode: Int = 200,
+    headers: [String: String] = [:]
+  ) -> MockTransport {
+    .streaming { _, _ in
+      StreamingResponse(
+        statusCode: statusCode,
+        headers: headers,
+        body: makeStream(events)
+      )
+    }
   }
 
   /// A transport that serves a fresh scripted stream per connection attempt,
   /// taking scripts from `scripts` in order; attempts beyond the last script
   /// throw `TailscaleTransportError.unimplemented`. Useful for reconnect tests.
-  public static func scriptedStreams(_ scripts: [[MockStreamEvent]]) -> MockTransport {
+  public static func scriptedStreams(
+    _ scripts: [[MockStreamEvent]],
+    statusCode: Int = 200,
+    headers: [String: String] = [:]
+  ) -> MockTransport {
     let remaining = ScriptQueue(scripts)
     return .streaming { _, _ in
       guard let events = await remaining.next() else {
         throw TailscaleTransportError.unimplemented
       }
-      return makeStream(events)
+      return StreamingResponse(
+        statusCode: statusCode,
+        headers: headers,
+        body: makeStream(events)
+      )
+    }
+  }
+
+  /// A transport that serves a sequence of scripted streaming responses,
+  /// taking responses from `scripts` in order; attempts beyond the last script
+  /// throw `TailscaleTransportError.unimplemented`.
+  public static func scriptedResponses(_ scripts: [MockStreamingScript]) -> MockTransport {
+    let remaining = ResponseScriptQueue(scripts)
+    return .streaming { _, _ in
+      guard let script = await remaining.next() else {
+        throw TailscaleTransportError.unimplemented
+      }
+      return StreamingResponse(
+        statusCode: script.statusCode,
+        headers: script.headers,
+        body: makeStream(script.events)
+      )
     }
   }
 
@@ -145,6 +200,19 @@ private actor ScriptQueue {
   }
 
   func next() -> [MockStreamEvent]? {
+    guard !scripts.isEmpty else { return nil }
+    return scripts.removeFirst()
+  }
+}
+
+private actor ResponseScriptQueue {
+  private var scripts: [MockStreamingScript]
+
+  init(_ scripts: [MockStreamingScript]) {
+    self.scripts = scripts
+  }
+
+  func next() -> MockStreamingScript? {
     guard !scripts.isEmpty else { return nil }
     return scripts.removeFirst()
   }

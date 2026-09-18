@@ -133,20 +133,47 @@ public struct ExperimentalClient: Sendable {
   ///   connection cannot be established.
   public func logtap() async throws -> AsyncThrowingStream<LogtapEntry, Error> {
     let endpoint = "/localapi/v0/logtap"
-    let request = TailscaleRequest(path: endpoint)
+    var request = TailscaleRequest(path: endpoint)
+    if let reason = TailscaleClient.auditReason, !reason.isEmpty,
+      request.additionalHeaders["X-Tailscale-Reason"] == nil
+    {
+      request.additionalHeaders["X-Tailscale-Reason"] =
+        Data(reason.utf8).base64EncodedString()
+    }
     let configuration = client.configuration
+    let finalRequest = request
 
-    let lineStream: AsyncThrowingStream<Data, Error>
+    let response: StreamingResponse
     do {
-      lineStream = try await TailscaleClient.withDeadline(
+      response = try await TailscaleClient.withDeadline(
         configuration.requestTimeout, endpoint: endpoint
       ) {
-        try await configuration.transport.sendStreaming(request, configuration: configuration)
+        try await configuration.transport.sendStreaming(finalRequest, configuration: configuration)
       }
     } catch let transportError as TailscaleTransportError {
       throw TailscaleClientError.transport(transportError)
     }
 
+    await client.recordObservedDaemonVersion(from: response.headers)
+
+    guard (200..<300).contains(response.statusCode) else {
+      let errorBody = await TailscaleClient.consumeBoundedErrorBody(response.body)
+      let fakeResponse = TailscaleResponse(
+        statusCode: response.statusCode,
+        data: errorBody,
+        headers: response.headers
+      )
+      if let error = TailscaleClient.commonStatusError(
+        fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "Logtail"
+      ) {
+        throw error
+      }
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode, body: errorBody, endpoint: endpoint
+      )
+    }
+
+    let lineStream = response.body
     return AsyncThrowingStream { continuation in
       let task = Task {
         do {

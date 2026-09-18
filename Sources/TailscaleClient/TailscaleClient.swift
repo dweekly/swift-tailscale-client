@@ -30,15 +30,15 @@ public actor TailscaleClient {
   private(set) var observedDaemonVersion: String?
 
   /// Task-local audit justification; see ``withAuditReason(_:operation:)``.
-  @TaskLocal private static var auditReason: String?
+  @TaskLocal static var auditReason: String?
 
   /// Creates a client that uses the default configuration for the current platform.
   public init(configuration: TailscaleClientConfiguration = .default) {
     self.configuration = configuration
   }
 
-  /// Attaches an audit justification to every unary request made inside
-  /// `operation`, scoped to the current task.
+  /// Attaches an audit justification to every unary or streaming request made
+  /// inside `operation`, scoped to the current task.
   ///
   /// Sent as the upstream `X-Tailscale-Reason` header (Base64-encoded, the
   /// encoding Tailscale's own client uses), mirroring how the upstream client
@@ -49,9 +49,7 @@ public actor TailscaleClient {
   /// secrets in it.
   ///
   /// Because the value is task-local, concurrent tasks each carry their own
-  /// justification (or none) and can never observe each other's. Streaming
-  /// connections (``watchIPNBus(options:reconnect:onUndecodableLine:)``) do
-  /// not send the header.
+  /// justification (or none) and can never observe each other's.
   ///
   /// ```swift
   /// try await TailscaleClient.withAuditReason("ticket INC-1234") {
@@ -68,11 +66,10 @@ public actor TailscaleClient {
   /// Version and capability facts useful in diagnostics and bug reports.
   ///
   /// `daemonVersion` is the most recent `Tailscale-Version` response header
-  /// seen by this client (nil until a **unary** request completes — streaming
-  /// connections such as ``watchIPNBus(options:reconnect:onUndecodableLine:)``
-  /// bypass response-header observation). A mismatch with the versions this
-  /// package was tested against is a diagnostic signal, never a request
-  /// failure: wire-compatible requests keep working.
+  /// seen by this client (nil until a unary or streaming request completes).
+  /// A mismatch with the versions this package was tested against is a
+  /// diagnostic signal, never a request failure: wire-compatible requests keep
+  /// working.
   public func versionDiagnostics() -> VersionDiagnostics {
     VersionDiagnostics(
       packageVersion: TailscaleClientConfiguration.packageVersion,
@@ -619,12 +616,11 @@ public actor TailscaleClient {
   /// continues transparently (the daemon re-sends initial state per the watch
   /// options on each connection).
   ///
-  /// > Note: Streaming connections bypass the unary response contract: typed
-  /// > status errors (``TailscaleClientError/permissionDenied(body:endpoint:)``,
-  /// > ``TailscaleClientError/rateLimited(retryAfterSeconds:body:endpoint:)``),
-  /// > `Tailscale-Version` observation, and audit-reason injection apply to
-  /// > unary requests only. A rejected or failed streaming connection surfaces
-  /// > as ``TailscaleClientError/transport(_:)``.
+  /// > Note: Streaming connections share status-code mapping, `Tailscale-Version`
+  /// > observation, and audit-reason injection with unary requests. A rejected
+  /// > streaming connection surfaces typed errors such as
+  /// > ``TailscaleClientError/permissionDenied(body:endpoint:)`` or
+  /// > ``TailscaleClientError/rateLimited(retryAfterSeconds:body:endpoint:)``.
   ///
   /// - Parameters:
   ///   - options: Watch options controlling what notifications to receive.
@@ -641,26 +637,55 @@ public actor TailscaleClient {
     onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
   ) async throws -> AsyncThrowingStream<IPNNotify, Error> {
     let endpoint = "/localapi/v0/watch-ipn-bus"
-    let request = TailscaleRequest(
+    var request = TailscaleRequest(
       path: endpoint,
       queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
     )
+    if let reason = Self.auditReason, !reason.isEmpty,
+      request.additionalHeaders["X-Tailscale-Reason"] == nil
+    {
+      request.additionalHeaders["X-Tailscale-Reason"] =
+        Data(reason.utf8).base64EncodedString()
+    }
 
     let configuration = self.configuration
-    let open: @Sendable () async throws -> AsyncThrowingStream<Data, Error> = {
+    let finalRequest = request
+    let open: @Sendable () async throws -> StreamingResponse = {
       try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
-        try await configuration.transport.sendStreaming(request, configuration: configuration)
+        try await configuration.transport.sendStreaming(finalRequest, configuration: configuration)
       }
     }
 
     // Establish the first connection before returning so callers get a thrown
     // error (not a poisoned stream) when the daemon is unreachable.
-    let initialStream: AsyncThrowingStream<Data, Error>
+    let initialResponse: StreamingResponse
     do {
-      initialStream = try await open()
+      initialResponse = try await open()
     } catch let transportError as TailscaleTransportError {
       throw TailscaleClientError.transport(transportError)
     }
+
+    recordObservedDaemonVersion(from: initialResponse.headers)
+
+    guard (200..<300).contains(initialResponse.statusCode) else {
+      let errorBody = await Self.consumeBoundedErrorBody(initialResponse.body)
+      let fakeResponse = TailscaleResponse(
+        statusCode: initialResponse.statusCode,
+        data: errorBody,
+        headers: initialResponse.headers
+      )
+      if let error = Self.commonStatusError(
+        fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
+      ) {
+        throw error
+      }
+      throw TailscaleClientError.unexpectedStatus(
+        code: initialResponse.statusCode, body: errorBody, endpoint: endpoint
+      )
+    }
+
+    let initialStream = initialResponse.body
+    let client = self
 
     return AsyncThrowingStream { continuation in
       let task = Task {
@@ -682,7 +707,23 @@ public actor TailscaleClient {
             attempt += 1
             do {
               try await Task.sleep(for: policy.delay(forAttempt: attempt))
-              stream = try await open()
+              let response = try await open()
+              await client.recordObservedDaemonVersion(from: response.headers)
+              guard (200..<300).contains(response.statusCode) else {
+                let errorBody = await Self.consumeBoundedErrorBody(response.body)
+                let fakeResponse = TailscaleResponse(
+                  statusCode: response.statusCode,
+                  data: errorBody,
+                  headers: response.headers
+                )
+                let error = Self.commonStatusError(
+                  fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
+                ) ?? TailscaleClientError.unexpectedStatus(
+                  code: response.statusCode, body: errorBody, endpoint: endpoint
+                )
+                throw error
+              }
+              stream = response.body
             } catch is CancellationError {
               continuation.finish()
               return
@@ -816,16 +857,35 @@ public actor TailscaleClient {
       ) {
         try await configuration.transport.send(finalRequest, configuration: configuration)
       }
-      // The unix transport lowercases header names; URLSession preserves them.
-      if let version = response.headers.first(where: {
-        $0.key.caseInsensitiveCompare("Tailscale-Version") == .orderedSame
-      })?.value, !version.isEmpty {
-        observedDaemonVersion = version
-      }
+      recordObservedDaemonVersion(from: response.headers)
       return response
     } catch let transportError as TailscaleTransportError {
       throw TailscaleClientError.transport(transportError)
     }
+  }
+
+  func recordObservedDaemonVersion(from headers: [String: String]) {
+    if let version = headers.first(where: {
+      $0.key.caseInsensitiveCompare("Tailscale-Version") == .orderedSame
+    })?.value, !version.isEmpty {
+      observedDaemonVersion = version
+    }
+  }
+
+  static func consumeBoundedErrorBody(
+    _ stream: AsyncThrowingStream<Data, Error>,
+    limit: Int = 64 * 1024
+  ) async -> Data {
+    var data = Data()
+    do {
+      for try await chunk in stream {
+        data.append(chunk)
+        if data.count >= limit { break }
+      }
+    } catch {
+      // Bounded consumption tolerates stream termination on error
+    }
+    return data
   }
 
   /// Status-code mapping shared by every request path: typed cases for the

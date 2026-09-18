@@ -81,12 +81,12 @@ struct UnixSocketTransport {
   }
 
   func sendStreaming(_ request: TailscaleRequest, capabilityVersion: Int) async throws
-    -> AsyncThrowingStream<Data, Error>
+    -> StreamingResponse
   {
     let transport = self
     // Connect, send the request, and validate the response head BEFORE
     // returning, so callers get a thrown error (not a poisoned stream) when
-    // the daemon is unreachable or rejects the request.
+    // the daemon is unreachable.
     let setup = Task.detached(priority: .userInitiated) {
       try transport.openStreamConnection(request, capabilityVersion: capabilityVersion)
     }
@@ -105,7 +105,7 @@ struct UnixSocketTransport {
       throw TailscaleTransportError.networkFailure(underlying: error)
     }
 
-    return AsyncThrowingStream { continuation in
+    let bodyStream = AsyncThrowingStream<Data, Error> { continuation in
       let task = Task.detached(priority: .userInitiated) {
         defer { connection.socket.close() }
         do {
@@ -118,12 +118,20 @@ struct UnixSocketTransport {
         task.cancel()
       }
     }
+
+    return StreamingResponse(
+      statusCode: connection.statusCode,
+      headers: connection.headers,
+      body: bodyStream
+    )
   }
 
   /// A validated streaming connection: the request has been written and the
-  /// 200 response head consumed; `initialBody` holds bytes read past it.
+  /// response head consumed; `initialBody` holds bytes read past it.
   struct StreamConnection: Sendable {
     let socket: ManagedSocketFD
+    let statusCode: Int
+    let headers: [String: String]
     let isChunked: Bool
     let initialBody: Data
 
@@ -152,12 +160,12 @@ struct UnixSocketTransport {
         let incoming = Data(bytes: buffer, count: readCount)
         guard let (headData, bodyRemainder) = try headBuffer.feed(incoming) else { continue }
         let head = try HTTPWireFormat.parseResponseHead(headData)
-        guard head.statusCode == 200 else {
-          throw TailscaleTransportError.malformedResponse(
-            detail: "Streaming endpoint returned status \(head.statusCode)")
-        }
         return StreamConnection(
-          socket: socket, isChunked: head.isChunked, initialBody: bodyRemainder)
+          socket: socket,
+          statusCode: head.statusCode,
+          headers: head.headers,
+          isChunked: head.isChunked,
+          initialBody: bodyRemainder)
       }
     } catch {
       socket.close()

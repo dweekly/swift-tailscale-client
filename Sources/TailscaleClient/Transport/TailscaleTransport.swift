@@ -88,10 +88,10 @@ public protocol TailscaleTransport: Sendable {
   /// - Parameters:
   ///   - request: The request to send.
   ///   - configuration: Configuration containing endpoint and authentication details.
-  /// - Returns: An async stream of data lines from the response.
+  /// - Returns: A streaming response containing status code, headers, and body stream.
   /// - Throws: `TailscaleTransportError` if the connection fails.
   func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
-    async throws -> AsyncThrowingStream<Data, Error>
+    async throws -> StreamingResponse
 }
 
 /// Errors that can occur during LocalAPI transport operations.
@@ -189,7 +189,7 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
 
   public func sendStreaming(
     _ request: TailscaleRequest, configuration: TailscaleClientConfiguration
-  ) async throws -> AsyncThrowingStream<Data, Error> {
+  ) async throws -> StreamingResponse {
     switch configuration.endpoint {
     case .unixSocket(let path):
       let unixRequest = enrich(request: request, configuration: configuration)
@@ -203,7 +203,7 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
 
   private func streamViaURLSession(
     request: TailscaleRequest, configuration: TailscaleClientConfiguration
-  ) async throws -> AsyncThrowingStream<Data, Error> {
+  ) async throws -> StreamingResponse {
     #if canImport(FoundationNetworking)
       // swift-corelibs-foundation does not provide URLSession.bytes(for:).
       // On Linux, streaming is served by the Unix socket transport; loopback
@@ -218,12 +218,15 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
       guard let http = response as? HTTPURLResponse else {
         throw TailscaleTransportError.networkFailure(underlying: URLError(.badServerResponse))
       }
-      guard http.statusCode == 200 else {
-        throw TailscaleTransportError.malformedResponse(
-          detail: "Streaming endpoint returned status \(http.statusCode)")
+
+      var headers: [String: String] = [:]
+      for (key, value) in http.allHeaderFields {
+        if let keyStr = key as? String, let valStr = value as? String {
+          headers[keyStr] = valStr
+        }
       }
 
-      return AsyncThrowingStream { continuation in
+      let bodyStream = AsyncThrowingStream<Data, Error> { continuation in
         let task = Task {
           var framer = NewlineFramer()
           do {
@@ -246,6 +249,12 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
           task.cancel()
         }
       }
+
+      return StreamingResponse(
+        statusCode: http.statusCode,
+        headers: headers,
+        body: bodyStream
+      )
     #endif
   }
 
