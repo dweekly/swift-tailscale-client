@@ -283,6 +283,20 @@ jobs:
 
           needs = json.loads(os.environ["NEEDS_JSON"])
 
+          expected = {
+              "test-macos",
+              "test-linux",
+              "docs-consistency",
+              "docs-build-strict",
+              "test-tsan",
+              "build-platforms",
+              "integration-linux",
+          }
+          missing = expected - set(needs.keys())
+          if missing:
+              print(f"\n::error::Missing expected required CI jobs in needs context: {sorted(missing)}")
+              sys.exit(1)
+
           failed = []
           skipped = []
           successful = []

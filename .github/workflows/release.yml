@@ -60,6 +60,19 @@ jobs:
           fi
           echo "✓ Clean working tree verified at commit $TAG_COMMIT"
 
+      - name: Verify All Required Checks passed on commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
+          CHECK_CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG_COMMIT}/check-runs" \
+            --jq '.check_runs[] | select(.name == "All Required Checks") | .conclusion' | head -1)
+          if [ "$CHECK_CONCLUSION" != "success" ]; then
+            echo "::error::All Required Checks did not pass on commit ${TAG_COMMIT} (conclusion: ${CHECK_CONCLUSION})"
+            exit 1
+          fi
+          echo "✓ All Required Checks passed on commit $TAG_COMMIT"
+
       - name: Verify tag matches a CHANGELOG entry
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -200,6 +213,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - name: Download all release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -214,11 +231,27 @@ jobs:
           cat SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
 
+      - name: Aggregate and validate release evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
+          python3 Scripts/aggregate-release-evidence.py \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$TAG_COMMIT" \
+            --artifacts-dir artifacts \
+            --output "artifacts/release-evidence-${GITHUB_REF_NAME}.json" \
+            --validate
+
       - name: Attach assets and publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd artifacts
-          gh release upload "$GITHUB_REF_NAME" tailscale-swift-*.tar.gz SHA256SUMS.txt --clobber
+          gh release upload "$GITHUB_REF_NAME" \
+            tailscale-swift-*.tar.gz \
+            SHA256SUMS.txt \
+            "release-evidence-${GITHUB_REF_NAME}.json" \
+            --clobber
           gh release edit "$GITHUB_REF_NAME" --draft=false
           echo "✓ Release $GITHUB_REF_NAME published successfully."

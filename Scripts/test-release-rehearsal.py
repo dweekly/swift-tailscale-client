@@ -32,21 +32,12 @@ while ROOT_DIR.name and not (ROOT_DIR / "Package.swift").exists():
 if not ROOT_DIR.name:
     ROOT_DIR = pathlib.Path.cwd()
 
-candidate_paths = [
-    SCRIPT_DIR / "aggregate-release-evidence.py",
-    ROOT_DIR / "Scripts" / "aggregate-release-evidence.py",
-    SCRIPT_DIR / "proposed_aggregate-release-evidence.py",
-    ROOT_DIR / ".agents" / "m2_w6_explorer_2" / "proposed_aggregate-release-evidence.py",
-]
+script_path = SCRIPT_DIR / "aggregate-release-evidence.py"
+if not script_path.exists():
+    script_path = ROOT_DIR / "Scripts" / "aggregate-release-evidence.py"
 
-script_path = None
-for p in candidate_paths:
-    if p.exists():
-        script_path = p
-        break
-
-if not script_path:
-    raise RuntimeError(f"Cannot find aggregate-release-evidence script in candidates: {candidate_paths}")
+if not script_path.exists():
+    raise RuntimeError(f"Cannot find aggregate-release-evidence script at {script_path}")
 
 import importlib.util
 spec = importlib.util.spec_from_file_location("aggregate_release_evidence", script_path)
@@ -54,6 +45,7 @@ agg_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agg_module)
 GateValidator = agg_module.GateValidator
 GateViolation = agg_module.GateViolation
+EvidenceAggregator = agg_module.EvidenceAggregator
 
 
 # ============================================================================
@@ -259,6 +251,7 @@ class TestRunner:
         self.test_negative_gate_5_binary_assets_and_checksums()
         self.test_negative_gate_6_outdated_docs_and_api()
         self.test_cli_rehearsal_flow_dry_run()
+        self.test_genuine_evidence_collection()
 
         print("\n" + "=" * 80)
         print(f"TEST SUITE SUMMARY: {self.passed} PASSED, {self.failed} FAILED")
@@ -536,6 +529,16 @@ class TestRunner:
             f"Violations: {[x.code for x in v]}"
         )
 
+        # 6f. Wire model conformance failure
+        ev = make_valid_1_0_evidence()
+        ev["docs_and_api"]["model_conformance_check"] = "failed"
+        v = GateValidator.check_gate_6_docs_and_api(ev)
+        self.log_result(
+            "Rejects release when wire model conformance check fails",
+            any(x.code == "GATE_FAILURE_OUTDATED_DOCS_OR_API" and "Model conformance" in x.message for x in v),
+            f"Violations: {[x.code for x in v]}"
+        )
+
     # ------------------------------------------------------------------------
     # Full Rehearsal Flow (Dry-Run & CLI Integration)
     # ------------------------------------------------------------------------
@@ -599,6 +602,72 @@ class TestRunner:
                 f"stdout preview: {proc_rehearse.stdout[:300]}"
             )
 
+    # ------------------------------------------------------------------------
+    # Genuine Evidence Collection & Remediation Tests
+    # ------------------------------------------------------------------------
+    def test_genuine_evidence_collection(self):
+        print("\n--- Genuine Evidence Collection & Remediation Tests ---")
+
+        # 1. _collect_docs_and_api executes real verification scripts
+        agg = EvidenceAggregator(tag="v0.12.0")
+        docs_api = agg._collect_docs_and_api(skip_local_checks=False)
+        self.log_result(
+            "_collect_docs_and_api runs real docs scripts and reports release_consistency passed",
+            docs_api.get("release_consistency", {}).get("status") == "passed",
+            f"Result: {docs_api.get('release_consistency')}"
+        )
+        self.log_result(
+            "_collect_docs_and_api runs real endpoint docs check",
+            docs_api.get("endpoint_docs_check") == "passed",
+            f"Result: {docs_api.get('endpoint_docs_check')}"
+        )
+        self.log_result(
+            "_collect_docs_and_api runs real model conformance check",
+            docs_api.get("model_conformance_check") == "passed",
+            f"Result: {docs_api.get('model_conformance_check')}"
+        )
+
+        # 2. _collect_assets rejects missing artifacts without synthesizing fake values
+        with tempfile.TemporaryDirectory() as empty_artifacts:
+            agg_empty = EvidenceAggregator(tag="v0.12.0", artifacts_dir=pathlib.Path(empty_artifacts))
+            assets = agg_empty._collect_assets()
+            self.log_result(
+                "_collect_assets marks missing files as build_status missing rather than fabricating",
+                all(a.get("build_status") == "missing" and a.get("sha256") == "" for a in assets.get("artifacts", [])),
+                f"Artifacts: {assets.get('artifacts')}"
+            )
+            self.log_result(
+                "_collect_assets marks SHA256SUMS.txt missing when absent",
+                assets.get("checksums_file", {}).get("status") == "missing",
+                f"Checksums file: {assets.get('checksums_file')}"
+            )
+
+        # 3. _collect_lanes with --ci-data loads check runs and detects missing lanes
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Test on macOS", "status": "completed", "conclusion": "success", "output": {"text": "142 executed"}},
+                    {"name": "Test on Linux", "status": "completed", "conclusion": "success", "output": {"text": "142 executed"}},
+                    {"name": "Docs consistency", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "DocC (strict)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "Build platforms", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "Integration (Linux)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v0.12.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes parses check-runs into lane statuses",
+                lanes.get("test_macos", {}).get("status") == "passed",
+                f"test_macos lane: {lanes.get('test_macos')}"
+            )
+            self.log_result(
+                "_collect_lanes reports missing lane as missing when absent from CI check-runs",
+                lanes.get("test_tsan", {}).get("status") == "missing",
+                f"test_tsan lane: {lanes.get('test_tsan')}"
+            )
 
 
 if __name__ == "__main__":
