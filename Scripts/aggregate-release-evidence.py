@@ -565,9 +565,11 @@ LANE_PATTERNS = {
     "docs_consistency": [r"^docs[ -_]consistency"],
     "docs_build_strict": [r"^docs[ -_]build[ -_]strict", r"^docc.*strict", r"^docc"],
     "test_tsan": [r"^test[ -_]tsan", r"^test with thread sanitizer"],
-    "build_platforms": [r"^build[ -_]platforms"],
+    "build_platforms": [r"^build[ -_]platforms", r"^build \((?:ios|tvos|watchos)\)"],
     "integration_linux_headscale": [r"^integration[ -_]linux", r"^integration \(linux\)", r"^hermetic integration"],
 }
+
+TEST_LANES = {"test_macos", "test_linux", "test_tsan", "integration_linux_headscale"}
 
 
 def query_github_check_runs(commit_sha: str, repo: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
@@ -625,6 +627,7 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
         all_skipped = all(r.get("conclusion") == "skipped" for r in matching_runs)
         all_success = all(r.get("conclusion") == "success" for r in matching_runs)
 
+        error_msg: Optional[str] = None
         if any_failed:
             status = "failed"
         elif any_in_progress:
@@ -636,27 +639,76 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
         else:
             status = "unverified"
 
+        # Explicit platform matrix validation for build_platforms
+        if lane_id == "build_platforms":
+            found_platforms = set()
+            for cr in matching_runs:
+                name_lower = cr.get("name", "").lower()
+                for p in ["ios", "tvos", "watchos"]:
+                    if f"({p})" in name_lower or f"build {p}" in name_lower:
+                        found_platforms.add(p)
+                if "build platforms" in name_lower or "build_platforms" in name_lower:
+                    found_platforms.update(["ios", "tvos", "watchos"])
+            missing_platforms = {"ios", "tvos", "watchos"} - found_platforms
+            if missing_platforms:
+                status = "missing"
+                error_msg = f"Incomplete platform matrix: missing platform build(s) {sorted(missing_platforms)}."
+
+        # Explicit track validation for hermetic integration matrix
+        if lane_id == "integration_linux_headscale":
+            found_tracks = set()
+            for cr in matching_runs:
+                name_lower = cr.get("name", "").lower()
+                for t in ["supported-floor", "intermediate-lts", "previous-stable", "stable"]:
+                    if t in name_lower:
+                        found_tracks.add(t)
+                if "integration (linux)" in name_lower or "integration_linux" in name_lower:
+                    found_tracks.update(["supported-floor", "intermediate-lts", "previous-stable", "stable"])
+            required_tracks = {"supported-floor", "intermediate-lts", "previous-stable", "stable"}
+            if found_tracks and (required_tracks - found_tracks):
+                missing_tracks = required_tracks - found_tracks
+                status = "missing"
+                error_msg = f"Incomplete integration matrix: missing required daemon track(s) {sorted(missing_tracks)}."
+
         total_executed = 0
         total_failures = 0
         total_skipped = 0
+        has_parsed_test_telemetry = False
+
         for r in matching_runs:
             out = r.get("output") or {}
             text = f"{out.get('title') or ''} {out.get('summary') or ''} {out.get('text') or ''}"
             m_exec = re.search(r"(\d+)\s+(?:tests?\s+)?(?:executed|passed|run)", text, re.IGNORECASE)
             if m_exec:
                 total_executed += int(m_exec.group(1))
+                has_parsed_test_telemetry = True
             m_fail = re.search(r"(\d+)\s+(?:tests?\s+)?(?:failed|failures)", text, re.IGNORECASE)
             if m_fail:
                 total_failures += int(m_fail.group(1))
+                has_parsed_test_telemetry = True
             m_skip = re.search(r"(\d+)\s+(?:tests?\s+)?(?:skipped|skips)", text, re.IGNORECASE)
             if m_skip:
                 total_skipped += int(m_skip.group(1))
+                has_parsed_test_telemetry = True
+
+        # Strict requirement: Test lanes cannot be considered 'passed' without parsed test telemetry
+        if lane_id in TEST_LANES:
+            if not has_parsed_test_telemetry or total_executed == 0:
+                if status == "passed":
+                    status = "unverified"
+                    error_msg = (
+                        f"Missing test execution telemetry for '{lane_id}': could not parse "
+                        "executed test count from check run output."
+                    )
 
         lane_dict: Dict[str, Any] = {
             "name": matching_runs[0].get("name", lane_id.replace("_", " ").title()),
             "status": status,
         }
-        if total_executed > 0 or total_failures > 0 or total_skipped > 0 or status == "passed":
+        if error_msg:
+            lane_dict["error"] = error_msg
+
+        if has_parsed_test_telemetry and total_executed > 0:
             lane_dict["test_summary"] = {
                 "executed": total_executed,
                 "failures": total_failures,

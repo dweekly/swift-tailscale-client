@@ -669,6 +669,42 @@ class TestRunner:
                 f"test_tsan lane: {lanes.get('test_tsan')}"
             )
 
+        # 4. _collect_lanes rejects test lane as unverified if test telemetry is missing
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data_missing_counts.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Test on macOS", "status": "completed", "conclusion": "success", "output": {"text": "Job completed successfully"}},
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes marks test lane as unverified when test count telemetry is missing",
+                lanes.get("test_macos", {}).get("status") == "unverified",
+                f"test_macos lane: {lanes.get('test_macos')}"
+            )
+
+        # 5. _collect_lanes detects incomplete platform matrix
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data_partial_platforms.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Build (iOS)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "Build (tvOS)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    # watchOS missing
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes detects incomplete platform matrix when watchOS is missing",
+                lanes.get("build_platforms", {}).get("status") == "missing",
+                f"build_platforms lane: {lanes.get('build_platforms')}"
+            )
+
 
 if __name__ == "__main__":
     runner = TestRunner()
