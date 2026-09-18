@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Documentation
+
+- Added a detailed 1.0 implementation plan with work-item dependencies, a reviewable PR sequence, acceptance tests, exact-commit release gates, consumer validation, and upstream adoption preparation. Aligned the roadmap checklist with these gates and corrected claims about current ETag enforcement and integration workflow triggers.
+
 ## [0.12.0] - 2026-08-04
 
 ### Added
