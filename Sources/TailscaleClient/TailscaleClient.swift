@@ -591,27 +591,197 @@ public actor TailscaleClient {
     return try await performRequest(request, endpoint: endpoint)
   }
 
-  /// Watches the IPN notification bus for real-time state changes.
+  /// Starts watching the IPN bus for notifications and connection lifecycle events.
   ///
-  /// This streaming API provides instant notifications when Tailscale state changes,
-  /// eliminating the need to poll the status endpoint.
+  /// Delivers typed ``IPNBusEvent`` values over an asynchronous stream, bounded by `bounds`
+  /// to prevent unbounded memory growth. Connection recovery is governed by `retryPolicy`.
   ///
-  /// ```swift
-  /// let client = TailscaleClient()
-  /// for try await notify in client.watchIPNBus() {
-  ///     if let state = notify.state {
-  ///         print("Backend state: \(state)")
-  ///     }
-  ///     if let engine = notify.engine {
-  ///         print("Traffic: ↓\(engine.rBytes) ↑\(engine.wBytes)")
-  ///     }
-  /// }
-  /// ```
+  /// - Parameters:
+  ///   - options: Watch options controlling what notifications to receive.
+  ///     Defaults to `.default` which includes initial state, health, and engine updates.
+  ///   - retryPolicy: Automatic reconnection policy with capped exponential backoff and jitter.
+  ///     Defaults to `.default`.
+  ///   - bounds: Queue depth and memory bounds with explicit overflow strategy. Defaults to `.default`.
+  ///   - onUndecodableLine: Called with the raw line and the decoding error for each line that
+  ///     could not be decoded as an ``IPNNotify``.
+  /// - Returns: An async stream of IPN bus events (notifications and lifecycle transitions).
+  /// - Throws: `TailscaleClientError` if the initial connection fails.
+  public func watchIPNBusEvents(
+    options: NotifyWatchOpt = .default,
+    retryPolicy: StreamRetryPolicy = .default,
+    bounds: StreamBufferBounds = .default,
+    onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
+  ) async throws -> AsyncThrowingStream<IPNBusEvent, Error> {
+    let endpoint = "/localapi/v0/watch-ipn-bus"
+    var request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
+    )
+    if let reason = Self.auditReason, !reason.isEmpty,
+      request.additionalHeaders["X-Tailscale-Reason"] == nil
+    {
+      request.additionalHeaders["X-Tailscale-Reason"] =
+        Data(reason.utf8).base64EncodedString()
+    }
+
+    let configuration = self.configuration
+    let finalRequest = request
+    let openStream: @Sendable () async throws -> StreamingResponse = {
+      try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
+        try await configuration.transport.sendStreaming(finalRequest, configuration: configuration)
+      }
+    }
+
+    let initialResponse: StreamingResponse
+    do {
+      initialResponse = try await openStream()
+    } catch let transportError as TailscaleTransportError {
+      throw TailscaleClientError.transport(transportError)
+    }
+
+    recordObservedDaemonVersion(from: initialResponse.headers)
+
+    guard (200..<300).contains(initialResponse.statusCode) else {
+      let errorBody = await Self.consumeBoundedErrorBody(initialResponse.body)
+      let fakeResponse = TailscaleResponse(
+        statusCode: initialResponse.statusCode,
+        data: errorBody,
+        headers: initialResponse.headers
+      )
+      if let error = Self.commonStatusError(
+        fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
+      ) {
+        throw error
+      }
+      throw TailscaleClientError.unexpectedStatus(
+        code: initialResponse.statusCode, body: errorBody, endpoint: endpoint
+      )
+    }
+
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+    let client = self
+
+    let task = Task<Void, Never> {
+      var currentStream: AsyncThrowingStream<Data, Error>? = initialResponse.body
+      var attempt = 0
+      var isFirstConnection = true
+
+      while !Task.isCancelled {
+        if currentStream == nil {
+          attempt += 1
+          if let maxAttempts = retryPolicy.maxAttempts, attempt > maxAttempts {
+            await queue.finish()
+            return
+          }
+
+          let delay = retryPolicy.delay(forAttempt: attempt - 1)
+          await queue.enqueue(.lifecycle(.retrying(attempt: attempt, delay: delay)), byteSize: 64)
+
+          do {
+            try await Task.sleep(for: delay)
+            if Task.isCancelled {
+              await queue.finish()
+              return
+            }
+            let resp = try await openStream()
+            await client.recordObservedDaemonVersion(from: resp.headers)
+            guard (200..<300).contains(resp.statusCode) else {
+              let errorBody = await Self.consumeBoundedErrorBody(resp.body)
+              let fakeResponse = TailscaleResponse(
+                statusCode: resp.statusCode,
+                data: errorBody,
+                headers: resp.headers
+              )
+              let mapped =
+                Self.commonStatusError(
+                  fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
+                )
+                ?? TailscaleClientError.unexpectedStatus(
+                  code: resp.statusCode, body: errorBody, endpoint: endpoint
+                )
+              if StreamRetryPolicy.classify(mapped) == .fatal {
+                await queue.fail(mapped)
+                return
+              }
+              currentStream = nil
+              continue
+            }
+            currentStream = resp.body
+          } catch is CancellationError {
+            await queue.finish()
+            return
+          } catch {
+            if StreamRetryPolicy.classify(error) == .fatal {
+              await queue.fail(error)
+              return
+            }
+            currentStream = nil
+            continue
+          }
+        }
+
+        // Connection established
+        await queue.enqueue(.lifecycle(.connected), byteSize: 64)
+        if !isFirstConnection {
+          await queue.enqueue(.lifecycle(.stateGap(reason: "reconnected")), byteSize: 64)
+        }
+        isFirstConnection = false
+
+        do {
+          for try await lineData in currentStream! {
+            if Task.isCancelled {
+              await queue.finish()
+              return
+            }
+            do {
+              let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
+              attempt = 0
+              await queue.enqueue(.notification(notify), byteSize: lineData.count)
+            } catch let decodingError as DecodingError {
+              let clientErr = TailscaleClientError.decoding(
+                decodingError, body: lineData, endpoint: endpoint)
+              onUndecodableLine?(lineData, clientErr)
+              await queue.enqueue(.lifecycle(.stateGap(reason: "undecodable_line")), byteSize: 64)
+            }
+          }
+          // Server closed the stream (e.g. daemon restart).
+          await queue.enqueue(
+            .lifecycle(.disconnected(underlying: "server_closed")), byteSize: 64)
+          if retryPolicy.maxAttempts == 0 {
+            await queue.finish()
+            return
+          }
+          currentStream = nil
+        } catch is CancellationError {
+          await queue.finish()
+          return
+        } catch {
+          await queue.enqueue(.lifecycle(.disconnected(underlying: "\(error)")), byteSize: 64)
+          if StreamRetryPolicy.classify(error) == .fatal || retryPolicy.maxAttempts == 0 {
+            await queue.fail(error)
+            return
+          }
+          currentStream = nil
+        }
+      }
+      await queue.finish()
+    }
+
+    let context = IPNBusStreamContext(queue: queue, task: task)
+    return AsyncThrowingStream<IPNBusEvent, Error>(unfolding: {
+      try await context.queue.next()
+    })
+  }
+
+  /// Starts watching the IPN bus for notifications from the daemon.
   ///
-  /// An undecodable line never terminates the stream: it is skipped and, when
-  /// provided, reported through `onUndecodableLine` — daemons routinely add
-  /// notification fields this package hasn't modeled yet. A dropped connection
-  /// terminates the stream with an error unless a `reconnect` policy is given,
+  /// Delivers typed ``IPNNotify`` values over an asynchronous stream. Initial
+  /// state is received first, followed by incremental updates as the daemon's
+  /// status, engine, or network state changes.
+  ///
+  /// Reconnection is governed by `reconnect`. The default (`nil`) ends the
+  /// stream on connection drop, which is appropriate for short-lived tasks.
+  /// Long-lived callers should supply ``IPNBusReconnectPolicy/default``,
   /// in which case the client re-dials with exponential backoff and the stream
   /// continues transparently (the daemon re-sends initial state per the watch
   /// options on each connection).
@@ -636,140 +806,40 @@ public actor TailscaleClient {
     reconnect: IPNBusReconnectPolicy? = nil,
     onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
   ) async throws -> AsyncThrowingStream<IPNNotify, Error> {
-    let endpoint = "/localapi/v0/watch-ipn-bus"
-    var request = TailscaleRequest(
-      path: endpoint,
-      queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
+    let retryPolicy =
+      reconnect.map { policy in
+        StreamRetryPolicy(
+          maxAttempts: policy.maxAttempts,
+          initialDelay: policy.initialDelay,
+          maxDelay: policy.maxDelay,
+          jitter: 0.0
+        )
+      } ?? StreamRetryPolicy.none
+
+    let eventStream = try await watchIPNBusEvents(
+      options: options,
+      retryPolicy: retryPolicy,
+      bounds: .throwing,
+      onUndecodableLine: onUndecodableLine
     )
-    if let reason = Self.auditReason, !reason.isEmpty,
-      request.additionalHeaders["X-Tailscale-Reason"] == nil
-    {
-      request.additionalHeaders["X-Tailscale-Reason"] =
-        Data(reason.utf8).base64EncodedString()
-    }
 
-    let configuration = self.configuration
-    let finalRequest = request
-    let open: @Sendable () async throws -> StreamingResponse = {
-      try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
-        try await configuration.transport.sendStreaming(finalRequest, configuration: configuration)
-      }
-    }
-
-    // Establish the first connection before returning so callers get a thrown
-    // error (not a poisoned stream) when the daemon is unreachable.
-    let initialResponse: StreamingResponse
-    do {
-      initialResponse = try await open()
-    } catch let transportError as TailscaleTransportError {
-      throw TailscaleClientError.transport(transportError)
-    }
-
-    recordObservedDaemonVersion(from: initialResponse.headers)
-
-    guard (200..<300).contains(initialResponse.statusCode) else {
-      let errorBody = await Self.consumeBoundedErrorBody(initialResponse.body)
-      let fakeResponse = TailscaleResponse(
-        statusCode: initialResponse.statusCode,
-        data: errorBody,
-        headers: initialResponse.headers
-      )
-      if let error = Self.commonStatusError(
-        fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
-      ) {
-        throw error
-      }
-      throw TailscaleClientError.unexpectedStatus(
-        code: initialResponse.statusCode, body: errorBody, endpoint: endpoint
-      )
-    }
-
-    let initialStream = initialResponse.body
-    let client = self
-
-    return AsyncThrowingStream { continuation in
-      let task = Task {
-        var stream: AsyncThrowingStream<Data, Error>? = initialStream
-        var attempt = 0
-        var lastError: (any Error)? = nil
-
-        while true {
-          if stream == nil {
-            guard let policy = reconnect else {
-              // Unreachable: stream is only cleared when a policy exists.
-              continuation.finish()
-              return
-            }
-            if let maxAttempts = policy.maxAttempts, attempt >= maxAttempts {
-              continuation.finish(throwing: lastError.map(Self.mapStreamError))
-              return
-            }
-            attempt += 1
-            do {
-              try await Task.sleep(for: policy.delay(forAttempt: attempt))
-              let response = try await open()
-              await client.recordObservedDaemonVersion(from: response.headers)
-              guard (200..<300).contains(response.statusCode) else {
-                let errorBody = await Self.consumeBoundedErrorBody(response.body)
-                let fakeResponse = TailscaleResponse(
-                  statusCode: response.statusCode,
-                  data: errorBody,
-                  headers: response.headers
-                )
-                let error = Self.commonStatusError(
-                  fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
-                ) ?? TailscaleClientError.unexpectedStatus(
-                  code: response.statusCode, body: errorBody, endpoint: endpoint
-                )
-                throw error
-              }
-              stream = response.body
-            } catch is CancellationError {
-              continuation.finish()
-              return
-            } catch {
-              lastError = error
-              stream = nil
-              continue
+    return AsyncThrowingStream<IPNNotify, Error> { continuation in
+      let filterTask = Task {
+        do {
+          for try await event in eventStream {
+            switch event {
+            case .notification(let notify):
+              continuation.yield(notify)
+            case .lifecycle:
+              break
             }
           }
-
-          do {
-            for try await lineData in stream! {
-              do {
-                let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
-                attempt = 0
-                continuation.yield(notify)
-              } catch let decodingError as DecodingError {
-                onUndecodableLine?(
-                  lineData,
-                  .decoding(decodingError, body: lineData, endpoint: endpoint))
-              }
-            }
-            // Server closed the stream (e.g. daemon restart).
-            if reconnect == nil {
-              continuation.finish()
-              return
-            }
-            stream = nil
-            lastError = nil
-          } catch is CancellationError {
-            continuation.finish()
-            return
-          } catch {
-            if reconnect == nil {
-              continuation.finish(throwing: Self.mapStreamError(error))
-              return
-            }
-            stream = nil
-            lastError = error
-          }
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
         }
       }
-
-      continuation.onTermination = { _ in
-        task.cancel()
-      }
+      continuation.onTermination = { _ in filterTask.cancel() }
     }
   }
 
@@ -1060,12 +1130,16 @@ public enum TailscaleClientError: Error, Sendable {
   /// A conditional write was attempted, but no valid concurrency token (ETag)
   /// was available in the snapshot, or the daemon returned no ETag header on read.
   case missingConcurrencyToken
+  /// The streaming event queue exceeded its configured event or memory bounds
+  /// and the overflow strategy was configured to fail.
+  case streamOverflow
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
     let data: Data
     switch self {
-    case .transport, .endpointUnavailable, .timeout, .peerNotFound, .missingConcurrencyToken:
+    case .transport, .endpointUnavailable, .timeout, .peerNotFound, .missingConcurrencyToken,
+      .streamOverflow:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -1123,6 +1197,8 @@ extension TailscaleClientError: CustomStringConvertible {
       return "LocalAPI rate-limited \(endpoint) (HTTP 429)"
     case .peerNotFound(let endpoint):
       return "LocalAPI found no matching peer for the lookup on \(endpoint) (HTTP 404)"
+    case .streamOverflow:
+      return "IPN bus event stream queue overflowed configured bounds"
     }
   }
 
@@ -1207,6 +1283,9 @@ extension TailscaleClientError: LocalizedError {
     case .peerNotFound:
       return
         "The queried address or key does not match any peer visible to this node. Verify the address and that the peer is on this tailnet."
+    case .streamOverflow:
+      return
+        "The consumer was too slow to drain the IPN bus event stream. Re-fetch current state using status() and resume watching."
     }
   }
 }

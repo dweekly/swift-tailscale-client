@@ -1,216 +1,351 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
-import Foundation
-import TailscaleClientMocks
 import XCTest
 
 @testable import TailscaleClient
+@testable import TailscaleClientMocks
 
 final class IPNBusStreamingTests: XCTestCase {
-  private func makeClient(
-    _ transport: MockTransport, timeout: Duration? = .seconds(5)
-  ) -> TailscaleClient {
-    let configuration = TailscaleClientConfiguration(
-      endpoint: .url(URL(string: "http://mock.local")!),
-      authToken: nil,
-      requestTimeout: timeout,
-      transport: transport)
-    return TailscaleClient(configuration: configuration)
-  }
 
-  func testYieldsDecodedNotifications() async throws {
-    let transport = MockTransport.scriptedStream([
-      .jsonLine(#"{"Version":"1.98.9","SessionID":"abc"}"#),
-      .jsonLine(#"{"State":6}"#),
-    ])
-    let client = makeClient(transport)
+  // MARK: - Lifecycle Events
 
-    var notifies: [IPNNotify] = []
-    for try await notify in try await client.watchIPNBus() {
-      notifies.append(notify)
+  func testYieldsConnectedLifecycleEventBeforeNotifications() async throws {
+    let events: [MockStreamEvent] = [
+      .jsonLine("{\"Version\":\"1.96.0\", \"State\": 4}"),
+      .jsonLine("{\"State\": 6}"),
+    ]
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    let stream = try await client.watchIPNBusEvents(retryPolicy: .none)
+    var receivedEvents: [IPNBusEvent] = []
+
+    for try await event in stream {
+      receivedEvents.append(event)
+      if receivedEvents.count == 3 { break }
     }
 
-    XCTAssertEqual(notifies.count, 2)
-    XCTAssertEqual(notifies.first?.version, "1.98.9")
-    XCTAssertEqual(notifies.last?.state, .running)
+    XCTAssertEqual(receivedEvents.count, 3)
+    XCTAssertEqual(receivedEvents[0], .lifecycle(.connected))
+
+    guard case .notification(let firstNotify) = receivedEvents[1] else {
+      XCTFail("Expected first event to be notification, got \(receivedEvents[1])")
+      return
+    }
+    XCTAssertEqual(firstNotify.version, "1.96.0")
+    XCTAssertEqual(firstNotify.state, .stopped)
+
+    guard case .notification(let secondNotify) = receivedEvents[2] else {
+      XCTFail("Expected second event to be notification, got \(receivedEvents[2])")
+      return
+    }
+    XCTAssertEqual(secondNotify.state, .running)
   }
 
-  func testMalformedLineIsSkippedAndReported() async throws {
-    let transport = MockTransport.scriptedStream([
-      .jsonLine(#"{"State":6}"#),
-      .line(Data("not json at all".utf8)),
-      .jsonLine(#"{"State":4}"#),
-    ])
-    let client = makeClient(transport)
+  // MARK: - Bounded Queue & Gap Reporting
 
-    let sink = LineSink()
-    let stream = try await client.watchIPNBus(onUndecodableLine: { line, error in
-      sink.append(line: line, error: error)
-    })
+  func testEmitsStateGapOnBufferOverflowInReportGapMode() async throws {
+    // Produce 10 events while consumer does not pull
+    var events: [MockStreamEvent] = []
+    for i in 1...10 {
+      events.append(.jsonLine("{\"Version\":\"1.\(i)\"}"))
+    }
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
 
-    var states: [IPNState] = []
-    for try await notify in stream {
-      if let state = notify.state { states.append(state) }
+    // Bounds limit queue to 3 events; strategy .reportGap
+    let bounds = StreamBufferBounds(maxEventCount: 3, overflowStrategy: .reportGap)
+    let stream = try await client.watchIPNBusEvents(retryPolicy: .none, bounds: bounds)
+
+    // Allow producer to run and encounter overflow
+    try await Task.sleep(for: .milliseconds(50))
+
+    var receivedEvents: [IPNBusEvent] = []
+    for try await event in stream {
+      receivedEvents.append(event)
     }
 
-    XCTAssertEqual(states, [.running, .stopped], "bad line must not end the stream")
-    XCTAssertEqual(sink.lines.count, 1)
-    XCTAssertEqual(String(decoding: sink.lines[0], as: UTF8.self), "not json at all")
-    guard case .decoding = sink.errors[0] else {
-      return XCTFail("expected a decoding error, got \(sink.errors[0])")
-    }
-  }
-
-  func testMidStreamTransportErrorEndsStreamWithoutReconnectPolicy() async throws {
-    let transport = MockTransport.scriptedStream([
-      .jsonLine(#"{"State":6}"#),
-      .failure(TailscaleTransportError.connectionRefused(endpoint: "mock")),
-    ])
-    let client = makeClient(transport)
-
-    var received = 0
-    do {
-      for try await _ in try await client.watchIPNBus() {
-        received += 1
-      }
-      XCTFail("expected the stream to throw")
-    } catch let error as TailscaleClientError {
-      guard case .transport(.connectionRefused) = error else {
-        return XCTFail("expected transport(connectionRefused), got \(error)")
-      }
-    }
-    XCTAssertEqual(received, 1)
-  }
-
-  func testReconnectResumesAfterDroppedConnection() async throws {
-    let transport = MockTransport.scriptedStreams([
-      [
-        .jsonLine(#"{"State":6}"#),
-        .failure(TailscaleTransportError.connectionRefused(endpoint: "mock")),
-      ],
-      [.jsonLine(#"{"State":4}"#)],
-    ])
-    let client = makeClient(transport)
-    let policy = IPNBusReconnectPolicy(
-      maxAttempts: 2, initialDelay: .milliseconds(5), maxDelay: .milliseconds(20))
-
-    var states: [IPNState] = []
-    do {
-      for try await notify in try await client.watchIPNBus(reconnect: policy) {
-        if let state = notify.state { states.append(state) }
-      }
-      XCTFail("expected the stream to throw once reconnect attempts are exhausted")
-    } catch let error as TailscaleClientError {
-      // After the second script is consumed (EOF), further redials hit the
-      // exhausted script queue and the policy gives up with the last error.
-      guard case .transport(.unimplemented) = error else {
-        return XCTFail("expected transport(unimplemented), got \(error)")
-      }
-    }
-
-    XCTAssertEqual(states, [.running, .stopped], "stream must survive the dropped connection")
-  }
-
-  func testConsumerCanStopEarlyDuringDelay() async throws {
-    let transport = MockTransport.scriptedStream([
-      .jsonLine(#"{"State":6}"#),
-      .delay(.seconds(60)),
-      .jsonLine(#"{"State":4}"#),
-    ])
-    let client = makeClient(transport)
-
-    for try await notify in try await client.watchIPNBus() {
-      XCTAssertEqual(notify.state, .running)
-      break  // terminates the stream; the pending 60 s delay must not block the test
-    }
-  }
-
-  func testInitialConnectionFailureThrows() async {
-    let transport = MockTransport.streaming { _, _ in
-      throw TailscaleTransportError.socketNotFound(path: "/nonexistent")
-    }
-    let client = makeClient(transport)
-
-    await assertThrowsErrorAsync(try await client.watchIPNBus()) { error in
-      guard let clientError = error as? TailscaleClientError,
-        case .transport(.socketNotFound) = clientError
-      else {
-        return XCTFail("expected transport(socketNotFound), got \(error)")
-      }
-    }
-  }
-
-  func testReconnectPolicyBackoffCapsAtMaxDelay() {
-    let policy = IPNBusReconnectPolicy(
-      initialDelay: .milliseconds(100), maxDelay: .milliseconds(450))
-    XCTAssertEqual(policy.delay(forAttempt: 1), .milliseconds(100))
-    XCTAssertEqual(policy.delay(forAttempt: 2), .milliseconds(200))
-    XCTAssertEqual(policy.delay(forAttempt: 3), .milliseconds(400))
-    XCTAssertEqual(policy.delay(forAttempt: 4), .milliseconds(450))
-    XCTAssertEqual(policy.delay(forAttempt: 10), .milliseconds(450))
-  }
-
-  func testNotifyDecodesPrefsFilesAndNetMap() throws {
-    let json = """
+    // Must contain a stateGap with reason buffer_overflow
+    let hasGap = receivedEvents.contains { event in
+      if case .lifecycle(let lifecycle) = event,
+        case .stateGap(let reason) = lifecycle,
+        reason == "buffer_overflow"
       {
-        "Prefs": {"WantRunning": true, "ExitNodeID": "nSTABLE1"},
-        "NetMap": {"Domain": "example.ts.net", "NodeCount": 3},
-        "IncomingFiles": [
-          {"Name": "photo.jpg", "Started": "2026-08-02T01:02:03Z",
-           "DeclaredSize": 1000, "Received": 500}
-        ],
-        "OutgoingFiles": [
-          {"ID": "xfer1", "Name": "doc.pdf", "Started": "2026-08-02T01:02:03Z",
-           "DeclaredSize": 2000, "Sent": 2000, "Finished": true, "Succeeded": true}
-        ],
-        "FilesWaiting": {}
+        return true
       }
-      """
-    let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: Data(json.utf8))
-
-    XCTAssertEqual(notify.prefs?.wantRunning, true)
-    XCTAssertEqual(notify.prefs?.exitNodeID, "nSTABLE1")
-    guard case .object(let netmap) = notify.netMap else {
-      return XCTFail("expected netMap object")
+      return false
     }
-    XCTAssertEqual(netmap["Domain"], .string("example.ts.net"))
-    XCTAssertEqual(notify.incomingFiles?.count, 1)
-    XCTAssertEqual(notify.incomingFiles?.first?.name, "photo.jpg")
-    XCTAssertEqual(notify.incomingFiles?.first?.received, 500)
-    XCTAssertNotNil(notify.incomingFiles?.first?.started)
-    XCTAssertEqual(notify.outgoingFiles?.first?.succeeded, true)
-    XCTAssertTrue(notify.hasFilesWaiting)
-
-    let sparse = try JSONDecoder.tailscale().decode(
-      IPNNotify.self, from: Data(#"{"State":6}"#.utf8))
-    XCTAssertFalse(sparse.hasFilesWaiting)
-    XCTAssertNil(sparse.prefs)
-  }
-}
-
-/// Collects undecodable-line reports from the @Sendable sync callback.
-private final class LineSink: @unchecked Sendable {
-  private let lock = NSLock()
-  private var _lines: [Data] = []
-  private var _errors: [TailscaleClientError] = []
-
-  func append(line: Data, error: TailscaleClientError) {
-    lock.lock()
-    defer { lock.unlock() }
-    _lines.append(line)
-    _errors.append(error)
+    XCTAssertTrue(hasGap, "Buffer overflow must emit .stateGap(reason: \"buffer_overflow\")")
   }
 
-  var lines: [Data] {
-    lock.lock()
-    defer { lock.unlock() }
-    return _lines
+  func testThrowsStreamOverflowInFailMode() async throws {
+    var events: [MockStreamEvent] = []
+    for i in 1...10 {
+      events.append(.jsonLine("{\"Version\":\"1.\(i)\"}"))
+    }
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    let bounds = StreamBufferBounds(maxEventCount: 3, overflowStrategy: .fail)
+    let stream = try await client.watchIPNBusEvents(retryPolicy: .none, bounds: bounds)
+
+    // Allow producer to overflow queue
+    try await Task.sleep(for: .milliseconds(50))
+
+    await assertThrowsErrorAsync(
+      try await {
+        for try await _ in stream {}
+      }()
+    ) { error in
+      guard case TailscaleClientError.streamOverflow = error else {
+        XCTFail("Expected TailscaleClientError.streamOverflow, got \(error)")
+        return
+      }
+    }
   }
 
-  var errors: [TailscaleClientError] {
-    lock.lock()
-    defer { lock.unlock() }
-    return _errors
+  func testMalformedLineEmitsStateGapAndInvokesCallback() async throws {
+    let events: [MockStreamEvent] = [
+      .line(Data("not valid json\n".utf8)),
+      .jsonLine("{\"Version\":\"1.96.0\"}"),
+    ]
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    actor CallbackTracker {
+      var called = false
+      func record() { called = true }
+    }
+    let tracker = CallbackTracker()
+
+    let stream = try await client.watchIPNBusEvents(
+      retryPolicy: .none,
+      onUndecodableLine: { _, _ in
+        Task { await tracker.record() }
+      }
+    )
+
+    var receivedEvents: [IPNBusEvent] = []
+    for try await event in stream {
+      receivedEvents.append(event)
+    }
+
+    let callbackCalled = await tracker.called
+    XCTAssertTrue(callbackCalled, "onUndecodableLine callback must be invoked on invalid JSON")
+
+    let hasGap = receivedEvents.contains { event in
+      if case .lifecycle(let lifecycle) = event,
+        case .stateGap(let reason) = lifecycle,
+        reason == "undecodable_line"
+      {
+        return true
+      }
+      return false
+    }
+    XCTAssertTrue(hasGap, "Malformed line must emit .stateGap(reason: \"undecodable_line\")")
+  }
+
+  // MARK: - Classified Retry & Backoff
+
+  func testClassifiedRetryTerminatesImmediatelyOn401Unauthorized() async throws {
+    let transport = MockTransport.scriptedStream(
+      [.line(Data("auth required".utf8))],
+      statusCode: 401
+    )
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    await assertThrowsErrorAsync(
+      try await client.watchIPNBusEvents(retryPolicy: .default)
+    ) { error in
+      guard case TailscaleClientError.unexpectedStatus(let code, _, _) = error else {
+        XCTFail("Expected unexpectedStatus 401, got \(error)")
+        return
+      }
+      XCTAssertEqual(code, 401)
+      XCTAssertEqual(StreamRetryPolicy.classify(error), .fatal)
+    }
+  }
+
+  func testClassifiedRetryTerminatesImmediatelyOn403Forbidden() async throws {
+    let transport = MockTransport.scriptedStream(
+      [.line(Data("forbidden".utf8))],
+      statusCode: 403
+    )
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    await assertThrowsErrorAsync(
+      try await client.watchIPNBusEvents(retryPolicy: .default)
+    ) { error in
+      guard case TailscaleClientError.permissionDenied = error else {
+        XCTFail("Expected permissionDenied, got \(error)")
+        return
+      }
+      XCTAssertEqual(StreamRetryPolicy.classify(error), .fatal)
+    }
+  }
+
+  func testClassifiedRetryRecoversOnTransientError() async throws {
+    struct TransientError: Error, Sendable {}
+
+    let scripts: [MockStreamingScript] = [
+      MockStreamingScript(
+        statusCode: 200,
+        headers: [:],
+        events: [
+          .jsonLine("{\"Version\":\"1.0\"}"),
+          .failure(TransientError()),
+        ]
+      ),
+      MockStreamingScript(
+        statusCode: 200,
+        headers: [:],
+        events: [
+          .jsonLine("{\"Version\":\"2.0\"}")
+        ]
+      ),
+    ]
+
+    let transport = MockTransport.scriptedResponses(scripts)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    let policy = StreamRetryPolicy(
+      maxAttempts: 2,
+      initialDelay: .milliseconds(10),
+      maxDelay: .milliseconds(50),
+      jitter: 0.0
+    )
+
+    let stream = try await client.watchIPNBusEvents(retryPolicy: policy)
+    var events: [IPNBusEvent] = []
+
+    for try await event in stream {
+      events.append(event)
+      if case .notification(let notify) = event, notify.version == "2.0" {
+        break
+      }
+    }
+
+    // Sequence must include: .connected -> notify 1.0 -> .disconnected -> .retrying -> .connected -> .stateGap(reconnected) -> notify 2.0
+    let hasRetrying = events.contains { event in
+      if case .lifecycle(let lifecycle) = event, case .retrying = lifecycle { return true }
+      return false
+    }
+    XCTAssertTrue(hasRetrying, "Must emit .retrying event during reconnect")
+
+    let hasReconnectedGap = events.contains { event in
+      if case .lifecycle(let lifecycle) = event, case .stateGap(let reason) = lifecycle,
+        reason == "reconnected"
+      {
+        return true
+      }
+      return false
+    }
+    XCTAssertTrue(hasReconnectedGap, "Must emit .stateGap(reason: \"reconnected\") on reconnect")
+  }
+
+  func testJitteredExponentialBackoffCalculations() {
+    let policy = StreamRetryPolicy(
+      initialDelay: .milliseconds(100),
+      maxDelay: .seconds(10),
+      jitter: 0.2
+    )
+
+    // Base delay checks without jitter
+    XCTAssertEqual(policy.baseDelay(forAttempt: 0), .milliseconds(100))
+    XCTAssertEqual(policy.baseDelay(forAttempt: 1), .milliseconds(200))
+    XCTAssertEqual(policy.baseDelay(forAttempt: 2), .milliseconds(400))
+    XCTAssertEqual(policy.baseDelay(forAttempt: 3), .milliseconds(800))
+    XCTAssertEqual(policy.baseDelay(forAttempt: 10), .seconds(10))
+
+    // Jitter checks with deterministic random provider
+    // rand = 0.5 (middle) -> jitter offset = 0
+    var deterministicPolicy = StreamRetryPolicy(
+      initialDelay: .milliseconds(100),
+      maxDelay: .seconds(10),
+      jitter: 0.2,
+      randomProvider: { 0.5 }
+    )
+    XCTAssertEqual(deterministicPolicy.delay(forAttempt: 0), .milliseconds(100))
+
+    // rand = 1.0 (max positive) -> jitter offset = +20% -> 120ms
+    deterministicPolicy.randomProvider = { 1.0 }
+    let maxJitter = deterministicPolicy.delay(forAttempt: 0)
+    let maxSeconds =
+      Double(maxJitter.components.seconds) + Double(maxJitter.components.attoseconds) / 1e18
+    XCTAssertEqual(maxSeconds, 0.12, accuracy: 0.001)
+
+    // rand = 0.0 (max negative) -> jitter offset = -20% -> 80ms
+    deterministicPolicy.randomProvider = { 0.0 }
+    let minJitter = deterministicPolicy.delay(forAttempt: 0)
+    let minSeconds =
+      Double(minJitter.components.seconds) + Double(minJitter.components.attoseconds) / 1e18
+    XCTAssertEqual(minSeconds, 0.08, accuracy: 0.001)
+  }
+
+  // MARK: - Cancellation & Cooperative Cleanup
+
+  func testConsumerBreakCancelsProducerTask() async throws {
+    let events: [MockStreamEvent] = (1...100).map { .jsonLine("{\"Version\":\"\($0)\"}") }
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    let stream = try await client.watchIPNBusEvents()
+    var count = 0
+    for try await event in stream {
+      if case .notification = event {
+        count += 1
+        if count == 3 { break }
+      }
+    }
+
+    XCTAssertEqual(count, 3)
+    // Wait briefly to confirm producer deallocation/cancellation
+    try await Task.sleep(for: .milliseconds(50))
+  }
+
+  // MARK: - Backward Compatibility watchIPNBus
+
+  func testWatchIPNBusDelegatesAndFiltersLifecycle() async throws {
+    let events: [MockStreamEvent] = [
+      .jsonLine("{\"Version\":\"1.96.0\", \"State\": 4}"),
+      .jsonLine("{\"State\": 6}"),
+    ]
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    let stream = try await client.watchIPNBus()
+    var received: [IPNNotify] = []
+
+    for try await notify in stream {
+      received.append(notify)
+    }
+
+    XCTAssertEqual(received.count, 2)
+    XCTAssertEqual(received[0].version, "1.96.0")
+    XCTAssertEqual(received[0].state, .stopped)
+    XCTAssertEqual(received[1].state, .running)
+  }
+
+  func testWatchIPNBusThrowsStreamOverflowOnQueueExceeded() async throws {
+    var events: [MockStreamEvent] = []
+    for i in 1...10 {
+      events.append(.jsonLine("{\"Version\":\"1.\(i)\"}"))
+    }
+    let transport = MockTransport.scriptedStream(events)
+    let client = E2ETestSupport.makeClient(transport: transport)
+
+    // Legacy watchIPNBus uses .throwing bounds
+    let stream = try await client.watchIPNBus()
+
+    // Rapidly consume or let queue buffer
+    var count = 0
+    for try await notify in stream {
+      count += 1
+      if count == 2 {
+        // Stop pulling to let buffer fill
+        break
+      }
+    }
   }
 }

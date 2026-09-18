@@ -745,23 +745,37 @@ final class Tier1FeatureTests: XCTestCase {
   func test_feat15_ipnBusEventDecodesNotificationPayload() throws {
     let json = E2ETestSupport.ipnNotifyJSON(state: 4, ipnState: "Running")
     let decoded = try JSONDecoder.tailscale().decode(IPNNotify.self, from: Data(json.utf8))
-    XCTAssertEqual(decoded.version, "1.96.0")
-    XCTAssertEqual(decoded.state, .stopped)
+    let event = IPNBusEvent.notification(decoded)
+    guard case .notification(let notify) = event else {
+      XCTFail("Expected .notification event")
+      return
+    }
+    XCTAssertEqual(notify.version, "1.96.0")
+    XCTAssertEqual(notify.state, .stopped)
   }
 
   func test_feat15_ipnBusEventEncapsulatesLifecycleEvents() throws {
     let notify = IPNNotify(version: "1.0", state: .stopped)
-    XCTAssertEqual(notify.state, .stopped)
+    let event1 = IPNBusEvent.notification(notify)
+    let event2 = IPNBusEvent.lifecycle(.connected)
+    guard case .notification = event1, case .lifecycle(let lc) = event2, case .connected = lc else {
+      XCTFail("Expected notification and lifecycle events")
+      return
+    }
   }
 
   func test_feat15_ipnBusEventReportsConnectedState() throws {
-    let isConnected = true
-    XCTAssertTrue(isConnected)
+    let event = IPNBusEvent.lifecycle(.connected)
+    XCTAssertEqual(event.description, "IPNBusEvent.lifecycle(connected)")
   }
 
   func test_feat15_ipnBusEventReportsDisconnectedStateWithReason() throws {
-    let disconnectReason = "socket_closed_by_daemon"
-    XCTAssertEqual(disconnectReason, "socket_closed_by_daemon")
+    let event = IPNBusEvent.lifecycle(.disconnected(underlying: "socket_closed_by_daemon"))
+    guard case .lifecycle(.disconnected(let reason)) = event else {
+      XCTFail("Expected disconnected event")
+      return
+    }
+    XCTAssertEqual(reason, "socket_closed_by_daemon")
   }
 
   func test_feat15_ipnBusEventDifferentiatesSparseDeltasFromFullState() throws {
@@ -769,74 +783,160 @@ final class Tier1FeatureTests: XCTestCase {
     let fullJSON = E2ETestSupport.ipnNotifyJSON()
     let delta = try JSONDecoder.tailscale().decode(IPNNotify.self, from: Data(deltaJSON.utf8))
     let full = try JSONDecoder.tailscale().decode(IPNNotify.self, from: Data(fullJSON.utf8))
-    XCTAssertNil(delta.state)
-    XCTAssertEqual(full.state, .stopped)
+    let deltaEvent = IPNBusEvent.notification(delta)
+    let fullEvent = IPNBusEvent.notification(full)
+    guard case .notification(let d) = deltaEvent, case .notification(let f) = fullEvent else {
+      XCTFail("Expected notification events")
+      return
+    }
+    XCTAssertNil(d.state)
+    XCTAssertEqual(f.state, .stopped)
   }
 
   // MARK: - FEAT-16: Bounded Streaming Queue with Explicit Gap/Overflow Reporting
 
-  func test_feat16_boundedQueueEnforcesMaximumEventLimit() throws {
-    let maxEvents = 256
-    XCTAssertEqual(maxEvents, 256)
+  func test_feat16_boundedQueueEnforcesMaximumEventLimit() async throws {
+    let bounds = StreamBufferBounds(maxEventCount: 2, maxByteCount: 10_000, overflowStrategy: .fail)
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+    let n1 = IPNNotify(version: "1")
+    let n2 = IPNNotify(version: "2")
+    let n3 = IPNNotify(version: "3")
+    await queue.enqueue(.notification(n1), byteSize: 10)
+    await queue.enqueue(.notification(n2), byteSize: 10)
+    let e1 = try await queue.next()
+    let e2 = try await queue.next()
+    XCTAssertNotNil(e1)
+    XCTAssertNotNil(e2)
+
+    // Enqueue 3 events to exceed the limit of 2:
+    await queue.enqueue(.notification(n1), byteSize: 10)
+    await queue.enqueue(.notification(n2), byteSize: 10)
+    await queue.enqueue(.notification(n3), byteSize: 10)
+    do {
+      _ = try await queue.next()
+      XCTFail("Expected streamOverflow")
+    } catch let error as TailscaleClientError {
+      guard case .streamOverflow = error else {
+        XCTFail("Unexpected error: \(error)")
+        return
+      }
+    }
   }
 
-  func test_feat16_boundedQueueReportsStateGapOnOverflow() throws {
-    let reason = "buffer_overflow"
+  func test_feat16_boundedQueueReportsStateGapOnOverflow() async throws {
+    let bounds = StreamBufferBounds(
+      maxEventCount: 1, maxByteCount: 10_000, overflowStrategy: .reportGap)
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+    let n1 = IPNNotify(version: "1")
+    let n2 = IPNNotify(version: "2")
+    await queue.enqueue(.notification(n1), byteSize: 10)
+    await queue.enqueue(.notification(n2), byteSize: 10)
+    let e1 = try await queue.next()
+    guard case .lifecycle(.stateGap(let reason)) = e1 else {
+      XCTFail("Expected stateGap lifecycle event, got \(String(describing: e1))")
+      return
+    }
     XCTAssertEqual(reason, "buffer_overflow")
   }
 
-  func test_feat16_boundedQueueDoesNotSilentlyDropEvents() throws {
-    let dropSilently = false
-    XCTAssertFalse(dropSilently)
+  func test_feat16_boundedQueueDoesNotSilentlyDropEvents() async throws {
+    let bounds = StreamBufferBounds(maxEventCount: 1, maxByteCount: 100, overflowStrategy: .fail)
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+    await queue.enqueue(.notification(IPNNotify(version: "1")), byteSize: 10)
+    await queue.enqueue(.notification(IPNNotify(version: "2")), byteSize: 10)
+    do {
+      _ = try await queue.next()
+      XCTFail("Expected error, event was not silently dropped")
+    } catch let error as TailscaleClientError {
+      guard case .streamOverflow = error else {
+        XCTFail("Unexpected error: \(error)")
+        return
+      }
+    }
   }
 
-  func test_feat16_boundedQueueMaintainsFifoOrdering() throws {
-    let queue = [1, 2, 3, 4, 5]
-    XCTAssertEqual(queue.first, 1)
-    XCTAssertEqual(queue.last, 5)
+  func test_feat16_boundedQueueMaintainsFifoOrdering() async throws {
+    let queue = IPNBusBoundedQueue(bounds: .unbounded)
+    await queue.enqueue(.notification(IPNNotify(version: "1")), byteSize: 1)
+    await queue.enqueue(.notification(IPNNotify(version: "2")), byteSize: 1)
+    await queue.enqueue(.notification(IPNNotify(version: "3")), byteSize: 1)
+    let e1 = try await queue.next()
+    let e2 = try await queue.next()
+    let e3 = try await queue.next()
+    guard case .notification(let n1) = e1,
+      case .notification(let n2) = e2,
+      case .notification(let n3) = e3
+    else {
+      XCTFail("Expected notifications")
+      return
+    }
+    XCTAssertEqual(n1.version, "1")
+    XCTAssertEqual(n2.version, "2")
+    XCTAssertEqual(n3.version, "3")
   }
 
-  func test_feat16_boundedQueueAllowsRecoveryAfterOverflow() throws {
-    var recovered = false
-    recovered = true
-    XCTAssertTrue(recovered)
+  func test_feat16_boundedQueueAllowsRecoveryAfterOverflow() async throws {
+    let bounds = StreamBufferBounds(
+      maxEventCount: 1, maxByteCount: 100, overflowStrategy: .reportGap)
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+    await queue.enqueue(.notification(IPNNotify(version: "1")), byteSize: 10)
+    await queue.enqueue(.notification(IPNNotify(version: "2")), byteSize: 10)
+    _ = try await queue.next()  // notification
+    _ = try await queue.next()  // stateGap
+    await queue.enqueue(.notification(IPNNotify(version: "3")), byteSize: 10)
+    let e3 = try await queue.next()
+    guard case .notification(let n3) = e3 else {
+      XCTFail("Expected recovered notification")
+      return
+    }
+    XCTAssertEqual(n3.version, "3")
   }
 
   // MARK: - FEAT-17: Classified Retry with Capped Exponential Backoff and Jitter
 
   func test_feat17_classifiedRetryDistinguishesTransientFromFatal() throws {
-    func isFatal(statusCode: Int) -> Bool {
-      statusCode == 401 || statusCode == 403 || statusCode == 404
-    }
-    XCTAssertTrue(isFatal(statusCode: 401))
-    XCTAssertTrue(isFatal(statusCode: 403))
-    XCTAssertFalse(isFatal(statusCode: 500))
+    XCTAssertEqual(
+      StreamRetryPolicy.classify(
+        TailscaleClientError.unexpectedStatus(code: 401, body: Data(), endpoint: "/test")), .fatal)
+    XCTAssertEqual(
+      StreamRetryPolicy.classify(
+        TailscaleClientError.unexpectedStatus(code: 403, body: Data(), endpoint: "/test")), .fatal)
+    XCTAssertEqual(
+      StreamRetryPolicy.classify(
+        TailscaleClientError.unexpectedStatus(code: 404, body: Data(), endpoint: "/test")), .fatal)
+    XCTAssertEqual(
+      StreamRetryPolicy.classify(
+        TailscaleClientError.unexpectedStatus(code: 500, body: Data(), endpoint: "/test")),
+      .retryable)
+    XCTAssertEqual(
+      StreamRetryPolicy.classify(
+        TailscaleTransportError.connectionRefused(endpoint: "/test")), .retryable)
   }
 
   func test_feat17_classifiedRetryCalculatesExponentialBackoff() throws {
-    func backoff(attempt: Int, base: Double = 0.1) -> Double {
-      base * pow(2.0, Double(attempt))
-    }
-    XCTAssertEqual(backoff(attempt: 0), 0.1)
-    XCTAssertEqual(backoff(attempt: 1), 0.2)
-    XCTAssertEqual(backoff(attempt: 2), 0.4)
+    let policy = StreamRetryPolicy(
+      initialDelay: .milliseconds(100), maxDelay: .seconds(10), jitter: 0.0)
+    XCTAssertEqual(policy.baseDelay(forAttempt: 0), .milliseconds(100))
+    XCTAssertEqual(policy.baseDelay(forAttempt: 1), .milliseconds(200))
+    XCTAssertEqual(policy.baseDelay(forAttempt: 2), .milliseconds(400))
   }
 
   func test_feat17_classifiedRetryCapsMaximumDelay() throws {
-    func cappedBackoff(attempt: Int, cap: Double = 10.0) -> Double {
-      min(0.1 * pow(2.0, Double(attempt)), cap)
-    }
-    XCTAssertEqual(cappedBackoff(attempt: 10), 10.0)
+    let policy = StreamRetryPolicy(
+      initialDelay: .milliseconds(100), maxDelay: .seconds(10), jitter: 0.0)
+    XCTAssertEqual(policy.baseDelay(forAttempt: 10), .seconds(10))
   }
 
   func test_feat17_classifiedRetryTerminatesImmediatelyOn401Unauthorized() throws {
-    let fatal401 = 401
-    XCTAssertEqual(fatal401, 401)
+    let classification = StreamRetryPolicy.classify(
+      TailscaleClientError.unexpectedStatus(code: 401, body: Data(), endpoint: "/test"))
+    XCTAssertEqual(classification, .fatal)
   }
 
   func test_feat17_classifiedRetryTerminatesImmediatelyOn403Forbidden() throws {
-    let fatal403 = 403
-    XCTAssertEqual(fatal403, 403)
+    let classification = StreamRetryPolicy.classify(
+      TailscaleClientError.unexpectedStatus(code: 403, body: Data(), endpoint: "/test"))
+    XCTAssertEqual(classification, .fatal)
   }
 
   // MARK: - FEAT-18: Native macOS Standalone .pkg App Discovery

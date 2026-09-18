@@ -43,11 +43,9 @@ final class StreamingTransportTests: XCTestCase {
   #if canImport(Darwin) || os(Linux)
     func testUnixSocketStreamingDeliversResponseHead() async throws {
       let headAndBody =
-        "HTTP/1.1 200 OK\r\n" +
-        "Tailscale-Version: 1.98.0-custom\r\n" +
-        "X-Custom-Header: stream-test\r\n" +
-        "Content-Type: application/json\r\n\r\n" +
-        "{\"Version\":\"1.98.0\"}\n"
+        "HTTP/1.1 200 OK\r\n" + "Tailscale-Version: 1.98.0-custom\r\n"
+        + "X-Custom-Header: stream-test\r\n" + "Content-Type: application/json\r\n\r\n"
+        + "{\"Version\":\"1.98.0\"}\n"
 
       let server = try FaultUnixServer(behaviors: [
         .respond(headAndBody, closeAfterWrite: true)
@@ -72,11 +70,8 @@ final class StreamingTransportTests: XCTestCase {
 
     func testUnixSocketStreamingSurfacesNon200StatusWithoutThrowingTransportError() async throws {
       let errorResponse =
-        "HTTP/1.1 403 Forbidden\r\n" +
-        "Content-Type: text/plain\r\n" +
-        "Content-Length: 12\r\n" +
-        "Connection: close\r\n\r\n" +
-        "access denied"
+        "HTTP/1.1 403 Forbidden\r\n" + "Content-Type: text/plain\r\n" + "Content-Length: 12\r\n"
+        + "Connection: close\r\n\r\n" + "access denied"
 
       let server = try FaultUnixServer(behaviors: [
         .respond(errorResponse, closeAfterWrite: true)
@@ -154,7 +149,8 @@ final class StreamingTransportTests: XCTestCase {
       )
       let client = E2ETestSupport.makeClient(transport: transport)
       await assertThrowsErrorAsync(try await client.watchIPNBus()) { error in
-        guard case TailscaleClientError.endpointUnavailable(let endpoint, let feature) = error else {
+        guard case TailscaleClientError.endpointUnavailable(let endpoint, let feature) = error
+        else {
           XCTFail("Expected .endpointUnavailable, got \(error)")
           return
         }
@@ -189,7 +185,8 @@ final class StreamingTransportTests: XCTestCase {
       )
       let client = E2ETestSupport.makeClient(transport: transport)
       await assertThrowsErrorAsync(try await client.watchIPNBus()) { error in
-        guard case TailscaleClientError.unexpectedStatus(let code, let body, let endpoint) = error else {
+        guard case TailscaleClientError.unexpectedStatus(let code, let body, let endpoint) = error
+        else {
           XCTFail("Expected .unexpectedStatus, got \(error)")
           return
         }
