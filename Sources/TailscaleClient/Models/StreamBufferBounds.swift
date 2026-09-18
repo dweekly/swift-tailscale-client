@@ -20,6 +20,12 @@ public struct StreamBufferBounds: Sendable, Equatable {
   /// Overflow strategy when limits are exceeded.
   public var overflowStrategy: StreamOverflowStrategy
 
+  /// Creates stream buffer limits.
+  ///
+  /// - Parameters:
+  ///   - maxEventCount: Maximum number of events retained before triggering overflow handling.
+  ///   - maxByteCount: Maximum retained payload bytes before triggering overflow handling.
+  ///   - overflowStrategy: Strategy applied when buffer limits are exceeded.
   public init(
     maxEventCount: Int = 256,
     maxByteCount: Int = 16 * 1024 * 1024,

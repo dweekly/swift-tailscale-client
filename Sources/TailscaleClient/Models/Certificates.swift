@@ -37,6 +37,7 @@ extension CertPair: CustomStringConvertible, CustomDebugStringConvertible {
     "CertPair(certificatePEM: \(certificatePEM.count) chars, privateKeyPEM: <redacted>)"
   }
 
+  /// A textual description of the certificate pair suitable for debugging.
   public var debugDescription: String { description }
 }
 

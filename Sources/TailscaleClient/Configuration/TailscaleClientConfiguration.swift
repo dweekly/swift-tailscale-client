@@ -171,6 +171,7 @@ extension TailscaleClientConfiguration: CustomStringConvertible, CustomDebugStri
       + "capabilityVersion: \(capabilityVersion), requestTimeout: \(timeout), endpointSource: \(endpointSource))"
   }
 
+  /// A textual description of the configuration suitable for debugging.
   public var debugDescription: String { description }
 }
 

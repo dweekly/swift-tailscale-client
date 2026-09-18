@@ -5,19 +5,46 @@ import Foundation
 
 /// Represents the payload returned from `/localapi/v0/status`.
 public struct StatusResponse: Sendable, Codable, Equatable {
+  /// The version string of the running Tailscale daemon (e.g., "1.76.0").
   public let version: String?
+
+  /// Whether the TUN network interface is enabled and active.
   public let isTunEnabled: Bool?
+
+  /// The connection state of the Tailscale daemon backend.
   public let backendState: BackendState?
+
+  /// Whether the daemon holds a valid node encryption key.
   public let haveNodeKey: Bool?
+
+  /// Web URL to complete interactive authentication when login is needed.
   public let authURL: URL?
+
+  /// The Tailscale IP addresses assigned to this node.
   public let tailscaleIPs: [String]
+
+  /// Status and metadata of the local node itself.
   public let selfNode: NodeStatus?
+
+  /// Peer nodes on the tailnet, indexed by node identifier or public key.
   public let peers: [String: NodeStatus]
+
+  /// User profiles for accounts associated with nodes in this status response.
   public let users: [String: UserProfile]
+
+  /// The MagicDNS search domain configured for this tailnet.
   public let magicDNSSuffix: String?
+
+  /// Information about the tailnet this node is currently connected to.
   public let currentTailnet: TailnetStatus?
+
+  /// Fully qualified domain names for which this node is authorized to obtain TLS certificates.
   public let certDomains: [String]
+
+  /// Client version and update availability status.
   public let clientVersion: ClientVersionStatus?
+
+  /// Active health warnings or issues reported by the Tailscale daemon.
   public let health: [String]
 
   /// The network interface used by Tailscale (e.g., "utun16").
@@ -45,6 +72,7 @@ public struct StatusResponse: Sendable, Codable, Equatable {
     NetworkInterfaceDiscovery.tailscaleInterface(matching: tailscaleIPs)
   }
 
+  /// Creates a status response instance for tests, previews, or fixtures.
   public init(
     version: String? = nil,
     isTunEnabled: Bool? = nil,
@@ -121,13 +149,22 @@ public struct StatusResponse: Sendable, Codable, Equatable {
   }
 }
 
+/// The operational state of the Tailscale daemon backend.
+///
+/// Corresponds to the `BackendState` field returned in `/localapi/v0/status`.
 public enum BackendState: String, Sendable, Codable {
+  /// The daemon is connected and running normally.
   case running = "Running"
+  /// The daemon is stopped or disconnected.
   case stopped = "Stopped"
+  /// The node requires user interaction to authenticate and log in.
   case needsLogin = "NeedsLogin"
+  /// The daemon is initializing or connecting.
   case starting = "Starting"
+  /// An unrecognized or future backend state returned by the daemon.
   case other
 
+  /// Decodes a backend state from a single-value container, falling back to `.other` for unrecognized states.
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     let rawValue = try container.decode(String.self)
@@ -149,38 +186,102 @@ public enum BackendState: String, Sendable, Codable {
   }
 }
 
+/// Status, addresses, and capabilities of a Tailscale node (self or peer).
 public struct NodeStatus: Sendable, Codable, Equatable {
+  /// Stable identifier for the node within the tailnet.
   public let id: String
+
+  /// The WireGuard public key of the node.
   public let publicKey: String
+
+  /// Hostname of the machine running the node.
   public let hostName: String
+
+  /// MagicDNS fully-qualified domain name of the node.
   public let dnsName: String
+
+  /// Operating system running on the node (e.g., "macOS", "linux", "windows").
   public let operatingSystem: String?
+
+  /// Numeric ID of the user who owns this node, referencing ``StatusResponse/users``.
   public let userID: UInt64?
+
+  /// Tailscale IP addresses assigned to this node.
   public let tailscaleIPs: [String]
+
+  /// Subnet CIDRs and Tailscale IPs allowed to be routed to this node.
   public let allowedIPs: [String]
+
+  /// Observed endpoint socket addresses (IP:port) for this node.
   public let addresses: [String]?
+
+  /// The current socket address actively used to communicate with this node.
   public let currentAddress: String?
+
+  /// The primary DERP relay server region used by this node (e.g., "lax", "nyc").
   public let relay: String?
+
+  /// The DERP relay server through which this node communicates with the peer.
   public let peerRelay: String?
+
+  /// Total cumulative bytes received from this node.
   public let rxBytes: UInt64?
+
+  /// Total cumulative bytes transmitted to this node.
   public let txBytes: UInt64?
+
+  /// Timestamp when this node was first registered or created.
   public let created: Date?
+
+  /// Timestamp of the last successful packet write to this node.
   public let lastWrite: Date?
+
+  /// Timestamp when this node was last observed active on the network.
   public let lastSeen: Date?
+
+  /// Timestamp of the most recent completed WireGuard handshake.
   public let lastHandshake: Date?
+
+  /// Whether the node is currently reachable online.
   public let online: Bool?
+
+  /// Whether this node is currently active as an exit node for traffic routing.
   public let exitNode: Bool?
+
+  /// Whether this node offers the capability to act as an exit node for the tailnet.
   public let exitNodeOption: Bool?
+
+  /// Whether the peer connection is actively maintained and carrying traffic.
   public let active: Bool?
+
+  /// URLs of the PeerAPI service hosted by this node, if supported and enabled.
   public let peerAPIURL: [URL]?
+
+  /// Taildrop transfer target capability indicator, if supported.
   public let taildropTarget: Int?
+
+  /// Human-readable reason why Taildrop file sharing is disabled for this node, if applicable.
   public let noFileSharingReason: String?
+
+  /// Feature capability flags advertised by this node.
   public let capabilities: [String]?
+
+  /// Structured map of capability values granted to or advertised by this node.
   public let capabilityMap: [String: CapabilityValue]?
+
+  /// Whether the node is present in the current coordination network map.
   public let inNetworkMap: Bool?
+
+  /// Whether the node is tracked by the local magicsock transport engine.
   public let inMagicSock: Bool?
+
+  /// Whether the node is active in the WireGuard engine configuration.
   public let inEngine: Bool?
+
+  /// Whether the node's authentication key or authorization has expired.
   public let expired: Bool?
+
+  /// Timestamp when the node's encryption key is scheduled to expire.
   public let keyExpiry: Date?
 
   /// Creates an instance for tests, previews, or fixtures.
@@ -340,9 +441,13 @@ public struct NodeStatus: Sendable, Codable, Equatable {
 /// decodes into ``raw(_:)`` so that unfamiliar capability values never cause
 /// a status or whois response to fail decoding.
 public enum CapabilityValue: Sendable, Codable, Equatable {
+  /// Represents a null capability value.
   case null
+  /// Represents an array of integer capability parameters.
   case integers([Int])
+  /// Represents an array of string capability parameters.
   case strings([String])
+  /// Represents an array of boolean capability parameters.
   case booleans([Bool])
   /// An array of values that is not uniformly integers, strings, or booleans.
   case raw([JSONValue])
@@ -390,9 +495,15 @@ public enum CapabilityValue: Sendable, Codable, Equatable {
   }
 }
 
+/// Information about the tailnet to which this node is connected.
 public struct TailnetStatus: Sendable, Codable, Equatable {
+  /// Human-readable name or organization domain of the tailnet.
   public let name: String?
+
+  /// MagicDNS search domain suffix for this tailnet.
   public let magicDNSSuffix: String?
+
+  /// Whether MagicDNS resolution is enabled for this tailnet.
   public let magicDNSEnabled: Bool?
 
   /// Creates an instance for tests, previews, or fixtures.
@@ -413,11 +524,20 @@ public struct TailnetStatus: Sendable, Codable, Equatable {
   }
 }
 
+/// Profile information for a user account associated with nodes on the tailnet.
 public struct UserProfile: Sendable, Codable, Equatable {
+  /// Unique numeric user identifier within the tailnet.
   public let id: UInt64
+
+  /// The login username or email address (e.g., "alice@example.com").
   public let loginName: String?
+
+  /// Human-readable display name of the user.
   public let displayName: String?
+
+  /// URL to the user's avatar or profile picture.
   public let profilePicURL: URL?
+
   /// SCIM/policy groups the user belongs to, when the tailnet uses them.
   public let groups: [String]
 
@@ -460,6 +580,7 @@ public struct UserProfile: Sendable, Codable, Equatable {
   }
 }
 
+/// Status of the installed Tailscale client relative to the latest available upstream release.
 public struct ClientVersionStatus: Sendable, Codable, Equatable {
   /// Whether the client is running the latest build. Upstream marks every
   /// boolean here `omitempty`, so `false` is simply absent on the wire —

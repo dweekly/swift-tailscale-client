@@ -26,6 +26,7 @@ public enum IPNBusEvent: Sendable, Equatable {
 }
 
 extension IPNBusEvent: CustomStringConvertible {
+  /// A textual representation of the IPN bus event.
   public var description: String {
     switch self {
     case .notification(let notify):
@@ -50,6 +51,7 @@ public enum IPNBusLifecycle: Sendable, Equatable {
 }
 
 extension IPNBusLifecycle: CustomStringConvertible {
+  /// A textual representation of the IPN bus lifecycle transition.
   public var description: String {
     switch self {
     case .connected:

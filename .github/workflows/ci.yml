@@ -182,8 +182,8 @@ jobs:
 
       # Regression floors on the abstract-coverage table above (measured
       # v0.12.0: Types 93%, Members 70%, Globals 1.6%). The pre-1.0 API
-      # audit raises these to 100 — the 1.0 criterion is no undocumented
-      # public symbols; until then this fails any PR that loses ground.
+      # PR 14 Part 1 enforces 100% authored public symbol coverage, raising floors
+      # to Types >= 95% and Members >= 80% (Globals 1% reflects synthesized operators).
       # awk, not python: the swift:6.1 container ships neither python3
       # nor perl.
       - name: Check documentation coverage floors
@@ -194,7 +194,7 @@ jobs:
               pct = $3; sub(/%/, "", pct); rows[$1] = pct
             }
             END {
-              floors["Types"] = 90; floors["Members"] = 68; floors["Globals"] = 1
+              floors["Types"] = 95; floors["Members"] = 80; floors["Globals"] = 1
               bad = 0
               for (k in floors) {
                 if (!(k in rows)) {

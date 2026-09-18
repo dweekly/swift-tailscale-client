@@ -5,7 +5,9 @@ and fetch its tailnet TLS certificates.
 
 > Important: `swift-tailscale-client` is a personal project by David E. Weekly and is **not** affiliated with or endorsed by Tailscale Inc.
 
-## The serve config is one document
+## Overview
+
+### The serve config is one document
 
 Unlike preferences (which patch field-by-field via ``MaskedPrefs``), the
 daemon's serve/Funnel state is a single ``ServeConfig`` document that
@@ -25,7 +27,7 @@ Building a ``ServeConfig`` from scratch and writing it would silently delete
 every handler somebody else configured. The snapshot-mutate-write pattern —
 plus the ETag check below — is what makes writes safe.
 
-## Optimistic concurrency with ETags
+### Optimistic concurrency with ETags
 
 ``TailscaleClient/serveConfigSnapshot()`` captures the daemon's `Etag` response
 header into ``ServeConfigSnapshot/etag``, and ``TailscaleClient/setServeConfig(_:matching:)``
@@ -55,7 +57,7 @@ func addForward(port: UInt16, to target: String, client: TailscaleClient) async 
 For explicit unconditional replacement (e.g., initial setup or reset), use
 ``TailscaleClient/replaceServeConfigUnconditionally(_:)``.
 
-## Funnel
+### Funnel
 
 ``ServeConfig/allowFunnel`` maps `"host:port"` to whether that listener is
 exposed to the **public internet**. Treat any write that flips a value to
@@ -64,7 +66,7 @@ exposed to the **public internet**. Treat any write that flips a value to
 reports whether Funnel is enabled for the tailnet and, if not, the admin
 URL where it can be turned on.
 
-## Certificates
+### Certificates
 
 ``TailscaleClient/certDomains()`` lists the DNS names this node can hold
 TLS certificates for (empty unless HTTPS is enabled for the tailnet).

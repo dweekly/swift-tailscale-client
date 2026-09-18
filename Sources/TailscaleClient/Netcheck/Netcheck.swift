@@ -36,6 +36,7 @@ public struct Netcheck: Sendable {
     }
   }
 
+  /// The configuration options governing netcheck probe behavior.
   public var options: Options
 
   /// Creates a netcheck runner.

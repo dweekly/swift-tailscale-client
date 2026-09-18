@@ -1369,6 +1369,7 @@ public enum TailscaleClientError: Error, Sendable {
 }
 
 extension TailscaleClientError: CustomStringConvertible {
+  /// A textual description of the client error.
   public var description: String {
     switch self {
     case .transport(let error):
@@ -1444,8 +1445,10 @@ extension TailscaleClientError: CustomStringConvertible {
 }
 
 extension TailscaleClientError: LocalizedError {
+  /// A localized description of the client error.
   public var errorDescription: String? { description }
 
+  /// A localized recovery suggestion for the client error.
   public var recoverySuggestion: String? {
     switch self {
     case .transport(let error):
@@ -1518,6 +1521,7 @@ public struct VersionDiagnostics: Sendable, Equatable, CustomStringConvertible {
     self.daemonVersion = daemonVersion
   }
 
+  /// A textual description of the version diagnostics.
   public var description: String {
     "swift-tailscale-client \(packageVersion), Tailscale-Cap \(capabilityVersion), "
       + "daemon \(daemonVersion ?? "unknown")"

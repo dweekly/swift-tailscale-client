@@ -24,6 +24,14 @@ public struct StreamRetryPolicy: Sendable, Equatable {
   /// Custom random generator for jitter, enabling deterministic unit testing.
   public var randomProvider: (@Sendable () -> Double)?
 
+  /// Creates a retry policy configuration.
+  ///
+  /// - Parameters:
+  ///   - maxAttempts: Maximum number of consecutive retry attempts, or `nil` for indefinite retries.
+  ///   - initialDelay: Initial delay before the first reconnection attempt.
+  ///   - maxDelay: Maximum upper bound on the backoff delay.
+  ///   - jitter: Jitter factor between 0.0 and 1.0 applied to backoff delays.
+  ///   - randomProvider: Optional random number generator producing values in `0.0...1.0`.
   public init(
     maxAttempts: Int? = nil,
     initialDelay: Duration = .milliseconds(100),

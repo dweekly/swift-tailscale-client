@@ -18,6 +18,7 @@ public enum TailscaleEndpoint: Sendable, Equatable, CustomStringConvertible {
   /// Use a fully qualified base URL (primarily for testing and custom setups).
   case url(URL)
 
+  /// A textual representation of the endpoint.
   public var description: String {
     switch self {
     case .unixSocket(let path):
@@ -66,6 +67,7 @@ public struct LocalAPIDiscovery {
         + "capabilityVersion: \(capabilityVersion))"
     }
 
+    /// A textual description of the discovery result suitable for debugging.
     public var debugDescription: String { description }
 
     /// `dump(_:)` and `Mirror` follow this instead of the stored properties,

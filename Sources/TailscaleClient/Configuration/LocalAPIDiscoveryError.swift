@@ -17,6 +17,7 @@ public enum LocalAPIDiscoveryError: Error, Sendable, Equatable, LocalizedError {
   /// The endpoint responded, but the authentication credentials were missing, corrupted, or rejected (HTTP 401/403).
   case invalidCredentials(endpoint: TailscaleEndpoint)
 
+  /// A localized description of the discovery failure.
   public var errorDescription: String? {
     switch self {
     case .notInstalled:
@@ -31,6 +32,7 @@ public enum LocalAPIDiscoveryError: Error, Sendable, Equatable, LocalizedError {
     }
   }
 
+  /// A localized suggestion for how to recover from the discovery failure.
   public var recoverySuggestion: String? {
     switch self {
     case .notInstalled:
@@ -56,6 +58,7 @@ public enum LocalAPIDiscoveryError: Error, Sendable, Equatable, LocalizedError {
 }
 
 extension LocalAPIDiscoveryError: CustomStringConvertible {
+  /// A textual representation of the discovery error.
   public var description: String {
     errorDescription ?? "LocalAPIDiscoveryError"
   }

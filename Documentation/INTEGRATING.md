@@ -86,11 +86,10 @@ operations (e.g. always-on mode), scope a justification with
 `TailscaleClient.withAuditReason("ticket…") { … }` — it is task-local, so
 concurrent operations never inherit each other's reasons;
 `versionDiagnostics()` reports the package version, advertised capability,
-and observed daemon version for bug reports. These guarantees — typed status
-mapping, audit-reason injection, and daemon-version observation — apply to
-**unary** requests only: streaming connections (`watchIPNBus`,
-`experimental.logtap`) surface connection failures as `.transport` without
-the typed status mapping.
+and observed daemon version for bug reports. In 1.0, both unary and streaming
+connections (`watchIPNBusEvents`) validate the HTTP response head metadata
+before yielding events, ensuring typed error mapping (such as `.permissionDenied`
+or `.endpointUnavailable`) even on streaming endpoints.
 
 ## Critical integration gotchas
 

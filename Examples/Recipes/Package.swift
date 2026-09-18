@@ -7,28 +7,28 @@ import PackageDescription
 // Copy any file out and replace the path dependency with
 // .package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.12.0")
 let package = Package(
-    name: "Recipes",
-    platforms: [
-        .macOS(.v13)
-    ],
-    dependencies: [
-        .package(path: "../..")
-    ],
-    targets: [
-        .target(
-            name: "Recipes",
-            dependencies: [
-                .product(name: "TailscaleClient", package: "swift-tailscale-client")
-            ]
-        ),
-        .testTarget(
-            name: "RecipesTests",
-            dependencies: [
-                "Recipes",
-                .product(name: "TailscaleClient", package: "swift-tailscale-client"),
-                .product(name: "TailscaleClientMocks", package: "swift-tailscale-client"),
-            ]
-        ),
-    ],
-    swiftLanguageModes: [.v6]
+  name: "Recipes",
+  platforms: [
+    .macOS(.v13)
+  ],
+  dependencies: [
+    .package(path: "../..")
+  ],
+  targets: [
+    .target(
+      name: "Recipes",
+      dependencies: [
+        .product(name: "TailscaleClient", package: "swift-tailscale-client")
+      ]
+    ),
+    .testTarget(
+      name: "RecipesTests",
+      dependencies: [
+        "Recipes",
+        .product(name: "TailscaleClient", package: "swift-tailscale-client"),
+        .product(name: "TailscaleClientMocks", package: "swift-tailscale-client"),
+      ]
+    ),
+  ],
+  swiftLanguageModes: [.v6]
 )

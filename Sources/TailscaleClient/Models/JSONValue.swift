@@ -11,13 +11,21 @@ import Foundation
 /// values losslessly instead of failing to decode shapes this package has not seen before,
 /// avoiding truncation of 64-bit signed and unsigned integers.
 public enum JSONValue: Sendable, Equatable, Codable {
+  /// A JSON `null` literal.
   case null
+  /// A boolean JSON value (`true` or `false`).
   case bool(Bool)
+  /// A signed 64-bit integer JSON value.
   case integer(Int64)
+  /// An unsigned 64-bit integer JSON value.
   case unsignedInteger(UInt64)
+  /// A floating-point number JSON value.
   case double(Double)
+  /// A UTF-8 string JSON value.
   case string(String)
+  /// An ordered array of JSON values.
   case array([JSONValue])
+  /// An unordered key-value dictionary of JSON values.
   case object([String: JSONValue])
 
   /// Convenience factory for backward compatibility with standard `Int`.

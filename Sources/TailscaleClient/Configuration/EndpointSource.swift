@@ -18,6 +18,7 @@ public enum EndpointSource: Sendable, Equatable, CustomStringConvertible,
   /// Strictly targets the specified endpoint and never performs dynamic re-discovery.
   case pinned(TailscaleEndpoint)
 
+  /// A textual description of the endpoint source.
   public var description: String {
     switch self {
     case .automatic:
@@ -27,5 +28,6 @@ public enum EndpointSource: Sendable, Equatable, CustomStringConvertible,
     }
   }
 
+  /// A textual description of the endpoint source suitable for debugging.
   public var debugDescription: String { description }
 }

@@ -111,6 +111,7 @@ public enum TailscaleTransportError: Error, Sendable {
 }
 
 extension TailscaleTransportError: CustomStringConvertible {
+  /// A textual description of the transport error.
   public var description: String {
     switch self {
     case .unimplemented:
@@ -132,8 +133,10 @@ extension TailscaleTransportError: CustomStringConvertible {
 }
 
 extension TailscaleTransportError: LocalizedError {
+  /// A localized description of the transport failure.
   public var errorDescription: String? { description }
 
+  /// A localized suggestion for how to recover from the transport failure.
   public var recoverySuggestion: String? {
     switch self {
     case .unimplemented:
@@ -173,6 +176,7 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
     self.session = session
   }
 
+  /// Sends a unary request to the LocalAPI and returns the response.
   public func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
     async throws -> TailscaleResponse
   {
@@ -187,6 +191,7 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
     }
   }
 
+  /// Sends a streaming request and returns a streaming response.
   public func sendStreaming(
     _ request: TailscaleRequest, configuration: TailscaleClientConfiguration
   ) async throws -> StreamingResponse {

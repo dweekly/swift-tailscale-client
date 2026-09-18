@@ -39,6 +39,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - <doc:ServeAndFunnel>
 - <doc:StabilityTiers>
 - <doc:VersionCompatibility>
+- <doc:MigrationFrom012>
 
 ### Recipes (compiled from Examples/Recipes)
 - <doc:RecipeMenuBar>
@@ -52,7 +53,9 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``TailscaleClientConfiguration``
 - ``TailscaleClientError``
 - ``LocalAPIDiscovery``
+- ``LocalAPIDiscoveryError``
 - ``TailscaleEndpoint``
+- ``EndpointSource``
 
 ### Status
 - ``StatusResponse``
@@ -65,6 +68,8 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``JSONValue``
 
 ### Real-Time Updates (IPN Bus)
+- ``IPNBusEvent``
+- ``IPNBusLifecycle``
 - ``IPNNotify``
 - ``IPNState``
 - ``EngineStatus``
@@ -72,6 +77,10 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``HealthWarning``
 - ``NotifyWatchOpt``
 - ``IPNBusReconnectPolicy``
+- ``StreamRetryPolicy``
+- ``StreamBufferBounds``
+- ``StreamOverflowStrategy``
+- ``StreamErrorClassification``
 - ``PartialFile``
 - ``OutgoingFile``
 - ``EmptyMessage``
@@ -84,6 +93,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``WhoIsNode``
 - ``WhoIsHostinfo``
 - ``UserProfile``
+- ``WhoIsIPProtocol``
 
 ### Auth & Profiles
 - ``LoginProfile``
@@ -110,6 +120,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``NodeLocation``
 - ``Netcheck``
 - ``NetcheckReport``
+- ``VersionDiagnostics``
 
 ### DNS & Routing Diagnostics
 - ``DNSOSConfig``
@@ -120,6 +131,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``IPForwardingCheck``
 
 ### Serve, Funnel & Certificates
+- ``ServeConfigSnapshot``
 - ``ServeConfig``
 - ``TCPPortHandler``
 - ``WebServerConfig``
@@ -137,6 +149,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - ``NetworkInterfaceDiscovery``
 
 ### Transport
+- ``StreamingResponse``
 - ``TailscaleTransport``
 - ``TailscaleTransportError``
 - ``TailscaleRequest``

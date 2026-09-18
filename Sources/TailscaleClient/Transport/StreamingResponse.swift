@@ -8,7 +8,10 @@ import Foundation
 /// Encapsulates the HTTP status code, response headers, and the underlying stream of body data.
 /// Conforms to `AsyncSequence` (yielding framed data chunks or lines) for direct iteration.
 public struct StreamingResponse: Sendable, AsyncSequence {
+  /// The element type of the streaming response (framed body chunks or lines).
   public typealias Element = Data
+
+  /// The asynchronous iterator type over the streaming response body chunks.
   public typealias AsyncIterator = AsyncThrowingStream<Data, Error>.AsyncIterator
 
   /// HTTP status code (e.g., 200, 403, 404).
