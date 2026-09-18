@@ -65,9 +65,10 @@ let updated = try await client.editPrefs(change)
 
 // Serve/Funnel config with ETag optimistic concurrency (v0.10.0+):
 // snapshot -> mutate -> write; a concurrent change throws .preconditionFailed.
-var serve = try await client.serveConfig()
+let snapshot = try await client.serveConfigSnapshot()
+var serve = snapshot.config
 serve.tcp[8443] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
-try await client.setServeConfig(serve)
+_ = try await client.setServeConfig(serve, matching: snapshot)
 let certs  = try await client.certDomains()         // tailnet TLS domains (v0.10.0+)
 
 // Real-time updates (preferred over polling)
@@ -111,8 +112,8 @@ the typed status mapping.
    `onUndecodableLine:` callback), and long-lived monitors should pass
    `reconnect: .default` for automatic re-dial with backoff.
 5. **Writes are replace-or-patch, know which:** `editPrefs(_:)` patches only the
-   `MaskedPrefs` fields you set; `setServeConfig(_:)` **replaces the whole serve
-   config** — always start from a fresh `serveConfig()` snapshot, and retry on
+   `MaskedPrefs` fields you set; `setServeConfig(_:matching:)` **replaces the whole serve
+   config** — always start from a fresh `serveConfigSnapshot()` snapshot, and retry on
    `.preconditionFailed` (someone else wrote concurrently).
 6. **Environment overrides** for testing/CI: `TAILSCALE_LOCALAPI_SOCKET`,
    `TAILSCALE_LOCALAPI_PORT`/`_HOST`, `TAILSCALE_LOCALAPI_URL`,
@@ -139,7 +140,7 @@ drifts from it.
 | `ping(ip:type:size:)` | `ping` | read | no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `metrics()` | `metrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasClientMetrics || HasDebug` |
 | `userMetrics()` | `usermetrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.78; absent on builds without `HasUserMetrics` |
-| `watchIPNBus(options:reconnect:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasIPNBus` |
+| `watchIPNBus(options:reconnect:onUndecodableLine:), watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer; absent on builds without `HasIPNBus` |
 | `daemonFeatures()` | `debug-optional-features` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.86; absent on builds without `HasDebug` |
 | `derpMap()` | `derpmap` | read | upstream stable; supported Swift API |
 | `suggestExitNode(forceProbe:)` | `suggest-exit-node` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasUseExitNode` |
@@ -163,7 +164,7 @@ drifts from it.
 | `resetAuth()` | `reset-auth` | destructive | **destructive**; no upstream maturity note (assume unstable); supported Swift normalization layer |
 | `profiles(), currentProfile(), switchToEmptyProfile(), switchProfile(_:), deleteProfile(_:)` | `profiles/` | write | no upstream maturity note (assume unstable) (per-symbol exceptions in the coverage matrix); supported Swift normalization layer |
 | `idToken(audience:)` | `id-token` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasDebug` |
-| `serveConfig(), setServeConfig(_:)` | `serve-config` | write | upstream unstable (per-symbol exceptions in the coverage matrix); supported Swift normalization layer; absent on builds without `HasServe` |
+| `serveConfigSnapshot(), setServeConfig(_:matching:), replaceServeConfigUnconditionally(_:)` | `serve-config` | write | upstream unstable (per-symbol exceptions in the coverage matrix); supported Swift normalization layer; absent on builds without `HasServe` |
 | `certDomains()` | `cert-domains` | read | upstream stable; supported Swift API |
 | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | `cert/` | read | upstream stable; supported Swift API; absent on builds without `HasACME` |
 | `setDNS(name:value:)` | `set-dns` | write | no upstream maturity note (assume unstable); supported Swift normalization layer; absent on builds without `HasACME` |

@@ -1648,9 +1648,17 @@ final class Tier1FeatureTests: XCTestCase {
 
   // MARK: - FEAT-30: Public API Audit & Deprecated Symbol Removal
 
-  func test_feat30_deprecatedAddProfileIsIdentified() throws {
-    let deprecatedSymbol = "addProfile"
-    XCTAssertEqual(deprecatedSymbol, "addProfile")
+  func test_feat30_deprecatedAddProfileIsIdentified() async throws {
+    // FEAT-30: addProfile() has been completely removed in favor of canonical switchToEmptyProfile().
+    let canonical = "switchToEmptyProfile"
+    XCTAssertEqual(canonical, "switchToEmptyProfile")
+    let transport = MockTransport { request, _ in
+      XCTAssertEqual(request.path, "/localapi/v0/profiles/")
+      XCTAssertEqual(request.method, "PUT")
+      return TailscaleResponse(statusCode: 201, data: Data())
+    }
+    let client = E2ETestSupport.makeClient(transport: transport)
+    try await client.switchToEmptyProfile()
   }
 
   func test_feat30_publicAPIConformsToSwiftNamingConventions() throws {

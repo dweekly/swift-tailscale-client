@@ -46,7 +46,7 @@ public struct ServeConfig: Codable, Sendable, Equatable {
   public var etag: String?
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
-  public var _unmodeledFields: [String: JSONValue]
+  internal var _unmodeledFields: [String: JSONValue]
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
   public var unmodeledFields: [String: JSONValue] {
@@ -176,7 +176,7 @@ public struct TCPPortHandler: Codable, Sendable, Equatable {
   public var terminateTLS: String?
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
-  public var _unmodeledFields: [String: JSONValue]
+  internal var _unmodeledFields: [String: JSONValue]
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
   public var unmodeledFields: [String: JSONValue] {
@@ -256,7 +256,7 @@ public struct WebServerConfig: Codable, Sendable, Equatable {
   public var handlers: [String: HTTPHandler]
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
-  public var _unmodeledFields: [String: JSONValue]
+  internal var _unmodeledFields: [String: JSONValue]
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
   public var unmodeledFields: [String: JSONValue] {
@@ -330,7 +330,7 @@ public struct HTTPHandler: Codable, Sendable, Equatable {
   public var redirect: String?
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
-  public var _unmodeledFields: [String: JSONValue]
+  internal var _unmodeledFields: [String: JSONValue]
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
   public var unmodeledFields: [String: JSONValue] {
@@ -416,7 +416,7 @@ public struct ServiceConfig: Codable, Sendable, Equatable {
   public var tun: Bool
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
-  public var _unmodeledFields: [String: JSONValue]
+  internal var _unmodeledFields: [String: JSONValue]
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.
   public var unmodeledFields: [String: JSONValue] {

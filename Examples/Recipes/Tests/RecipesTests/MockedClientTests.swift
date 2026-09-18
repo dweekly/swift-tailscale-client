@@ -65,4 +65,41 @@ final class MockedClientTests: XCTestCase {
     }
     XCTAssertEqual(states, [.running, .stopped])
   }
+
+  func testExternalCustomTransportConformance() async throws {
+    final class CustomConsumerTransport: TailscaleTransport, @unchecked Sendable {
+      func send(
+        _ request: TailscaleRequest,
+        configuration: TailscaleClientConfiguration
+      ) async throws -> TailscaleResponse {
+        XCTAssertEqual(request.path, "/localapi/v0/status")
+        return TailscaleResponse(
+          statusCode: 200,
+          data: Data(#"{"BackendState": "Running"}"#.utf8)
+        )
+      }
+
+      func sendStreaming(
+        _ request: TailscaleRequest,
+        configuration: TailscaleClientConfiguration
+      ) async throws -> StreamingResponse {
+        StreamingResponse(
+          statusCode: 200,
+          headers: [:],
+          body: AsyncThrowingStream { $0.finish() }
+        )
+      }
+    }
+
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .url(URL(string: "http://mock.local")!),
+        authToken: nil,
+        transport: CustomConsumerTransport()
+      )
+    )
+
+    let status = try await client.status()
+    XCTAssertEqual(status.backendState, .running)
+  }
 }

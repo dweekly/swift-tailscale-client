@@ -85,6 +85,9 @@ jobs:
       - name: Check release consistency (macOS bash)
         run: ./Scripts/check-release-consistency.sh
 
+      - name: Check API baseline against v0.12.0
+        run: ./Scripts/check-api-baseline.sh
+
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
 
@@ -257,6 +260,17 @@ jobs:
     with:
       include-unstable: true
 
+  api-baseline:
+    name: Check API Baseline
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check API baseline against v0.12.0
+        run: ./Scripts/check-api-baseline.sh
+
   all-required:
     name: All Required Checks
     runs-on: ubuntu-24.04
@@ -270,6 +284,7 @@ jobs:
       - test-tsan
       - build-platforms
       - integration-linux
+      - api-baseline
     steps:
       - name: Evaluate required job statuses
         shell: bash
@@ -291,6 +306,7 @@ jobs:
               "test-tsan",
               "build-platforms",
               "integration-linux",
+              "api-baseline",
           }
           missing = expected - set(needs.keys())
           if missing:

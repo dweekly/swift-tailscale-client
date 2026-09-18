@@ -42,7 +42,7 @@ public struct ExperimentalClient: Sendable {
   /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
   ///   daemon was built without debug support; other `TailscaleClientError`
   ///   cases on failure.
-  public func bugreport(
+  public func bugReport(
     note: String? = nil, diagnose: Bool = false, record: Bool = false
   ) async throws -> String {
     let endpoint = "/localapi/v0/bugreport"
@@ -60,6 +60,14 @@ public struct ExperimentalClient: Sendable {
     let marker = try await client.performRawRequest(
       request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
     return marker.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Deprecated alias for ``bugReport(note:diagnose:record:)`` aligned with Swift naming guidelines.
+  @available(*, deprecated, renamed: "bugReport(note:diagnose:record:)")
+  public func bugreport(
+    note: String? = nil, diagnose: Bool = false, record: Bool = false
+  ) async throws -> String {
+    try await bugReport(note: note, diagnose: diagnose, record: record)
   }
 
   /// Dumps the stacks of every goroutine in the daemon — the moral

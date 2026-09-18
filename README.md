@@ -84,9 +84,10 @@ try await client.checkPrefs(updated)
 ```swift
 // Snapshot → mutate → write, with ETag optimistic concurrency: a concurrent
 // change by anyone else makes the write throw .preconditionFailed.
-var serve = try await client.serveConfig()
+let snapshot = try await client.serveConfigSnapshot()
+var serve = snapshot.config
 serve.tcp[8443] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
-try await client.setServeConfig(serve)
+_ = try await client.setServeConfig(serve, matching: snapshot)
 ```
 
 See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/writingsafely), [*Streaming*](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/streaming), and [*Serve, Funnel & Certificates*](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/serveandfunnel).
@@ -153,7 +154,7 @@ Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDem
 | `loginInteractive()` / `logout()` / `resetAuth()` | Auth lifecycle (BrowseToURL arrives on the IPN bus) |
 | `profiles()` / `switchProfile(_:)` / … | Multi-account profile management |
 | `idToken(audience:)` | OIDC ID token from the control plane |
-| `serveConfig()` / `setServeConfig(_:)` | Serve/Funnel config snapshot + ETag-guarded replace (stale writes throw `.preconditionFailed`) |
+| `serveConfigSnapshot()` / `setServeConfig(_:matching:)` | Serve/Funnel config snapshot + ETag-guarded replace (stale writes throw `.preconditionFailed`) |
 | `certDomains()` / `certPEM(domain:kind:minValidity:)` / `certPair(domain:minValidity:)` | Tailnet TLS domains and certificate material |
 | `setDNS(name:value:)` / `queryFeature(_:)` | ACME dns-01 TXT records; control-plane feature probes |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
