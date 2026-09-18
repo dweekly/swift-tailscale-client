@@ -1,0 +1,35 @@
+{
+  "ControlURL": "https://controlplane.tailscale.com",
+  "RouteAll": false,
+  "ExitNodeID": "nExitNodeStable001",
+  "ExitNodeIP": "100.64.0.3",
+  "ExitNodeAllowLANAccess": true,
+  "CorpDNS": true,
+  "RunSSH": false,
+  "RunWebClient": false,
+  "WantRunning": true,
+  "LoggedOut": false,
+  "ShieldsUp": false,
+  "AdvertiseTags": [
+    "tag:client"
+  ],
+  "Hostname": "example-device",
+  "ForceDaemon": false,
+  "AdvertiseRoutes": [
+    "192.168.1.0/24"
+  ],
+  "NoSNAT": false,
+  "NetfilterMode": 2,
+  "OperatorUser": "admin",
+  "ProfileName": "default",
+  "AutoUpdate": {
+    "Apply": false,
+    "Check": true
+  },
+  "AppConnector": {
+    "Advertise": false
+  },
+  "PostureChecking": false,
+  "AdvertiseServices": [],
+  "AutoExitNode": ""
+}

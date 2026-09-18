@@ -1,0 +1,44 @@
+{
+  "HomeParams": {
+    "RegionScore": {
+      "1": 0.95,
+      "2": 1.05
+    }
+  },
+  "OmitDefaultRegions": false,
+  "Regions": {
+    "1": {
+      "Latitude": 40.7128,
+      "Longitude": -74.006,
+      "Nodes": [
+        {
+          "CanPort80": true,
+          "HostName": "derp1a.example.ts.net",
+          "IPv4": "198.51.100.12",
+          "IPv6": "fd7a:115c:a1e0:ab12:4843:cd96:6200:0002",
+          "Name": "1a",
+          "RegionID": 1
+        }
+      ],
+      "RegionCode": "nyc",
+      "RegionID": 1,
+      "RegionName": "New York City"
+    },
+    "2": {
+      "Latitude": 37.7749,
+      "Longitude": -122.4194,
+      "Nodes": [
+        {
+          "CanPort80": true,
+          "HostName": "derp2a.example.ts.net",
+          "IPv4": "198.51.100.13",
+          "Name": "2a",
+          "RegionID": 2
+        }
+      ],
+      "RegionCode": "sfo",
+      "RegionID": 2,
+      "RegionName": "San Francisco"
+    }
+  }
+}
