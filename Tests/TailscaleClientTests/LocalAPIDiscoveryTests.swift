@@ -56,7 +56,7 @@ final class LocalAPIDiscoveryTests: XCTestCase {
 
   func testDiscoverAsyncResolvesSocketEnvironmentOverride() async throws {
     let discovery = LocalAPIDiscovery(environment: [
-      "TAILSCALE_LOCALAPI_SOCKET": "/tmp/custom.sock",
+      "TAILSCALE_LOCALAPI_SOCKET": "/tmp/custom.sock"
     ])
     let result = try await discovery.discoverAsync()
     XCTAssertEqual(result.endpoint, .unixSocket(path: "/tmp/custom.sock"))
@@ -126,7 +126,8 @@ final class LocalAPIDiscoveryTests: XCTestCase {
       _ = try await discovery.discoverAsync()
       XCTFail("Expected LocalAPIDiscoveryError.inaccessible")
     } catch let error as LocalAPIDiscoveryError {
-      XCTAssertEqual(error, .inaccessible(path: "/var/run/tailscaled.socket", reason: "Permission denied"))
+      XCTAssertEqual(
+        error, .inaccessible(path: "/var/run/tailscaled.socket", reason: "Permission denied"))
       XCTAssertTrue(error.errorDescription?.contains("inaccessible") == true)
     }
   }
@@ -134,14 +135,15 @@ final class LocalAPIDiscoveryTests: XCTestCase {
   #if os(macOS)
     func testDiscoverAsyncResolvesStandalonePkgByDefaultWithoutTCC() async throws {
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "49275")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
       try "token-standalone-123\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
       let discovery = LocalAPIDiscovery(
         environment: [:],
         fileExists: { _ in false },
-        allowMacOSAppStoreDiscovery: false, // Default is false!
+        allowMacOSAppStoreDiscovery: false,  // Default is false!
         standaloneDirectoryOverride: tempDir,
         probeOverride: { port, token in
           port == 49275 && token == "token-standalone-123"

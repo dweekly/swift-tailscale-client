@@ -949,7 +949,8 @@ final class Tier1FeatureTests: XCTestCase {
       defer { try? FileManager.default.removeItem(at: tempDir) }
 
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "49275")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
       try "token-standalone-abc\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -977,7 +978,8 @@ final class Tier1FeatureTests: XCTestCase {
       defer { try? FileManager.default.removeItem(at: tempDir) }
 
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "52140")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "52140")
       let tokenURL = tempDir.appendingPathComponent("ipnport.token")
       try "token-from-ipnport-file\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -1004,7 +1006,8 @@ final class Tier1FeatureTests: XCTestCase {
       defer { try? FileManager.default.removeItem(at: tempDir) }
 
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "41112")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "41112")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-41112")
       try "token-41112\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -1077,7 +1080,10 @@ final class Tier1FeatureTests: XCTestCase {
       path: "/Users/user/Library/Group Containers",
       reason: "Operation not permitted"
     )
-    XCTAssertEqual(error, .inaccessible(path: "/Users/user/Library/Group Containers", reason: "Operation not permitted"))
+    XCTAssertEqual(
+      error,
+      .inaccessible(path: "/Users/user/Library/Group Containers", reason: "Operation not permitted")
+    )
     XCTAssertNotNil(error.recoverySuggestion)
   }
 
@@ -1155,73 +1161,261 @@ final class Tier1FeatureTests: XCTestCase {
   // MARK: - FEAT-21: EndpointSource Tracking (.automatic vs .pinned)
 
   func test_feat21_endpointSourceDistinguishesAutomaticFromPinned() throws {
+    let autoConfig = TailscaleClientConfiguration.default
+    guard case .automatic = autoConfig.endpointSource else {
+      XCTFail("Default config must have .automatic endpointSource")
+      return
+    }
+
     let pinnedURL = URL(string: "http://custom:1234")!
-    let endpoint = TailscaleEndpoint.url(pinnedURL)
+    let pinnedConfig = TailscaleClientConfiguration(endpoint: .url(pinnedURL), authToken: nil)
+    guard case .pinned(let endpoint) = pinnedConfig.endpointSource else {
+      XCTFail("Custom init must have .pinned endpointSource")
+      return
+    }
     XCTAssertEqual(endpoint, .url(pinnedURL))
+    XCTAssertNotEqual(autoConfig.endpointSource, pinnedConfig.endpointSource)
   }
 
   func test_feat21_endpointSourcePreservesPinnedSocketAddress() throws {
-    let endpoint = TailscaleEndpoint.unixSocket(path: "/custom/tailscaled.sock")
-    XCTAssertEqual(endpoint, .unixSocket(path: "/custom/tailscaled.sock"))
+    let path = "/custom/tailscaled.sock"
+    let endpoint = TailscaleEndpoint.unixSocket(path: path)
+    let config = TailscaleClientConfiguration(endpoint: endpoint, authToken: nil)
+    XCTAssertEqual(config.endpoint, endpoint)
+    XCTAssertEqual(config.endpointSource, .pinned(endpoint))
   }
 
   func test_feat21_endpointSourcePreservesPinnedURLAddress() throws {
     let url = URL(string: "http://127.0.0.1:9999")!
     let endpoint = TailscaleEndpoint.url(url)
-    XCTAssertEqual(endpoint, .url(url))
+    let config = TailscaleClientConfiguration(endpoint: endpoint, authToken: "sec")
+    XCTAssertEqual(config.endpoint, endpoint)
+    XCTAssertEqual(config.endpointSource, .pinned(endpoint))
   }
 
-  func test_feat21_endpointSourceDisallowsAutoRediscoveryWhenPinned() throws {
-    let isPinned = true
-    let autoRediscover = !isPinned
-    XCTAssertFalse(autoRediscover)
+  func test_feat21_endpointSourceDisallowsAutoRediscoveryWhenPinned() async throws {
+    let config = TailscaleClientConfiguration(
+      endpoint: .loopback(host: "127.0.0.1", port: 54321),
+      authToken: "pin"
+    )
+    let client = TailscaleClient(configuration: config)
+    do {
+      _ = try await client.singleFlightRediscovery()
+      XCTFail("Pinned configuration must disallow rediscovery")
+    } catch let error as TailscaleClientError {
+      guard case .permissionDenied = error else {
+        XCTFail("Expected permissionDenied, got \(error)")
+        return
+      }
+    }
   }
 
   func test_feat21_endpointSourceEnablesAutoRediscoveryWhenAutomatic() throws {
-    let isAutomatic = true
-    XCTAssertTrue(isAutomatic)
+    let discovery = LocalAPIDiscovery(environment: ["TAILSCALE_LOCALAPI_PORT": "12345"])
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 12345), authToken: nil, capabilityVersion: 144)
+    )
+    guard case .automatic(let disc) = config.endpointSource else {
+      XCTFail("Expected .automatic endpointSource")
+      return
+    }
+    XCTAssertEqual(disc, discovery)
   }
 
   // MARK: - FEAT-22: Single-Flight Credential Refresh on Daemon Restart
 
-  func test_feat22_credentialRefreshTriggersOnConnectionRefusal() throws {
-    let isRefusal = true
-    XCTAssertTrue(isRefusal)
+  func test_feat22_credentialRefreshTriggersOnConnectionRefusal() async throws {
+    actor MockConnRefusedTransport: TailscaleTransport {
+      var callCount = 0
+      func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> TailscaleResponse
+      {
+        callCount += 1
+        if case .loopback(_, let port) = configuration.endpoint, port == 41112 {
+          throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:41112")
+        }
+        return TailscaleResponse(statusCode: 200, data: Data("{\"BackendState\":\"Running\"}".utf8))
+      }
+      func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> StreamingResponse
+      {
+        fatalError("Unused")
+      }
+    }
+
+    let transport = MockConnRefusedTransport()
+    let discovery = LocalAPIDiscovery(environment: [
+      "TAILSCALE_LOCALAPI_PORT": "41113",
+      "TAILSCALE_LOCALAPI_AUTHKEY": "token-refreshed",
+    ])
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 41112), authToken: "token-old",
+        capabilityVersion: 144),
+      transport: transport
+    )
+    let client = TailscaleClient(configuration: config)
+
+    let status = try await client.status()
+    XCTAssertEqual(status.backendState, .running)
+    XCTAssertEqual(client.configuration.authToken, "token-refreshed")
+    XCTAssertEqual(client.configuration.endpoint, .loopback(host: "127.0.0.1", port: 41113))
   }
 
   func test_feat22_credentialRefreshCoalescesConcurrentProbesSingleFlight() async throws {
-    actor Coalescer {
-      private var running = false
-      func run() -> Bool {
-        if running { return false }
-        running = true
-        return true
+    actor MockConcurrentTransport: TailscaleTransport {
+      func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> TailscaleResponse
+      {
+        if case .loopback(_, let port) = configuration.endpoint, port == 41112 {
+          throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:41112")
+        }
+        return TailscaleResponse(statusCode: 200, data: Data("{\"BackendState\":\"Running\"}".utf8))
+      }
+      func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> StreamingResponse
+      {
+        fatalError("Unused")
       }
     }
-    let coalescer = Coalescer()
-    let first = await coalescer.run()
-    let second = await coalescer.run()
-    XCTAssertTrue(first)
-    XCTAssertFalse(second)
+
+    let transport = MockConcurrentTransport()
+    let discovery = LocalAPIDiscovery(environment: [
+      "TAILSCALE_LOCALAPI_PORT": "41113",
+      "TAILSCALE_LOCALAPI_AUTHKEY": "token-refreshed",
+    ])
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 41112), authToken: "token-old",
+        capabilityVersion: 144),
+      transport: transport
+    )
+    let client = TailscaleClient(configuration: config)
+
+    try await withThrowingTaskGroup(of: Void.self) { group in
+      for _ in 0..<5 {
+        group.addTask {
+          let status = try await client.status()
+          XCTAssertEqual(status.backendState, .running)
+        }
+      }
+      try await group.waitForAll()
+    }
   }
 
-  func test_feat22_credentialRefreshUpdatesAuthToken() throws {
-    var token: String? = "token-old"
-    token = "token-new"
-    XCTAssertEqual(token, "token-new")
+  func test_feat22_credentialRefreshUpdatesAuthToken() async throws {
+    actor MockAuthTransport: TailscaleTransport {
+      func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> TailscaleResponse
+      {
+        if configuration.authToken == "stale-token" {
+          return TailscaleResponse(statusCode: 401, data: Data("401 Unauthorized".utf8))
+        }
+        return TailscaleResponse(statusCode: 200, data: Data("{\"BackendState\":\"Running\"}".utf8))
+      }
+      func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> StreamingResponse
+      {
+        fatalError("Unused")
+      }
+    }
+
+    let transport = MockAuthTransport()
+    let discovery = LocalAPIDiscovery(environment: [
+      "TAILSCALE_LOCALAPI_PORT": "41112",
+      "TAILSCALE_LOCALAPI_AUTHKEY": "fresh-token",
+    ])
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 41112), authToken: "stale-token",
+        capabilityVersion: 144),
+      transport: transport
+    )
+    let client = TailscaleClient(configuration: config)
+
+    let status = try await client.status()
+    XCTAssertEqual(status.backendState, .running)
+    XCTAssertEqual(client.configuration.authToken, "fresh-token")
   }
 
-  func test_feat22_credentialRefreshHandlesDaemonPortChange() throws {
-    var port = 41112
-    port = 41113
-    XCTAssertEqual(port, 41113)
+  func test_feat22_credentialRefreshHandlesDaemonPortChange() async throws {
+    actor MockPortChangeTransport: TailscaleTransport {
+      func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> TailscaleResponse
+      {
+        if case .loopback(_, let port) = configuration.endpoint, port == 41112 {
+          throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:41112")
+        }
+        return TailscaleResponse(statusCode: 200, data: Data("{\"BackendState\":\"Running\"}".utf8))
+      }
+      func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> StreamingResponse
+      {
+        fatalError("Unused")
+      }
+    }
+
+    let transport = MockPortChangeTransport()
+    let discovery = LocalAPIDiscovery(environment: [
+      "TAILSCALE_LOCALAPI_PORT": "41113",
+      "TAILSCALE_LOCALAPI_AUTHKEY": "token",
+    ])
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 41112), authToken: "token",
+        capabilityVersion: 144),
+      transport: transport
+    )
+    let client = TailscaleClient(configuration: config)
+
+    _ = try await client.status()
+    XCTAssertEqual(client.configuration.endpoint, .loopback(host: "127.0.0.1", port: 41113))
   }
 
-  func test_feat22_credentialRefreshThrowsWhenDaemonDoesNotRecover() throws {
-    let err = TailscaleClientError.transport(.connectionRefused(endpoint: "127.0.0.1:41112"))
-    guard case .transport(.connectionRefused) = err else {
-      XCTFail()
-      return
+  func test_feat22_credentialRefreshThrowsWhenDaemonDoesNotRecover() async throws {
+    actor FailingTransport: TailscaleTransport {
+      func send(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> TailscaleResponse
+      {
+        throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:41112")
+      }
+      func sendStreaming(_ request: TailscaleRequest, configuration: TailscaleClientConfiguration)
+        async throws -> StreamingResponse
+      {
+        fatalError("Unused")
+      }
+    }
+
+    let transport = FailingTransport()
+    // Discovery that fails because candidates are stopped
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      standaloneDirectoryOverride: URL(fileURLWithPath: "/nonexistent")
+    )
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 41112), authToken: "token",
+        capabilityVersion: 144),
+      transport: transport
+    )
+    let client = TailscaleClient(configuration: config)
+
+    do {
+      _ = try await client.status()
+      XCTFail("Expected error when daemon cannot be discovered")
+    } catch let error as TailscaleClientError {
+      guard case .discovery = error else {
+        XCTFail("Expected .discovery error, got \(error)")
+        return
+      }
     }
   }
 

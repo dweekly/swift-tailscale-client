@@ -24,7 +24,8 @@ public enum LocalAPIDiscoveryError: Error, Sendable, Equatable, LocalizedError {
     case .stopped(let candidate):
       return "Tailscale daemon is stopped or not answering on \(candidate)"
     case .inaccessible(let path, let reason):
-      return "Tailscale endpoint at '\(DiscoveryLog.redactedProofPath(path))' is inaccessible: \(reason)"
+      return
+        "Tailscale endpoint at '\(DiscoveryLog.redactedProofPath(path))' is inaccessible: \(reason)"
     case .invalidCredentials(let endpoint):
       return "Tailscale LocalAPI rejected credentials for \(endpoint)"
     }
@@ -33,18 +34,23 @@ public enum LocalAPIDiscoveryError: Error, Sendable, Equatable, LocalizedError {
   public var recoverySuggestion: String? {
     switch self {
     case .notInstalled:
-      return "Install Tailscale from https://tailscale.com/download or via Homebrew ('brew install tailscale')."
+      return
+        "Install Tailscale from https://tailscale.com/download or via Homebrew ('brew install tailscale')."
     case .stopped:
-      return "Ensure the Tailscale service is running (e.g., launch Tailscale.app or run 'sudo tailscaled')."
+      return
+        "Ensure the Tailscale service is running (e.g., launch Tailscale.app or run 'sudo tailscaled')."
     case .inaccessible(let path, _):
       if path.contains("/Library/Tailscale") {
-        return "Ensure the current user is a member of the 'admin' group, or run with appropriate privileges."
+        return
+          "Ensure the current user is a member of the 'admin' group, or run with appropriate privileges."
       } else if path.contains("Group Containers") {
-        return "Grant Full Disk Access or enable App Store discovery in your application configuration."
+        return
+          "Grant Full Disk Access or enable App Store discovery in your application configuration."
       }
       return "Check file and socket permissions for '\(DiscoveryLog.redactedProofPath(path))'."
     case .invalidCredentials:
-      return "Verify authentication token or restart the Tailscale daemon to generate a fresh token."
+      return
+        "Verify authentication token or restart the Tailscale daemon to generate a fresh token."
     }
   }
 }

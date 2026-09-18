@@ -55,14 +55,17 @@ When communicating with a daemon that does not implement an endpoint or feature 
 | Flavor | Method | Endpoint / Credentials | TCC Interaction |
 |---|---|---|---|
 | **macOS Standalone Daemon / Homebrew** | Unix socket | `/var/run/tailscaled.socket` or `/var/run/tailscale/tailscaled.sock` | None |
-| **macOS Standalone App (`.pkg`)** | Symlink / File Token | `/Library/Tailscale/ipnport` & `/Library/Tailscale/ipnport.token` | None |
+| **macOS Standalone App (`.pkg`)** | Symlink / File Token | `/Library/Tailscale/ipnport` symlink & `sameuserproof-<port>` (fallback `ipnport.token`) | None |
 | **macOS App Store App (GUI)** | Group Containers / Loopback | Loopback port (`127.0.0.1:<port>`) with file token | **Opt-in only** (`allowMacOSAppStoreDiscovery: true`); triggers TCC prompt |
 | **Linux Systemd** | Unix socket | `/var/run/tailscale/tailscaled.sock` | None |
 | **Custom / Pinned** | Environment / Config | Explicit path, URL, or host/port | None |
 
 ### Credential Refresh & Daemon Restarts
-- **Automatic Clients** (`TailscaleClient()` or `TailscaleClientConfiguration.default`): On daemon restart or credential rotation, the client performs single-flight credential rediscovery.
-- **Pinned Clients**: Connections created with explicit endpoints (`.unixSocket(path:)` or `.loopback(host:port:)`) do not re-probe filesystem paths or refresh tokens automatically.
+- **Configuration Source Tracking (`EndpointSource`)**: Every configuration records whether its endpoint was resolved dynamically (`.automatic(LocalAPIDiscovery)`) or pinned explicitly by the caller (`.pinned(TailscaleEndpoint)`).
+- **Automatic Clients** (`TailscaleClient()`, `.default`, or `TailscaleClient.discover(...)`):
+  - On daemon restart, port reassignment (`ECONNREFUSED` / `socketNotFound`), or credential rotation (HTTP 401 / loopback 403), the client executes single-flight asynchronous re-discovery to refresh port and token material without probe stampedes.
+  - **Mutation Safety Guarantee**: Idempotent requests (`GET`, `HEAD`) and connect-stage errors (where bytes were never written or daemon wasn't contacted) are safely replayed once after re-discovery. Mutating requests (`POST`, `PATCH`, `DELETE`) rejected with HTTP 401/403 are safely retried with the refreshed token, while ambiguous transport disconnects (e.g. mid-stream drops, connection resets, or timeouts) are never automatically replayed to prevent duplicate side effects.
+- **Pinned Clients**: Connections created with explicit endpoints (`.unixSocket(path:)` or `.loopback(host:port:)`) are marked `.pinned` and strictly target the configured destination, reporting connection or credential failures directly without re-discovery.
 
 ---
 

@@ -85,7 +85,8 @@ public struct LocalAPIDiscovery {
   private let environment: [String: String]
   private let fileExists: @Sendable (String) -> Bool
   private let allowMacOSAppStoreDiscovery: Bool
-  internal let socketProber: (@Sendable (String) -> (isAlive: Bool, error: LocalAPIDiscoveryError?))?
+  internal let socketProber:
+    (@Sendable (String) -> (isAlive: Bool, error: LocalAPIDiscoveryError?))?
   internal let standaloneDirectoryOverride: URL?
   internal let probeOverride: (@Sendable (UInt16, String) -> Bool)?
 
@@ -98,7 +99,9 @@ public struct LocalAPIDiscovery {
   ///     macOS App Store GUI's loopback API. This triggers a TCC permission popup. Defaults to `false`.
   public init(
     environment: [String: String] = ProcessInfo.processInfo.environment,
-    fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+    fileExists: @escaping @Sendable (String) -> Bool = {
+      FileManager.default.fileExists(atPath: $0)
+    },
     allowMacOSAppStoreDiscovery: Bool = false
   ) {
     self.environment = environment
@@ -111,7 +114,9 @@ public struct LocalAPIDiscovery {
 
   init(
     environment: [String: String] = ProcessInfo.processInfo.environment,
-    fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+    fileExists: @escaping @Sendable (String) -> Bool = {
+      FileManager.default.fileExists(atPath: $0)
+    },
     allowMacOSAppStoreDiscovery: Bool = false,
     socketProber: (@Sendable (String) -> (isAlive: Bool, error: LocalAPIDiscoveryError?))? = nil,
     standaloneDirectoryOverride: URL? = nil,
@@ -316,7 +321,9 @@ public struct LocalAPIDiscovery {
           if let prober = self.socketProber {
             let (isAlive, err) = prober(expanded)
             if isAlive {
-              if debug { Self.debugLog("[LocalAPIDiscovery] using probed Unix socket: \(expanded)") }
+              if debug {
+                Self.debugLog("[LocalAPIDiscovery] using probed Unix socket: \(expanded)")
+              }
               return Result(
                 endpoint: .unixSocket(path: expanded),
                 authToken: candidate.authToken,
@@ -325,7 +332,8 @@ public struct LocalAPIDiscovery {
               candidateError = err
             }
           } else {
-            let (isAlive, err) = Self.probeUnixSocket(path: expanded, fileExistsCheck: self.fileExists)
+            let (isAlive, err) = Self.probeUnixSocket(
+              path: expanded, fileExistsCheck: self.fileExists)
             if isAlive {
               if debug { Self.debugLog("[LocalAPIDiscovery] using live Unix socket: \(expanded)") }
               return Result(

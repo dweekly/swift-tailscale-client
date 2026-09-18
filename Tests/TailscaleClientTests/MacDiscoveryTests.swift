@@ -70,7 +70,8 @@ import XCTest
 
     func testStandaloneDiscoveryWithSymlinkAndTokenFile() throws {
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "49275")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
       try "token-hex-1234567890\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -89,7 +90,8 @@ import XCTest
 
     func testStandaloneDiscoveryWithFallbackIpnportToken() throws {
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "51234")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "51234")
       let tokenURL = tempDir.appendingPathComponent("ipnport.token")
       try "fallback-token-abc\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -125,7 +127,8 @@ import XCTest
 
     func testStandaloneDiscoverySkipsStalePortWhenProbeFails() throws {
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "49275")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
       try "token-hex-1234567890\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -142,7 +145,8 @@ import XCTest
 
     func testStandaloneDiscoveryRejectsEmptyToken() throws {
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "49275")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
       try "   \n".write(to: tokenURL, atomically: true, encoding: .utf8)
 
@@ -170,7 +174,8 @@ import XCTest
 
     func testStandaloneDiscoveryAsync() async throws {
       let ipnportURL = tempDir.appendingPathComponent("ipnport")
-      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "48000")
+      try FileManager.default.createSymbolicLink(
+        atPath: ipnportURL.path, withDestinationPath: "48000")
       let tokenURL = tempDir.appendingPathComponent("sameuserproof-48000")
       try "async-token-123\n".write(to: tokenURL, atomically: true, encoding: .utf8)
 

@@ -22,8 +22,36 @@ import Foundation
 /// > Important: This library is an unofficial, MIT-licensed project by David E. Weekly
 /// > and is not endorsed by Tailscale Inc.
 public actor TailscaleClient {
+  /// Internal thread-safe box holding active configuration for nonisolated access.
+  final class ConfigurationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _configuration: TailscaleClientConfiguration
+
+    init(_ configuration: TailscaleClientConfiguration) {
+      self._configuration = configuration
+    }
+
+    var value: TailscaleClientConfiguration {
+      lock.lock()
+      defer { lock.unlock() }
+      return _configuration
+    }
+
+    func update(_ newConfig: TailscaleClientConfiguration) {
+      lock.lock()
+      _configuration = newConfig
+      lock.unlock()
+    }
+  }
+
+  private let configurationBox: ConfigurationBox
+  private var activeConfiguration: TailscaleClientConfiguration
+  private var rediscoveryTask: Task<TailscaleClientConfiguration, Error>?
+
   /// Configuration applied to each request the client makes.
-  public nonisolated let configuration: TailscaleClientConfiguration
+  public nonisolated var configuration: TailscaleClientConfiguration {
+    configurationBox.value
+  }
 
   /// The daemon version most recently observed in a `Tailscale-Version`
   /// response header, if any request has completed yet.
@@ -34,7 +62,73 @@ public actor TailscaleClient {
 
   /// Creates a client that uses the default configuration for the current platform.
   public init(configuration: TailscaleClientConfiguration = .default) {
-    self.configuration = configuration
+    self.activeConfiguration = configuration
+    self.configurationBox = ConfigurationBox(configuration)
+  }
+
+  /// Discovers the LocalAPI endpoint asynchronously and creates a configured client.
+  ///
+  /// - Parameters:
+  ///   - allowMacOSAppStoreDiscovery: Whether to opt into macOS App Store GUI discovery.
+  ///   - requestTimeout: Per-request deadline (defaults to 30 seconds).
+  ///   - transport: The transport used to execute HTTP requests (defaults to URLSessionTailscaleTransport).
+  /// - Returns: A connected `TailscaleClient` instance.
+  public static func discover(
+    allowMacOSAppStoreDiscovery: Bool = false,
+    requestTimeout: Duration? = .seconds(30),
+    transport: any TailscaleTransport = URLSessionTailscaleTransport()
+  ) async throws -> TailscaleClient {
+    let config = try await TailscaleClientConfiguration.discover(
+      allowMacOSAppStoreDiscovery: allowMacOSAppStoreDiscovery,
+      requestTimeout: requestTimeout,
+      transport: transport
+    )
+    return TailscaleClient(configuration: config)
+  }
+
+  /// Single-flight re-discovery coordinator for daemon restarts or credential rotation.
+  @discardableResult
+  func singleFlightRediscovery() async throws -> TailscaleClientConfiguration {
+    guard case .automatic(let discovery) = activeConfiguration.endpointSource else {
+      throw TailscaleClientError.permissionDenied(
+        body: Data("Endpoint is pinned; dynamic rediscovery disabled".utf8),
+        endpoint: "pinned"
+      )
+    }
+
+    if let inFlight = rediscoveryTask {
+      let config = try await inFlight.value
+      self.activeConfiguration = config
+      self.configurationBox.update(config)
+      return config
+    }
+
+    let timeout = activeConfiguration.requestTimeout
+    let transport = activeConfiguration.transport
+
+    let task = Task<TailscaleClientConfiguration, Error> {
+      let result = try await discovery.discoverAsync()
+      return TailscaleClientConfiguration(
+        discovery: discovery,
+        result: result,
+        requestTimeout: timeout,
+        transport: transport
+      )
+    }
+
+    self.rediscoveryTask = task
+    defer { self.rediscoveryTask = nil }
+
+    do {
+      let updated = try await task.value
+      self.activeConfiguration = updated
+      self.configurationBox.update(updated)
+      return updated
+    } catch let discError as LocalAPIDiscoveryError {
+      throw TailscaleClientError.discovery(discError)
+    } catch {
+      throw error
+    }
   }
 
   /// Attaches an audit justification to every unary or streaming request made
@@ -624,19 +718,40 @@ public actor TailscaleClient {
         Data(reason.utf8).base64EncodedString()
     }
 
-    let configuration = self.configuration
+    let client = self
     let finalRequest = request
     let openStream: @Sendable () async throws -> StreamingResponse = {
-      try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
-        try await configuration.transport.sendStreaming(finalRequest, configuration: configuration)
+      let config = client.configuration
+      return try await Self.withDeadline(config.requestTimeout, endpoint: endpoint) {
+        try await config.transport.sendStreaming(finalRequest, configuration: config)
       }
     }
 
-    let initialResponse: StreamingResponse
+    var initialResponse: StreamingResponse
     do {
-      initialResponse = try await openStream()
+      let resp = try await openStream()
+      if resp.statusCode == 401
+        || (resp.statusCode == 403 && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
+        case .automatic = client.configuration.endpointSource
+      {
+        _ = try await client.singleFlightRediscovery()
+        initialResponse = try await openStream()
+      } else {
+        initialResponse = resp
+      }
     } catch let transportError as TailscaleTransportError {
-      throw TailscaleClientError.transport(transportError)
+      if Self.isConnectStageError(transportError),
+        case .automatic = client.configuration.endpointSource
+      {
+        _ = try await client.singleFlightRediscovery()
+        do {
+          initialResponse = try await openStream()
+        } catch let retryErr as TailscaleTransportError {
+          throw TailscaleClientError.transport(retryErr)
+        }
+      } else {
+        throw TailscaleClientError.transport(transportError)
+      }
     }
 
     recordObservedDaemonVersion(from: initialResponse.headers)
@@ -659,7 +774,6 @@ public actor TailscaleClient {
     }
 
     let queue = IPNBusBoundedQueue(bounds: bounds)
-    let client = self
 
     let task = Task<Void, Never> {
       var currentStream: AsyncThrowingStream<Data, Error>? = initialResponse.body
@@ -958,7 +1072,67 @@ public actor TailscaleClient {
   func executeWithDeadline(_ request: TailscaleRequest, endpoint: String) async throws
     -> TailscaleResponse
   {
-    let configuration = self.configuration
+    try await executeWithRecovery(request, endpoint: endpoint, attempt: 0)
+  }
+
+  private enum FailurePhase {
+    case connectStage
+    case credential
+  }
+
+  static func isConnectStageError(_ error: TailscaleTransportError) -> Bool {
+    switch error {
+    case .connectionRefused, .socketNotFound:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func isRecoverableStatus(statusCode: Int, endpoint: TailscaleEndpoint) -> Bool {
+    if statusCode == 401 {
+      return true
+    }
+    if statusCode == 403 {
+      switch endpoint {
+      case .loopback, .url:
+        return true
+      case .unixSocket:
+        return false
+      }
+    }
+    return false
+  }
+
+  static func isUnixSocketEndpoint(_ endpoint: TailscaleEndpoint) -> Bool {
+    if case .unixSocket = endpoint { return true }
+    return false
+  }
+
+  private func isReplaySafe(request: TailscaleRequest, failurePhase: FailurePhase) -> Bool {
+    switch failurePhase {
+    case .connectStage:
+      // Failed before bytes were sent or connection accepted; safe to replay any request.
+      return true
+    case .credential:
+      // Daemon returned 401 or loopback 403.
+      // Idempotent requests (GET, HEAD) are always safe to replay.
+      // Mutating requests rejected with 401/403 were rejected by the daemon's auth check
+      // before executing the mutation, so replaying with refreshed token is safe.
+      // (Ambiguous transport drops like EOF/reset/timeout never reach here).
+      return true
+    }
+  }
+
+  private func executeWithRecovery(
+    _ request: TailscaleRequest,
+    endpoint: String,
+    attempt: Int
+  ) async throws -> TailscaleResponse {
+    if let inFlight = rediscoveryTask {
+      _ = try? await inFlight.value
+    }
+    let currentConfig = self.activeConfiguration
     var pending = request
     if let reason = Self.auditReason, !reason.isEmpty,
       pending.additionalHeaders["X-Tailscale-Reason"] == nil
@@ -969,17 +1143,36 @@ public actor TailscaleClient {
       pending.additionalHeaders["X-Tailscale-Reason"] =
         Data(reason.utf8).base64EncodedString()
     }
-    // The deadline closure is @Sendable; it may only capture immutable state.
     let finalRequest = pending
+
     do {
       let response = try await Self.withDeadline(
-        configuration.requestTimeout, endpoint: endpoint
+        currentConfig.requestTimeout, endpoint: endpoint
       ) {
-        try await configuration.transport.send(finalRequest, configuration: configuration)
+        try await currentConfig.transport.send(finalRequest, configuration: currentConfig)
       }
       recordObservedDaemonVersion(from: response.headers)
+
+      // Check for credential rejection (401 or loopback 403)
+      if isRecoverableStatus(statusCode: response.statusCode, endpoint: currentConfig.endpoint),
+        attempt == 0,
+        case .automatic = currentConfig.endpointSource,
+        isReplaySafe(request: finalRequest, failurePhase: .credential)
+      {
+        _ = try await singleFlightRediscovery()
+        return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
+      }
+
       return response
     } catch let transportError as TailscaleTransportError {
+      if Self.isConnectStageError(transportError),
+        attempt == 0,
+        case .automatic = currentConfig.endpointSource,
+        isReplaySafe(request: finalRequest, failurePhase: .connectStage)
+      {
+        _ = try await singleFlightRediscovery()
+        return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
+      }
       throw TailscaleClientError.transport(transportError)
     }
   }

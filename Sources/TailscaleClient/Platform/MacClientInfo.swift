@@ -469,7 +469,9 @@ import Foundation
         } else {
           reason = error.localizedDescription
         }
-        log("Failed to read token file at \(DiscoveryLog.redactedProofPath(tokenURL.path)): \(reason)")
+        log(
+          "Failed to read token file at \(DiscoveryLog.redactedProofPath(tokenURL.path)): \(reason)"
+        )
         return (tokenURL, .failure(.inaccessible(path: tokenURL.path, reason: reason)))
       }
 
