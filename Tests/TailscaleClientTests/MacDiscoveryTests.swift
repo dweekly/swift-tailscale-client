@@ -65,5 +65,125 @@ import XCTest
 
       XCTAssertNil(info.locateViaFilesystem(), "Dead candidates must never be selected")
     }
+
+    // MARK: - Standalone .pkg Discovery Tests
+
+    func testStandaloneDiscoveryWithSymlinkAndTokenFile() throws {
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
+      try "token-hex-1234567890\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { port, token in
+        port == 49275 && token == "token-hex-1234567890"
+      }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.port, 49275)
+      XCTAssertEqual(result?.token, "token-hex-1234567890")
+      XCTAssertEqual(result?.source, ipnportURL.path)
+    }
+
+    func testStandaloneDiscoveryWithFallbackIpnportToken() throws {
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "51234")
+      let tokenURL = tempDir.appendingPathComponent("ipnport.token")
+      try "fallback-token-abc\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { port, token in
+        port == 51234 && token == "fallback-token-abc"
+      }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.port, 51234)
+      XCTAssertEqual(result?.token, "fallback-token-abc")
+    }
+
+    func testStandaloneDiscoveryWithRegularFilePortFallback() throws {
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try "53412\n".write(to: ipnportURL, atomically: true, encoding: .utf8)
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-53412")
+      try "regular-file-token\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { port, token in
+        port == 53412 && token == "regular-file-token"
+      }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.port, 53412)
+      XCTAssertEqual(result?.token, "regular-file-token")
+    }
+
+    func testStandaloneDiscoverySkipsStalePortWhenProbeFails() throws {
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
+      try "token-hex-1234567890\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { _, _ in false }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNil(result, "Stale candidate that fails probe must return nil")
+
+      let inspection = info.inspectStandalone(sharedDirectory: tempDir)
+      XCTAssertEqual(inspection, .stopped(.loopback(host: "127.0.0.1", port: 49275)))
+    }
+
+    func testStandaloneDiscoveryRejectsEmptyToken() throws {
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
+      try "   \n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { _, _ in true }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNil(result, "Empty token must be rejected")
+
+      let inspection = info.inspectStandalone(sharedDirectory: tempDir)
+      XCTAssertEqual(inspection, .invalidCredentials(.loopback(host: "127.0.0.1", port: 49275)))
+    }
+
+    func testStandaloneDiscoveryReturnsNotInstalledWhenIpnportMissing() throws {
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNil(result)
+
+      let inspection = info.inspectStandalone(sharedDirectory: tempDir)
+      XCTAssertEqual(inspection, .notInstalled)
+    }
+
+    func testStandaloneDiscoveryAsync() async throws {
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "48000")
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-48000")
+      try "async-token-123\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { port, token in
+        port == 48000 && token == "async-token-123"
+      }
+
+      let result = await info.locateStandaloneAsync(sharedDirectory: tempDir)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.port, 48000)
+      XCTAssertEqual(result?.token, "async-token-123")
+    }
   }
 #endif

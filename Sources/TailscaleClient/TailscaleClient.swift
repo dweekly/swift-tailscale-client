@@ -1183,13 +1183,15 @@ public enum TailscaleClientError: Error, Sendable {
   /// The streaming event queue exceeded its configured event or memory bounds
   /// and the overflow strategy was configured to fail.
   case streamOverflow
+  /// Discovery could not locate an operational LocalAPI endpoint.
+  case discovery(LocalAPIDiscoveryError)
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
     let data: Data
     switch self {
     case .transport, .endpointUnavailable, .timeout, .peerNotFound, .missingConcurrencyToken,
-      .streamOverflow:
+      .streamOverflow, .discovery:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -1217,6 +1219,8 @@ extension TailscaleClientError: CustomStringConvertible {
     switch self {
     case .transport(let error):
       return "Transport error: \(error.description)"
+    case .discovery(let error):
+      return "LocalAPI discovery error: \(error.description)"
     case .unexpectedStatus(let code, _, let endpoint):
       let statusMessage = Self.httpStatusMessage(for: code)
       return "LocalAPI returned HTTP \(code) (\(statusMessage)) for \(endpoint)"
@@ -1336,6 +1340,8 @@ extension TailscaleClientError: LocalizedError {
     case .streamOverflow:
       return
         "The consumer was too slow to drain the IPN bus event stream. Re-fetch current state using status() and resume watching."
+    case .discovery(let error):
+      return error.recoverySuggestion
     }
   }
 }

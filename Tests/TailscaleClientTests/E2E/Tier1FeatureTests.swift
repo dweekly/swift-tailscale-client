@@ -942,28 +942,108 @@ final class Tier1FeatureTests: XCTestCase {
   // MARK: - FEAT-18: Native macOS Standalone .pkg App Discovery
 
   func test_feat18_standaloneDiscoveryReadsSymlinkPath() throws {
-    let symlinkPath = "/Library/Tailscale/ipnport"
-    XCTAssertEqual(symlinkPath, "/Library/Tailscale/ipnport")
+    #if os(macOS)
+      let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("feat18-\(UUID().uuidString)", isDirectory: true)
+      try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: tempDir) }
+
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "49275")
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-49275")
+      try "token-standalone-abc\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { port, token in
+        port == 49275 && token == "token-standalone-abc"
+      }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.port, 49275)
+      XCTAssertEqual(result?.token, "token-standalone-abc")
+      XCTAssertEqual(result?.source, ipnportURL.path)
+    #else
+      XCTAssertTrue(true)
+    #endif
   }
 
   func test_feat18_standaloneDiscoveryReadsTokenFile() throws {
-    let tokenPath = "/Library/Tailscale/ipnport.token"
-    XCTAssertEqual(tokenPath, "/Library/Tailscale/ipnport.token")
+    #if os(macOS)
+      let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("feat18-token-\(UUID().uuidString)", isDirectory: true)
+      try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: tempDir) }
+
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "52140")
+      let tokenURL = tempDir.appendingPathComponent("ipnport.token")
+      try "token-from-ipnport-file\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      var info = MacClientInfo()
+      info.standaloneDirectoryOverride = tempDir
+      info.probeOverride = { port, token in
+        port == 52140 && token == "token-from-ipnport-file"
+      }
+
+      let result = info.locateStandalone(sharedDirectory: tempDir)
+      XCTAssertNotNil(result)
+      XCTAssertEqual(result?.port, 52140)
+      XCTAssertEqual(result?.token, "token-from-ipnport-file")
+    #else
+      XCTAssertTrue(true)
+    #endif
   }
 
   func test_feat18_standaloneDiscoveryResolvesLoopbackPort() throws {
-    let port = 41112
-    XCTAssertGreaterThan(port, 1024)
+    #if os(macOS)
+      let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("feat18-loopback-\(UUID().uuidString)", isDirectory: true)
+      try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: tempDir) }
+
+      let ipnportURL = tempDir.appendingPathComponent("ipnport")
+      try FileManager.default.createSymbolicLink(atPath: ipnportURL.path, withDestinationPath: "41112")
+      let tokenURL = tempDir.appendingPathComponent("sameuserproof-41112")
+      try "token-41112\n".write(to: tokenURL, atomically: true, encoding: .utf8)
+
+      let discovery = LocalAPIDiscovery(
+        environment: [:],
+        fileExists: { _ in false },
+        allowMacOSAppStoreDiscovery: false,
+        standaloneDirectoryOverride: tempDir
+      )
+
+      let result = discovery.discover()
+      XCTAssertEqual(result.endpoint, .loopback(host: "127.0.0.1", port: 41112))
+      XCTAssertEqual(result.authToken, "token-41112")
+    #else
+      XCTAssertTrue(true)
+    #endif
   }
 
   func test_feat18_standaloneDiscoveryDoesNotTriggerTCC() throws {
-    let triggersTCC = false
-    XCTAssertFalse(triggersTCC)
+    // Standalone discovery is enabled by default with allowMacOSAppStoreDiscovery: false
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      allowMacOSAppStoreDiscovery: false
+    )
+    XCTAssertNotNil(discovery)
   }
 
   func test_feat18_standaloneDiscoveryHandlesMissingSymlinkGracefully() throws {
-    let exists = FileManager.default.fileExists(atPath: "/nonexistent/path/ipnport")
-    XCTAssertFalse(exists)
+    #if os(macOS)
+      let info = MacClientInfo()
+      let missingDir = URL(fileURLWithPath: "/nonexistent/path/for/test")
+      let result = info.locateStandalone(sharedDirectory: missingDir)
+      XCTAssertNil(result)
+      let inspection = info.inspectStandalone(sharedDirectory: missingDir)
+      XCTAssertEqual(inspection, .notInstalled)
+    #else
+      XCTAssertTrue(true)
+    #endif
   }
 
   // MARK: - FEAT-19: Opt-In macOS App Store GUI Discovery
@@ -993,55 +1073,83 @@ final class Tier1FeatureTests: XCTestCase {
   }
 
   func test_feat19_appStoreDiscoveryHandlesPermissionDenied() throws {
-    let error = TailscaleClientError.permissionDenied(body: Data(), endpoint: "discovery")
-    guard case .permissionDenied = error else {
-      XCTFail()
-      return
-    }
+    let error = LocalAPIDiscoveryError.inaccessible(
+      path: "/Users/user/Library/Group Containers",
+      reason: "Operation not permitted"
+    )
+    XCTAssertEqual(error, .inaccessible(path: "/Users/user/Library/Group Containers", reason: "Operation not permitted"))
+    XCTAssertNotNil(error.recoverySuggestion)
   }
 
   func test_feat19_appStoreDiscoveryFallsBackWhenAppStoreNotFound() throws {
     let discovery = LocalAPIDiscovery(
       environment: [:],
       fileExists: { _ in false },
-      allowMacOSAppStoreDiscovery: false
+      allowMacOSAppStoreDiscovery: true
     )
-    XCTAssertNotNil(discovery)
+    let result = discovery.discover()
+    XCTAssertNotNil(result)
   }
 
   // MARK: - FEAT-20: Asynchronous Discovery Entry Point
 
   func test_feat20_discoverAsyncExecutesNonBlockingProbe() async throws {
-    let discovery = LocalAPIDiscovery()
-    XCTAssertNotNil(discovery)
+    let discovery = LocalAPIDiscovery(environment: [
+      "TAILSCALE_LOCALAPI_URL": "http://127.0.0.1:41112"
+    ])
+    let result = try await discovery.discoverAsync()
+    XCTAssertEqual(result.endpoint, .url(URL(string: "http://127.0.0.1:41112")!))
   }
 
   func test_feat20_discoverAsyncReturnsResolvedEndpoint() async throws {
-    let endpoint = TailscaleEndpoint.url(URL(string: "http://127.0.0.1:41112")!)
-    XCTAssertNotNil(endpoint)
+    let discovery = LocalAPIDiscovery(environment: [
+      "TAILSCALE_LOCALAPI_SOCKET": "/var/run/tailscaled.socket"
+    ])
+    let result = try await discovery.discoverAsync()
+    XCTAssertEqual(result.endpoint, .unixSocket(path: "/var/run/tailscaled.socket"))
   }
 
   func test_feat20_discoverAsyncHonorsTaskCancellation() async throws {
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in
+        Thread.sleep(forTimeInterval: 0.1)
+        return false
+      }
+    )
     let task = Task {
-      try Task.checkCancellation()
-      return "done"
+      try await discovery.discoverAsync()
     }
     task.cancel()
-    _ = await task.result
-    XCTAssertTrue(task.isCancelled)
+    do {
+      _ = try await task.value
+      XCTFail("Expected cancellation")
+    } catch {
+      XCTAssertTrue(task.isCancelled)
+    }
   }
 
   func test_feat20_discoverAsyncHandlesAllCandidatesFailing() async throws {
-    let notFound = TailscaleClientError.endpointUnavailable(endpoint: "localapi", feature: nil)
-    guard case .endpointUnavailable = notFound else {
-      XCTFail()
-      return
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      allowMacOSAppStoreDiscovery: false,
+      standaloneDirectoryOverride: URL(fileURLWithPath: "/nonexistent")
+    )
+    do {
+      _ = try await discovery.discoverAsync()
+      XCTFail("Expected LocalAPIDiscoveryError.notInstalled")
+    } catch let error as LocalAPIDiscoveryError {
+      XCTAssertEqual(error, .notInstalled)
     }
   }
 
-  func test_feat20_discoverAsyncRespectsEnvironmentOverrides() throws {
-    let envVar = "TAILSCALE_LOCALAPI_SOCKET"
-    XCTAssertEqual(envVar, "TAILSCALE_LOCALAPI_SOCKET")
+  func test_feat20_discoverAsyncRespectsEnvironmentOverrides() async throws {
+    let discovery = LocalAPIDiscovery(environment: [
+      "TS_LOCALAPI_SOCKET": "/custom/path.sock"
+    ])
+    let result = try await discovery.discoverAsync()
+    XCTAssertEqual(result.endpoint, .unixSocket(path: "/custom/path.sock"))
   }
 
   // MARK: - FEAT-21: EndpointSource Tracking (.automatic vs .pinned)

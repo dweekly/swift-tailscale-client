@@ -161,6 +161,10 @@ final class IPNBusStreamingTests: XCTestCase {
       receivedEvents.append(event)
     }
 
+    for _ in 0..<20 {
+      if await tracker.called { break }
+      try? await Task.sleep(nanoseconds: 10_000_000)
+    }
     let callbackCalled = await tracker.called
     XCTAssertTrue(callbackCalled, "onUndecodableLine callback must be invoked on invalid JSON")
 

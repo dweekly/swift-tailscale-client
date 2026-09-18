@@ -87,6 +87,13 @@ public struct StreamRetryPolicy: Sendable, Equatable {
       case .permissionDenied, .missingConcurrencyToken, .preconditionFailed, .endpointUnavailable,
         .peerNotFound, .streamOverflow, .decoding:
         return .fatal
+      case .discovery(let discoveryError):
+        switch discoveryError {
+        case .notInstalled, .inaccessible, .invalidCredentials:
+          return .fatal
+        case .stopped:
+          return .retryable
+        }
       case .unexpectedStatus(let code, _, _):
         if code == 401 || code == 403 || code == 404 {
           return .fatal
