@@ -15,6 +15,7 @@ Emits structured JSON telemetry conforming to schema 1.0.0.
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 import pathlib
@@ -277,19 +278,17 @@ class SyntheticFaultServer:
 # Swift Executable Resolution
 # ============================================================================
 
-def get_swift_binary_path() -> str:
-    """Locates or builds the tailscale-swift executable."""
-    try:
-        bin_path = subprocess.check_output(["swift", "build", "--show-bin-path"], text=True).strip()
-        candidate = os.path.join(bin_path, "tailscale-swift")
-        if os.path.exists(candidate):
-            return candidate
-    except Exception:
-        pass
-    print("Building tailscale-swift product...")
+def build_and_identify_swift_binary() -> Tuple[str, str]:
+    """Compiles a fresh tailscale-swift executable and returns (path, sha256)."""
+    print("Compiling fresh tailscale-swift product...")
     subprocess.check_call(["swift", "build", "--product", "tailscale-swift"])
     bin_path = subprocess.check_output(["swift", "build", "--show-bin-path"], text=True).strip()
-    return os.path.join(bin_path, "tailscale-swift")
+    candidate = os.path.join(bin_path, "tailscale-swift")
+    if not os.path.exists(candidate):
+        raise FileNotFoundError(f"Built binary not found at {candidate}")
+    with open(candidate, "rb") as f:
+        sha256 = hashlib.sha256(f.read()).hexdigest()
+    return candidate, sha256
 
 
 # ============================================================================
@@ -303,7 +302,7 @@ def run_soak_test(
     target: str,
     output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    swift_bin = get_swift_binary_path()
+    swift_bin, binary_sha256 = build_and_identify_swift_binary()
 
     temp_dir = None
     server = None
@@ -407,9 +406,14 @@ def run_soak_test(
     peak_sockets = baseline_sockets
     rss_samples = [baseline_rss_kb]
 
+    premature_exit = False
+    exit_code = None
     while time.time() - start_time < duration_seconds:
         now = time.time()
-        if proc.poll() is not None:
+        ret = proc.poll()
+        if ret is not None:
+            premature_exit = True
+            exit_code = ret
             break
 
         # Check periodic sampling
@@ -475,6 +479,10 @@ def run_soak_test(
             plateau_reached = False
 
     violations: List[str] = []
+    if premature_exit:
+        violations.append(f"Child process exited prematurely after {int(elapsed_total)}s with exit code {exit_code}")
+    if not plateau_reached:
+        violations.append("Memory failed to reach stable plateau (RSS drift exceeded threshold)")
     if net_fd_leak > 1:
         violations.append(f"Detected {net_fd_leak} leaked file descriptors")
     if net_socket_leak > 1:
@@ -489,6 +497,8 @@ def run_soak_test(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "process": {
             "name": "tailscale-swift",
+            "path": swift_bin,
+            "sha256": binary_sha256,
             "pid": child_pid,
             "platform": platform.system(),
         },
@@ -513,11 +523,12 @@ def run_soak_test(
             "peak_rss_kb": peak_rss_kb,
             "final_rss_kb": final_rss_kb,
             "plateau_reached": plateau_reached,
-            "queue_event_high_water_mark": min(256, total_events),
+            "queue_event_high_water_mark": None,
             "queue_event_ceiling": 256,
-            "queue_byte_high_water_mark": min(16777216, total_bytes_received),
+            "queue_byte_high_water_mark": None,
             "queue_byte_ceiling": 16777216,
-            "queue_ceiling_breached": False,
+            "queue_ceiling_breached": None,
+            "notes": "Internal actor queue metrics are unmeasured via external stdout event stream",
         },
         "reconnect_and_backoff": {
             "disconnect_count": disconnect_count,
@@ -529,8 +540,9 @@ def run_soak_test(
         "state_gap_recovery": {
             "total_state_gaps": total_state_gaps,
             "by_reason": state_gaps_by_reason,
-            "baseline_refreshes_executed": reconnect_count,
-            "cache_inconsistencies": 0,
+            "baseline_refreshes_executed": None,
+            "cache_inconsistencies": None,
+            "notes": "Baseline refresh execution and cache consistency are internal client behaviors unmeasured externally",
         },
         "resource_leak_audit": {
             "baseline_open_fds": baseline_fds,
@@ -557,10 +569,9 @@ def run_soak_test(
 
     print(f"\n=== Soak Verification Results ===")
     print(f"Verdict: {'PASSED' if passed else 'FAILED'}")
-    print(f"Process: {report['process']['name']} (PID: {child_pid})")
+    print(f"Process: {report['process']['name']} (PID: {child_pid}, SHA-256: {binary_sha256[:12]}...)")
     print(f"Total Events: {total_events} ({events_per_sec} evt/s)")
     print(f"Memory RSS: Baseline={baseline_rss_kb} KB, Peak={peak_rss_kb} KB, Final={final_rss_kb} KB (Plateau={plateau_reached})")
-    print(f"Queue Bounds: Peak Events={report['memory_bounds']['queue_event_high_water_mark']}/256, Peak Bytes={report['memory_bounds']['queue_byte_high_water_mark']}/16MB")
     print(f"Resource Leaks: Net FDs={net_fd_leak}, Net Sockets={net_socket_leak}")
     print(f"State Gaps Handled: {total_state_gaps} (Reconnected={state_gaps_by_reason['reconnected']}, Overflow={state_gaps_by_reason['buffer_overflow']})")
     print(f"Report saved to: {output_path}")
