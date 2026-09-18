@@ -82,7 +82,7 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 - [x] **G6 Release gates:** required daemon lanes, exact-tag-commit evidence, verified repository rulesets, annotated tags, staged/smoke-tested release assets, failure-path rehearsal. (M2)
 - [x] **G7 API and docs:** final naming/surface audit, removed `addProfile()`, compiler source-compatibility baseline, 100% authored DocC documentation, compiled examples and migration guide. (M3)
 - [x] **G8 Consumers and maintenance:** NWX and second independent consumer, external technical review record, backup release owner, DCO/licensing, maintenance rehearsal automation. (M3)
-- [ ] **G9 Release candidate:** consumer evaluation and soak reports, no unresolved blocking defects, all required checks on the final release commit, complete distribution rehearsal.
+- [x] **G9 Release candidate:** consumer evaluation and soak reports, no unresolved blocking defects, all required checks on the final release commit, complete distribution rehearsal.
 
 Retain the unofficial-status disclaimer and explain the deferred stable-gap ledger in 1.0 release notes. Keep the public full-preferences replacement carrier internal unless lossless replacement semantics are established.
 

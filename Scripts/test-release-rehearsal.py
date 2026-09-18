@@ -609,7 +609,7 @@ class TestRunner:
         print("\n--- Genuine Evidence Collection & Remediation Tests ---")
 
         # 1. _collect_docs_and_api executes real verification scripts
-        agg = EvidenceAggregator(tag="v0.12.0")
+        agg = EvidenceAggregator(tag="v1.0.0")
         docs_api = agg._collect_docs_and_api(skip_local_checks=False)
         self.log_result(
             "_collect_docs_and_api runs real docs scripts and reports release_consistency passed",
@@ -629,7 +629,7 @@ class TestRunner:
 
         # 2. _collect_assets rejects missing artifacts without synthesizing fake values
         with tempfile.TemporaryDirectory() as empty_artifacts:
-            agg_empty = EvidenceAggregator(tag="v0.12.0", artifacts_dir=pathlib.Path(empty_artifacts))
+            agg_empty = EvidenceAggregator(tag="v1.0.0", artifacts_dir=pathlib.Path(empty_artifacts))
             assets = agg_empty._collect_assets()
             self.log_result(
                 "_collect_assets marks missing files as build_status missing rather than fabricating",
@@ -656,7 +656,7 @@ class TestRunner:
                 ]
             }
             ci_data_file.write_text(json.dumps(ci_payload))
-            agg_ci = EvidenceAggregator(tag="v0.12.0", ci_data_path=ci_data_file)
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
             lanes = agg_ci._collect_lanes(skip_local_checks=False)
             self.log_result(
                 "_collect_lanes parses check-runs into lane statuses",

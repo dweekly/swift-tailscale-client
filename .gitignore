@@ -11,3 +11,4 @@ DerivedData/
 *~
 .claude/worktrees/
 __pycache__/
+.agents/

@@ -36,7 +36,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 ## Installation
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.12.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.

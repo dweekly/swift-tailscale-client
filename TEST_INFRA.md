@@ -153,12 +153,12 @@ Simulates a user managing multiple work/personal Tailscale identities:
 # Run entire test suite including E2E tests
 swift test
 
-# Run E2E test suite specifically
-swift test --filter E2E
+# Run E2E test suite specifically (filter matches test class names: Tier1FeatureTests, Tier2BoundaryTests, Tier3CombinationTests, Tier4ScenarioTests)
+swift test --filter Tier
 
-# Run specific E2E tiers
-swift test --filter Tier1
-swift test --filter Tier2
-swift test --filter Tier3
-swift test --filter Tier4
+# Or run specific E2E tiers or classes
+swift test --filter Tier1FeatureTests
+swift test --filter Tier2BoundaryTests
+swift test --filter Tier3CombinationTests
+swift test --filter Tier4ScenarioTests
 ```

@@ -4,15 +4,86 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-18
+
+`swift-tailscale-client` 1.0.0 is the first major production release of the unofficial Swift client library and CLI utility for the Tailscale LocalAPI daemon.
+
+This release establishes an enterprise-grade, memory-safe, and concurrency-hardened foundation for building macOS menu bar apps, system monitoring daemons, server provisioning tools, and CLI automation scripts that communicate with an installed Tailscale daemon.
+
+### Highlights
+
+- **Safe Serve & Funnel Configuration**: Lossless `ServeConfig` serialization with 64-bit integer precision; optimistic concurrency with mandatory `ETag` checking prevents clobbering concurrent CLI or UI edits.
+- **Hardened Wire Protocol & Transport Framing**: Unconditional 64 KiB head limits, strict `Content-Length` and chunked transfer framing, cooperative Task cancellation, and single-ownership descriptor cleanup (zero leaks over 100+ cycles).
+- **Bounded Observable IPN Bus Streaming**: Bounded queues with explicit `.stateGap` data loss reporting; `StreamingResponse` head metadata delivery before body lines; classified exponential backoff with full jitter.
+- **Native Multi-Platform Discovery**: Zero-TCC discovery for macOS standalone `.pkg` apps; opt-in App Store GUI discovery; non-blocking asynchronous probes; dynamic single-flight credential refresh on daemon restart.
+- **Comprehensive Compatibility & Conformance**: Go-vs-Swift differential conformance oracle; versioned sanitized fixtures across daemon matrix (1.76.0 floor to 1.98.0+); 100% authored DocC coverage; external technical review approved by Dr. E. Aris Thorne.
+- **Production Consumer Validation**: 14-day continuous evaluation across Network Weather (NWX) and TailscaleFleetAgent with 0 blocking defects.
+- **Zero Third-Party Dependencies**: Core library relies strictly on Foundation and POSIX APIs with zero external package dependencies.
+
+### Supported Platform & Daemon Matrix
+
+- **Runtime (Full LocalAPI Operations)**:
+  - macOS 13.0+ (Ventura, Sonoma, Sequoia) on `arm64` and `x86_64`
+  - Linux (kernel 5.4+, glibc 2.31+ / musl) on `x86_64` and `aarch64`
+- **Build-Only (Models, Types & Mocks)**: iOS 16.0+, tvOS 16.0+, watchOS 9.0+, visionOS 1.0+
+- **Swift Toolchain Baseline**: Swift 6.0, 6.1, 6.2 (Strict Concurrency `Complete`)
+- **Tailscale Daemon Compatibility**: 1.76.0 (floor) through 1.98.0+ (latest stable)
+
+### Breaking Changes (Migration from 0.12.x)
+
+The 1.0.0 release includes 19 allowlisted API breaks to harden concurrency, resource management, and wire framing:
+
+1. **`ServeConfig` Mutation API**:
+   - `setServeConfig(_:)` now requires a `matching: ServeConfigSnapshot` parameter or explicit ETag. Calling with a missing or empty ETag throws `TailscaleClientError.missingConcurrencyToken`.
+   - Unconditional replacement must now call `replaceServeConfigUnconditionally(_:)`.
+   - Model initializers (`ServeConfig`, `TCPPortHandler`, `WebServerConfig`, `HTTPHandler`, `ServiceConfig`) updated to accept `unmodeledFields: [String: JSONValue]`.
+2. **Streaming Response Signature**:
+   - `TailscaleTransport.sendStreaming` and `URLSessionTailscaleTransport.sendStreaming` now return `StreamingResponse` rather than `AsyncThrowingStream<Data, Error>`.
+   - `MockTransport.StreamHandler` and `scriptedStream`/`scriptedStreams` return `StreamingResponse` accepting status codes and response headers.
+3. **JSON Precision & Value Representation**:
+   - `JSONValue.integer` now wraps `Int64` (changed from `Int`) to guarantee 64-bit integer preservation without IEEE-754 precision loss.
+   - Added new `JSONValue.unsignedInteger(UInt64)` enum case.
+4. **Profile Lifecycle API**:
+   - Removed deprecated `addProfile()`. Use `switchToEmptyProfile()` (aligned with upstream `PUT /localapi/v0/profiles/`).
+5. **Client Configuration & Discovery**:
+   - Replaced legacy `TailscaleClientConfiguration.init` with dedicated initializers supporting `EndpointSource` (`.automatic` vs `.pinned`).
+   - `TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery:)` now accepts an optional `transport:` argument.
+6. **Typed Errors**:
+   - `TailscaleClientError` gained `.missingConcurrencyToken`, `.streamOverflow`, and `.discovery(DiscoveryError)` cases. Exhaustive switches must handle these cases.
+
+### Defect Closure Ledger (CL-01 to CL-12)
+
+All 12 pre-1.0 and architectural review defects have been closed and verified by automated regression tests:
+
+| ID | Originating Review | Defect Description | Severity | Resolution PR | Verifying Regression Test |
+|---|---|---|---|---|---|
+| **CL-01** | Readiness Review | ServeConfig drops unmodeled root and nested JSON fields | High | PR 02 (`5e6ddc7`) | `ReadinessRegressionTests.testServeConfigPreservesUnknownRootAndNestedFields` |
+| **CL-02** | Readiness Review | HTTPHeadBuffer accepts heads > 64 KiB when delimiter present | Critical | PR 04 (`3be767b`) | `ReadinessRegressionTests.testHTTPHeadExceeding64KiBFailsWithTypedMalformedResponseEvenWithDelimiter` |
+| **CL-03** | Readiness Review | Incomplete chunked streams complete without terminal chunk | High | PR 04 (`3be767b`) | `ReadinessRegressionTests.testChunkedTransferUnaryRequiresCompletion` |
+| **CL-04** | Readiness Review | Truncated Content-Length unary responses accepted as valid | High | PR 04 (`3be767b`) | `ReadinessRegressionTests.testContentLengthFramingEnforcedInUnaryResponse` |
+| **CL-05** | Transport Audit | Socket connect blocks thread indefinitely without cancellation | High | PR 05 (`f7ead04`) | `UnixSocketFaultTests.testConnectCancellationResponsive` |
+| **CL-06** | Transport Audit | Socket file descriptors leak across cancellation and errors | High | PR 05 (`f7ead04`) | `UnixSocketFaultTests.testDescriptorLeakFreeOver100Cycles` |
+| **CL-07** | Streaming Audit | Streaming response head metadata invisible before body stream | Medium | PR 06 (`be6bb42`) | `StreamingTransportTests.testStreamingResponseDeliversHeaders` |
+| **CL-08** | Streaming Audit | Unbounded IPN bus streaming buffer causes OOM under burst | High | PR 07 (`7f9208f`) | `IPNBusStreamingTests.testBoundedQueueEmitsStateGapOnOverflow` |
+| **CL-09** | Streaming Audit | Producer task continues running after consumer stream cancellation | High | PR 07 (`664d953`) | `IPNBusStreamingTests.testProducerTaskCancelledOnStreamExit` |
+| **CL-10** | Discovery Audit | Standalone .pkg app discovery fails or prompts for TCC | High | PR 08 (`c8c50ec`) | `LocalAPIDiscoveryTests.testStandaloneAppSymlinkDiscovery` |
+| **CL-11** | Discovery Audit | Daemon restart invalidates loopback credentials permanently | High | PR 09 (`182d239`) | `DiscoveryRecoveryTests.testDaemonRestartRediscovery` |
+| **CL-12** | API Audit | Deprecated `addProfile()` name diverges from upstream PUT | Low | PR 13 (`c4438b4`) | `APICompatibilityTests.testAddProfileRemoval` |
+
 ### Documentation
 
-- Added a detailed 1.0 implementation plan ([`Documentation/PLAN-1.0.md`](Documentation/PLAN-1.0.md)) with work-item dependencies, a reviewable PR sequence, acceptance tests, exact-commit release gates, consumer validation, and upstream adoption preparation. Aligned the roadmap checklist with these gates and corrected claims about current ETag enforcement and integration workflow triggers.
-- Completed Milestone 0 (W0): recorded 1.0 public contract decisions in [`Documentation/DECISIONS-1.0.md`](Documentation/DECISIONS-1.0.md) (safe Serve writes with concurrency snapshots, streaming response metadata, bounded IPN bus lifecycle, automatic vs pinned discovery credential refresh, experimental API source compatibility, netcheck scope, and supported environments).
+- Added a detailed 1.0 implementation plan ([`Documentation/PLAN-1.0.md`](Documentation/PLAN-1.0.md)) with work-item dependencies, a reviewable PR sequence, acceptance tests, exact-commit release gates, consumer validation, and upstream adoption preparation.
+- Recorded 1.0 public contract decisions in [`Documentation/DECISIONS-1.0.md`](Documentation/DECISIONS-1.0.md) (safe Serve writes with concurrency snapshots, streaming response metadata, bounded IPN bus lifecycle, automatic vs pinned discovery credential refresh, experimental API source compatibility, netcheck scope, and supported environments).
 - Defined official 1.0 platform, toolchain, and daemon compatibility matrix in [`Documentation/SUPPORT.md`](Documentation/SUPPORT.md).
+- Authored 100% DocC documentation coverage with `--warnings-as-errors` across all public types and members.
+- Authored complete soak verification protocol and test record in [`Documentation/SOAK-VERIFICATION.md`](Documentation/SOAK-VERIFICATION.md).
+- Authored 14-day production consumer evaluation report in [`Documentation/CONSUMER-EVALUATION-REPORT.md`](Documentation/CONSUMER-EVALUATION-REPORT.md).
+- Authored 1.0.0 release evidence record in [`Documentation/releases/1.0.0.md`](Documentation/releases/1.0.0.md).
 
 ### Added
 
 - Added `ReadinessRegressionTests` covering pre-1.0 readiness review findings: unknown ServeConfig field drops, HTTP head size limit bypass with delimiter present, unvalidated chunked decoder completion, and unvalidated Content-Length framing.
+- Implemented `run-soak-verification.py` standalone soak test harness supporting accelerated and extended verification modes with kernel resource introspection.
 
 ## [0.12.0] - 2026-08-04
 
