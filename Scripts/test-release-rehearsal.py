@@ -651,8 +651,13 @@ class TestRunner:
                     {"name": "Test on Linux", "status": "completed", "conclusion": "success", "output": {"text": "142 executed"}},
                     {"name": "Docs consistency", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
                     {"name": "DocC (strict)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
-                    {"name": "Build platforms", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
-                    {"name": "Integration (Linux)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Build (iOS)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "Build (tvOS)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "Build (watchOS)", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                    {"name": "Integration Linux (supported-floor)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Integration Linux (intermediate-lts)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Integration Linux (previous-stable)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Integration Linux (stable)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
                 ]
             }
             ci_data_file.write_text(json.dumps(ci_payload))
@@ -667,6 +672,12 @@ class TestRunner:
                 "_collect_lanes reports missing lane as missing when absent from CI check-runs",
                 lanes.get("test_tsan", {}).get("status") == "missing",
                 f"test_tsan lane: {lanes.get('test_tsan')}"
+            )
+            self.log_result(
+                "_collect_lanes passes full platform and integration matrix",
+                lanes.get("build_platforms", {}).get("status") == "passed" and
+                lanes.get("integration_linux_headscale", {}).get("status") == "passed",
+                f"build_platforms: {lanes.get('build_platforms')}, integration: {lanes.get('integration_linux_headscale')}"
             )
 
         # 4. _collect_lanes rejects test lane as unverified if test telemetry is missing
@@ -703,6 +714,77 @@ class TestRunner:
                 "_collect_lanes detects incomplete platform matrix when watchOS is missing",
                 lanes.get("build_platforms", {}).get("status") == "missing",
                 f"build_platforms lane: {lanes.get('build_platforms')}"
+            )
+
+        # 6. Rejects aggregate name shortcut for build_platforms
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data_aggregate_platforms.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Build Platforms", "status": "completed", "conclusion": "success", "output": {"text": "passed"}},
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes rejects single 'Build Platforms' aggregate shortcut",
+                lanes.get("build_platforms", {}).get("status") == "missing",
+                f"build_platforms lane: {lanes.get('build_platforms')}"
+            )
+
+        # 7. Rejects aggregate name shortcut for integration matrix
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data_aggregate_integration.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Integration (Linux)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes rejects single 'Integration (Linux)' aggregate shortcut",
+                lanes.get("integration_linux_headscale", {}).get("status") == "missing",
+                f"integration lane: {lanes.get('integration_linux_headscale')}"
+            )
+
+        # 8. Rejects unrecognized track name like experimental
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data_experimental_track.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Hermetic integration (tailscaled experimental)", "status": "completed", "conclusion": "success", "output": {"text": "24 executed"}},
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes rejects unrecognized experimental daemon track",
+                lanes.get("integration_linux_headscale", {}).get("status") == "missing",
+                f"integration lane: {lanes.get('integration_linux_headscale')}"
+            )
+
+        # 9. Rejects incomplete telemetry across tracks (e.g. missing count on stable)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ci_data_file = pathlib.Path(tmpdir) / "ci_data_missing_track_telemetry.json"
+            ci_payload = {
+                "check_runs": [
+                    {"name": "Integration Linux (supported-floor)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Integration Linux (intermediate-lts)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Integration Linux (previous-stable)", "status": "completed", "conclusion": "success", "output": {"text": "18 executed"}},
+                    {"name": "Integration Linux (stable)", "status": "completed", "conclusion": "success", "output": {"text": "No tests run"}},
+                ]
+            }
+            ci_data_file.write_text(json.dumps(ci_payload))
+            agg_ci = EvidenceAggregator(tag="v1.0.0", ci_data_path=ci_data_file)
+            lanes = agg_ci._collect_lanes(skip_local_checks=False)
+            self.log_result(
+                "_collect_lanes marks integration unverified if any required track lacks telemetry",
+                lanes.get("integration_linux_headscale", {}).get("status") == "unverified",
+                f"integration lane: {lanes.get('integration_linux_headscale')}"
             )
 
 

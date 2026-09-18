@@ -645,10 +645,8 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
             for cr in matching_runs:
                 name_lower = cr.get("name", "").lower()
                 for p in ["ios", "tvos", "watchos"]:
-                    if f"({p})" in name_lower or f"build {p}" in name_lower:
+                    if f"({p})" in name_lower or f"build {p}" in name_lower or f"build_{p}" in name_lower:
                         found_platforms.add(p)
-                if "build platforms" in name_lower or "build_platforms" in name_lower:
-                    found_platforms.update(["ios", "tvos", "watchos"])
             missing_platforms = {"ios", "tvos", "watchos"} - found_platforms
             if missing_platforms:
                 status = "missing"
@@ -657,18 +655,33 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
         # Explicit track validation for hermetic integration matrix
         if lane_id == "integration_linux_headscale":
             found_tracks = set()
+            track_telemetry = {}
             for cr in matching_runs:
                 name_lower = cr.get("name", "").lower()
+                matched_track = None
                 for t in ["supported-floor", "intermediate-lts", "previous-stable", "stable"]:
-                    if t in name_lower:
+                    pattern = r"(?<![a-zA-Z0-9_-])" + re.escape(t) + r"(?![a-zA-Z0-9_-])"
+                    if re.search(pattern, name_lower):
                         found_tracks.add(t)
-                if "integration (linux)" in name_lower or "integration_linux" in name_lower:
-                    found_tracks.update(["supported-floor", "intermediate-lts", "previous-stable", "stable"])
+                        matched_track = t
+                        break
+                if matched_track:
+                    out = cr.get("output") or {}
+                    text = f"{out.get('title') or ''} {out.get('summary') or ''} {out.get('text') or ''}"
+                    m_exec = re.search(r"(\d+)\s+(?:tests?\s+)?(?:executed|passed|run)", text, re.IGNORECASE)
+                    exec_count = int(m_exec.group(1)) if m_exec else 0
+                    track_telemetry[matched_track] = track_telemetry.get(matched_track, 0) + exec_count
+
             required_tracks = {"supported-floor", "intermediate-lts", "previous-stable", "stable"}
-            if found_tracks and (required_tracks - found_tracks):
-                missing_tracks = required_tracks - found_tracks
+            missing_tracks = required_tracks - found_tracks
+            if not found_tracks or missing_tracks:
                 status = "missing"
                 error_msg = f"Incomplete integration matrix: missing required daemon track(s) {sorted(missing_tracks)}."
+            else:
+                unverified_tracks = [t for t in required_tracks if track_telemetry.get(t, 0) == 0]
+                if unverified_tracks:
+                    status = "unverified"
+                    error_msg = f"Missing test execution telemetry for required track(s) {sorted(unverified_tracks)}."
 
         total_executed = 0
         total_failures = 0
