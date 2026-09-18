@@ -4,20 +4,20 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-09-18
+## [1.0.0] - Unreleased Candidate
 
-`swift-tailscale-client` 1.0.0 is the first major production release of the unofficial Swift client library and CLI utility for the Tailscale LocalAPI daemon.
+`swift-tailscale-client` 1.0.0 is the upcoming major production release of the unofficial Swift client library and CLI utility for the Tailscale LocalAPI daemon.
 
-This release establishes an enterprise-grade, memory-safe, and concurrency-hardened foundation for building macOS menu bar apps, system monitoring daemons, server provisioning tools, and CLI automation scripts that communicate with an installed Tailscale daemon.
+This release candidate establishes an enterprise-grade, memory-safe, and concurrency-hardened foundation for building macOS menu bar apps, system monitoring daemons, server provisioning tools, and CLI automation scripts that communicate with an installed Tailscale daemon. Final release verification and gate remediation are actively in progress.
 
 ### Highlights
 
-- **Safe Serve & Funnel Configuration**: Lossless `ServeConfig` serialization with 64-bit integer precision; optimistic concurrency with mandatory `ETag` checking prevents clobbering concurrent CLI or UI edits.
-- **Hardened Wire Protocol & Transport Framing**: Unconditional 64 KiB head limits, strict `Content-Length` and chunked transfer framing, cooperative Task cancellation, and single-ownership descriptor cleanup (zero leaks over 100+ cycles).
+- **Safe Serve & Funnel Configuration**: Lossless `ServeConfig` serialization with 64-bit integer precision; optimistic concurrency with mandatory `ETag` checking prevents clobbering concurrent CLI or UI edits. Target binding validation in progress.
+- **Hardened Wire Protocol & Transport Framing**: Unconditional 64 KiB head limits, strict `Content-Length` and chunked transfer framing, cooperative Task cancellation, and single-ownership descriptor cleanup (zero leaks over 100+ cycles). Lower-layer transport memory bounds in progress.
 - **Bounded Observable IPN Bus Streaming**: Bounded queues with explicit `.stateGap` data loss reporting; `StreamingResponse` head metadata delivery before body lines; classified exponential backoff with full jitter.
 - **Native Multi-Platform Discovery**: Zero-TCC discovery for macOS standalone `.pkg` apps; opt-in App Store GUI discovery; non-blocking asynchronous probes; dynamic single-flight credential refresh on daemon restart.
-- **Comprehensive Compatibility & Conformance**: Go-vs-Swift differential conformance oracle; versioned sanitized fixtures across daemon matrix (1.76.0 floor to 1.98.0+); 100% authored DocC coverage; external technical review approved by Dr. E. Aris Thorne.
-- **Production Consumer Validation**: 14-day continuous evaluation across Network Weather (NWX) and TailscaleFleetAgent with 0 blocking defects.
+- **Compatibility & Conformance**: Go-vs-Swift differential conformance oracle; versioned sanitized fixtures across daemon matrix (1.76.0 floor to 1.98.0+); 100% authored DocC coverage.
+- **In-Tree Consumer Simulation**: Validated across simulated Network Weather (NWX) and TailscaleFleetAgent test suites using public APIs with zero `@testable` imports.
 - **Zero Third-Party Dependencies**: Core library relies strictly on Foundation and POSIX APIs with zero external package dependencies.
 
 ### Supported Platform & Daemon Matrix
@@ -26,7 +26,7 @@ This release establishes an enterprise-grade, memory-safe, and concurrency-harde
   - macOS 13.0+ (Ventura, Sonoma, Sequoia) on `arm64` and `x86_64`
   - Linux (kernel 5.4+, glibc 2.31+ / musl) on `x86_64` and `aarch64`
 - **Build-Only (Models, Types & Mocks)**: iOS 16.0+, tvOS 16.0+, watchOS 9.0+, visionOS 1.0+
-- **Swift Toolchain Baseline**: Swift 6.0, 6.1, 6.2 (Strict Concurrency `Complete`)
+- **Swift Toolchain Baseline**: Swift 6.1 and 6.2 (Strict Concurrency `Complete`, matching `swift-tools-version: 6.1`)
 - **Tailscale Daemon Compatibility**: 1.76.0 (floor) through 1.98.0+ (latest stable)
 
 ### Breaking Changes (Migration from 0.12.x)

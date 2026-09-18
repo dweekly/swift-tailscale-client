@@ -12,11 +12,10 @@ This document establishes the official platform, toolchain, and daemon compatibi
 ### Swift Toolchains
 | Swift Version | Concurrency Mode | Status |
 |---|---|---|
-| Swift 6.0 | Strict (`complete`) | **Supported** (Baseline) |
-| Swift 6.1 | Strict (`complete`) | **Supported** |
+| Swift 6.1 | Strict (`complete`) | **Supported** (Baseline, matching `swift-tools-version: 6.1`) |
 | Swift 6.2 | Strict (`complete`) | **Supported** |
 
-All public APIs require Swift 6 concurrency mode (`Sendable` annotations, actor isolation, and structured concurrency).
+All public APIs require Swift 6 concurrency mode (`Sendable` annotations, actor isolation, and structured concurrency). Toolchain baseline is Swift 6.1+.
 
 ### Operating Systems & Architectures
 | Operating System | Architectures | Daemon Runtime Support | Notes |

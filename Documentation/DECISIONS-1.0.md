@@ -254,7 +254,7 @@ Upstream Tailscale frequently introduces experimental endpoints in the LocalAPI.
    - **Linux**: Linux kernel 5.4+, `glibc` 2.31+ / `musl` — full runtime support (Unix socket, loopback). Architectures: `x86_64`, `aarch64`.
    - **iOS / tvOS / watchOS**: iOS 16.0+, tvOS 16.0+, watchOS 9.0+ — build-only support for shared models, requests, and mock transports.
 3. **Swift Toolchains**:
-   - Swift 6.0, 6.1, and 6.2 with strict concurrency (`complete`).
+   - Swift 6.1 and 6.2 with strict concurrency (`complete`), matching `Package.swift` (`swift-tools-version: 6.1`).
 4. **Permissions**:
    - Unprivileged local user for read operations over accessible sockets.
    - Operator permissions (or root) required for daemon mutations depending on daemon configuration (`tailscale set --operator`).

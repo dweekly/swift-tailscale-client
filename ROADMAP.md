@@ -74,15 +74,15 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 
 **Release gates:** tracked via `aggregate-release-evidence.py` and `Documentation/PLAN-1.0.md`:
 
-- [x] **G1 Safe writes:** lossless Serve updates, conditional snapshots, explicit unconditional replacement, preference-write audit, disposable-daemon mutation evidence. (M1)
-- [x] **G2 Transport:** correct framing, finite resource limits, interruptible connect/write/read operations, resource cleanup, adversarial/property tests. (M1)
-- [x] **G3 Monitoring:** bounded queues, observable gaps/overflow, consistent streaming response errors/metadata, classified retries, cancellation and soak evidence. (M1)
-- [x] **G4 Discovery:** native library discovery for supported macOS installation flavors and Linux, permission failures, stale candidates, restart/credential refresh, verified sandbox claims. (M2)
-- [x] **G5 Compatibility:** concrete supported versions/toolchains, versioned sanitized fixtures, endpoint-to-test evidence, Go-client conformance checks, explicit expected skips. (M2)
-- [x] **G6 Release gates:** required daemon lanes, exact-tag-commit evidence, verified repository rulesets, annotated tags, staged/smoke-tested release assets, failure-path rehearsal. (M2)
-- [x] **G7 API and docs:** final naming/surface audit, removed `addProfile()`, compiler source-compatibility baseline, 100% authored DocC documentation, compiled examples and migration guide. (M3)
-- [x] **G8 Consumers and maintenance:** NWX and second independent consumer, external technical review record, backup release owner, DCO/licensing, maintenance rehearsal automation. (M3)
-- [x] **G9 Release candidate:** consumer evaluation and soak reports, no unresolved blocking defects, all required checks on the final release commit, complete distribution rehearsal.
+- [ ] **G1 Safe writes:** lossless Serve updates, conditional snapshots, explicit unconditional replacement implemented; target-binding verification for ServeConfigSnapshot in progress.
+- [ ] **G2 Transport:** correct framing, head limits, chunked completion, cooperative cancellation implemented; lower-layer NewlineFramer line bounds and unary accumulation caps in progress.
+- [ ] **G3 Monitoring:** bounded queues, observable gaps/overflow, streaming metadata, and backoff implemented; transport stream buffer limits, queue overflow arithmetic, and Swift-driven soak harness in progress.
+- [x] **G4 Discovery:** native library discovery for supported macOS installation flavors and Linux, permission failures, stale candidates, restart/credential refresh verified.
+- [ ] **G5 Compatibility:** Go differential oracle harness and synthetic fixtures implemented; live daemon multi-version capture matrix and official upstream package imports pending.
+- [ ] **G6 Release gates:** required check aggregator and rehearsal scripts implemented; strict matrix member requirements and non-zero telemetry validation in progress.
+- [ ] **G7 API and docs:** removed `addProfile()`, 100% authored DocC coverage; immutable 1.0 baseline comparison gate and Swift 6.1 toolchain alignment in progress.
+- [ ] **G8 Consumers and maintenance:** in-tree NWX and Fleet agent simulation suites verified; independent external production trial and human technical review pending.
+- [ ] **G9 Release candidate:** Swift-driven soak harness and 1.0 candidate evaluation in progress.
 
 Retain the unofficial-status disclaimer and explain the deferred stable-gap ledger in 1.0 release notes. Keep the public full-preferences replacement carrier internal unless lossless replacement semantics are established.
 
