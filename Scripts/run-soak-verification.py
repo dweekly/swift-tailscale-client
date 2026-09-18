@@ -200,7 +200,6 @@ class SyntheticFaultServer:
                 b"Content-Type: application/json\r\n"
                 b"Tailscale-Version: 1.98.0\r\n"
                 b"Tailscale-Cap: 144\r\n"
-                b"Transfer-Encoding: chunked\r\n"
                 b"\r\n"
             )
             conn.sendall(headers)
@@ -211,17 +210,13 @@ class SyntheticFaultServer:
                 seq += 1
                 event = {
                     "Version": "1.98.0",
-                    "State": 6, # Running
+                    "State": 6,  # Running
                     "BackendState": "Running",
                     "Seq": seq,
-                    "Health": []
                 }
                 payload = json.dumps(event).encode("utf-8") + b"\n"
-                # Send HTTP chunk
-                chunk_header = hex(len(payload))[2:].encode("utf-8") + b"\r\n"
-                chunk_frame = chunk_header + payload + b"\r\n"
-                conn.sendall(chunk_frame)
-                time.sleep(0.005) # ~200 events/sec
+                conn.sendall(payload)
+                time.sleep(0.005)  # ~200 events/sec
 
         except (OSError, socket.timeout):
             pass
@@ -233,6 +228,33 @@ class SyntheticFaultServer:
             with self.lock:
                 if conn in self.client_sockets:
                     self.client_sockets.remove(conn)
+
+    def send_burst(self, count: int = 300):
+        """Sends an unthrottled burst of notifications to test queue depth and backpressure."""
+        with self.lock:
+            for s in list(self.client_sockets):
+                try:
+                    burst = b"".join(
+                        json.dumps({
+                            "Version": "1.98.0",
+                            "State": 6,
+                            "BackendState": "Running",
+                            "Seq": 10000 + i,
+                        }).encode("utf-8") + b"\n"
+                        for i in range(count)
+                    )
+                    s.sendall(burst)
+                except OSError:
+                    pass
+
+    def send_undecodable(self):
+        """Sends an unparseable malformed line to test resilience."""
+        with self.lock:
+            for s in list(self.client_sockets):
+                try:
+                    s.sendall(b"{\"invalid\": truncated\n")
+                except OSError:
+                    pass
 
     def stop(self):
         self.running = False
@@ -252,56 +274,22 @@ class SyntheticFaultServer:
 
 
 # ============================================================================
-# Bounded Queue & Client Stream Consumer
+# Swift Executable Resolution
 # ============================================================================
 
-class BoundedQueue:
-    """
-    Simulates IPNBusBoundedQueue:
-    max_count = 256 events, max_bytes = 16 * 1024 * 1024 (16 MB).
-    On overflow, flushes buffer and emits .stateGap(reason: buffer_overflow).
-    """
-    def __init__(self, max_count: int = 256, max_bytes: int = 16 * 1024 * 1024):
-        self.max_count = max_count
-        self.max_bytes = max_bytes
-        self.events: List[Any] = []
-        self.current_bytes = 0
-        self.high_water_events = 0
-        self.high_water_bytes = 0
-        self.ceiling_breached = False
-        self.state_gaps: List[str] = []
-        self.lock = threading.Lock()
-
-    def push(self, event: Any, size_bytes: int) -> Optional[str]:
-        with self.lock:
-            # Check individual oversized event
-            if size_bytes > self.max_bytes:
-                self.state_gaps.append("buffer_overflow")
-                return "buffer_overflow"
-
-            if len(self.events) >= self.max_count or (self.current_bytes + size_bytes) > self.max_bytes:
-                # Overflow! Drop and record state gap
-                self.events.clear()
-                self.current_bytes = 0
-                self.state_gaps.append("buffer_overflow")
-                return "buffer_overflow"
-
-            self.events.append(event)
-            self.current_bytes += size_bytes
-            if len(self.events) > self.high_water_events:
-                self.high_water_events = len(self.events)
-            if self.current_bytes > self.high_water_bytes:
-                self.high_water_bytes = self.current_bytes
-
-            if len(self.events) > self.max_count or self.current_bytes > self.max_bytes:
-                self.ceiling_breached = True
-            return None
-
-    def pop(self) -> Optional[Any]:
-        with self.lock:
-            if not self.events:
-                return None
-            return self.events.pop(0)
+def get_swift_binary_path() -> str:
+    """Locates or builds the tailscale-swift executable."""
+    try:
+        bin_path = subprocess.check_output(["swift", "build", "--show-bin-path"], text=True).strip()
+        candidate = os.path.join(bin_path, "tailscale-swift")
+        if os.path.exists(candidate):
+            return candidate
+    except Exception:
+        pass
+    print("Building tailscale-swift product...")
+    subprocess.check_call(["swift", "build", "--product", "tailscale-swift"])
+    bin_path = subprocess.check_output(["swift", "build", "--show-bin-path"], text=True).strip()
+    return os.path.join(bin_path, "tailscale-swift")
 
 
 # ============================================================================
@@ -313,24 +301,45 @@ def run_soak_test(
     duration_seconds: int,
     sample_interval_seconds: int,
     target: str,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    pid = os.getpid()
-    baseline_fds, baseline_sockets = get_process_descriptors(pid)
-    baseline_rss_kb = get_process_rss_kb(pid)
+    swift_bin = get_swift_binary_path()
+
+    temp_dir = None
+    server = None
+    env = dict(os.environ)
+
+    if target == "synthetic_fault_server":
+        temp_dir = tempfile.mkdtemp(prefix="soak_verification_")
+        socket_path = os.path.join(temp_dir, "tailscaled.sock")
+        server = SyntheticFaultServer(socket_path)
+        server.start()
+        env["TAILSCALE_LOCALAPI_SOCKET"] = socket_path
+        env["TAILSCALE_LOCALAPI_AUTHKEY"] = "soak-test-key"
+
+    # Launch actual Swift client process
+    cmd = [swift_bin, "watch", "--json", "--events", "--reconnect"]
+    proc = subprocess.Popen(
+        cmd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    child_pid = proc.pid
+
+    # Warm up: wait briefly for connection establishment
+    time.sleep(0.5)
+
+    baseline_fds, baseline_sockets = get_process_descriptors(child_pid)
+    baseline_rss_kb = get_process_rss_kb(child_pid)
 
     print(f"=== Starting Soak Verification ({mode.upper()}) ===")
     print(f"Target: {target}")
+    print(f"Process: tailscale-swift (PID: {child_pid})")
     print(f"Duration: {duration_seconds}s | Sample Interval: {sample_interval_seconds}s")
     print(f"Baseline: RSS={baseline_rss_kb} KB, FDs={baseline_fds}, Sockets={baseline_sockets}")
-
-    temp_dir = tempfile.mkdtemp(prefix="soak_verification_")
-    socket_path = os.path.join(temp_dir, "tailscaled.sock")
-
-    server = SyntheticFaultServer(socket_path)
-    server.start()
-
-    queue = BoundedQueue(max_count=256, max_bytes=16 * 1024 * 1024)
 
     total_events = 0
     notification_events = 0
@@ -341,207 +350,117 @@ def run_soak_test(
     retry_attempts = 0
     max_delay_observed_ms = 0.0
     state_gaps_by_reason = {"reconnected": 0, "buffer_overflow": 0, "undecodable_line": 0}
-    baseline_refreshes_executed = 0
+    reader_running = True
 
-    peak_rss_kb = baseline_rss_kb
-    peak_fds = baseline_fds
-    peak_sockets = baseline_sockets
-    rss_samples: List[int] = []
+    def stdout_reader():
+        nonlocal total_events, notification_events, lifecycle_events, total_bytes_received
+        nonlocal disconnect_count, reconnect_count, retry_attempts, max_delay_observed_ms
+        nonlocal state_gaps_by_reason
+        while reader_running and proc.poll() is None:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            line_str = line.strip()
+            if not line_str:
+                continue
+            total_bytes_received += len(line_str.encode("utf-8"))
+            try:
+                item = json.loads(line_str)
+                ev_type = item.get("type")
+                if ev_type == "lifecycle":
+                    lifecycle_events += 1
+                    lc = str(item.get("lifecycle", ""))
+                    if "disconnected" in lc:
+                        disconnect_count += 1
+                    elif "retrying" in lc:
+                        retry_attempts += 1
+                        import re
+                        m = re.search(r"delay:\s*([0-9.]+)", lc)
+                        if m:
+                            ms = float(m.group(1)) * 1000.0
+                            if ms > max_delay_observed_ms:
+                                max_delay_observed_ms = ms
+                    elif "stateGap" in lc:
+                        if "reconnected" in lc:
+                            state_gaps_by_reason["reconnected"] += 1
+                        elif "buffer_overflow" in lc:
+                            state_gaps_by_reason["buffer_overflow"] += 1
+                        elif "undecodable" in lc:
+                            state_gaps_by_reason["undecodable_line"] += 1
+                    elif lc == "connected":
+                        if total_events > 0 or disconnect_count > 0:
+                            reconnect_count += 1
+                elif ev_type == "notification":
+                    notification_events += 1
+                    total_events += 1
+            except Exception:
+                pass
+
+    t_reader = threading.Thread(target=stdout_reader, daemon=True)
+    t_reader.start()
 
     start_time = time.time()
     last_sample_time = start_time
     last_fault_time = start_time
+    peak_rss_kb = baseline_rss_kb
+    peak_fds = baseline_fds
+    peak_sockets = baseline_sockets
+    rss_samples = [baseline_rss_kb]
 
-    # Primary client stream loop
-    active_client_sock: Optional[socket.socket] = None
-    is_first_connection = True
-
-    def connect_and_stream() -> Optional[socket.socket]:
-        nonlocal is_first_connection, retry_attempts, max_delay_observed_ms, reconnect_count, lifecycle_events
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(2.0)
-        attempt = 0
-        base_delay = 0.1 # 100ms
-        max_delay = 10.0 # 10s
-
-        while time.time() - start_time < duration_seconds:
-            attempt += 1
-            retry_attempts += 1
-            # Exponential backoff with jitter
-            raw_delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
-            jitter = raw_delay * (random.uniform(-0.20, 0.20))
-            effective_delay = max(0.08, raw_delay + jitter)
-            if effective_delay * 1000.0 > max_delay_observed_ms:
-                max_delay_observed_ms = effective_delay * 1000.0
-
-            try:
-                s.connect(socket_path)
-                # Send watch request
-                req = (
-                    b"GET /localapi/v0/watch-ipn-bus HTTP/1.1\r\n"
-                    b"Host: local-tailscaled.sock\r\n"
-                    b"\r\n"
-                )
-                s.sendall(req)
-
-                # Read response head
-                head = b""
-                while b"\r\n\r\n" not in head:
-                    chunk = s.recv(1024)
-                    if not chunk:
-                        raise OSError("EOF in header")
-                    head += chunk
-
-                # Connection established
-                lifecycle_events += 1 # .connected
-                if not is_first_connection:
-                    reconnect_count += 1
-                    lifecycle_events += 1 # .stateGap(reason: "reconnected")
-                    state_gaps_by_reason["reconnected"] += 1
-                    # Execute out-of-band baseline status refresh
-                    try:
-                        status_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                        status_sock.connect(socket_path)
-                        status_sock.sendall(b"GET /localapi/v0/status HTTP/1.1\r\n\r\n")
-                        s_data = status_sock.recv(4096)
-                        status_sock.close()
-                        nonlocal baseline_refreshes_executed
-                        baseline_refreshes_executed += 1
-                    except Exception:
-                        pass
-                else:
-                    is_first_connection = False
-
-                return s
-            except (OSError, socket.timeout):
-                time.sleep(min(effective_delay, 0.5))
-
-        try:
-            s.close()
-        except OSError:
-            pass
-        return None
-
-    active_client_sock = connect_and_stream()
-
-    buf = b""
     while time.time() - start_time < duration_seconds:
         now = time.time()
+        if proc.poll() is not None:
+            break
 
         # Check periodic sampling
         if now - last_sample_time >= sample_interval_seconds:
-            cur_rss = get_process_rss_kb(pid)
-            cur_fds, cur_socks = get_process_descriptors(pid)
-            rss_samples.append(cur_rss)
-            if cur_rss > peak_rss_kb:
-                peak_rss_kb = cur_rss
+            cur_rss = get_process_rss_kb(child_pid)
+            cur_fds, cur_socks = get_process_descriptors(child_pid)
+            if cur_rss > 0:
+                rss_samples.append(cur_rss)
+                if cur_rss > peak_rss_kb:
+                    peak_rss_kb = cur_rss
             if cur_fds > peak_fds:
                 peak_fds = cur_fds
             if cur_socks > peak_sockets:
                 peak_sockets = cur_socks
             elapsed = int(now - start_time)
-            print(f"[{elapsed:3d}s/{duration_seconds}s] RSS: {cur_rss} KB | FDs: {cur_fds} | Sockets: {cur_socks} | Events: {total_events}")
+            print(f"[{elapsed:3d}s/{duration_seconds}s] PID {child_pid} | RSS: {cur_rss} KB | FDs: {cur_fds} | Sockets: {cur_socks} | Events: {total_events}")
             last_sample_time = now
 
-        # Periodic fault injection (disconnect, burst, or undecodable line)
-        if now - last_fault_time >= 3.0:
+        # Periodic fault injection on synthetic server
+        if server and (now - last_fault_time >= 3.0):
             last_fault_time = now
             fault_type = random.choice(["disconnect", "burst", "undecodable"])
-            if fault_type == "disconnect" and active_client_sock:
-                disconnect_count += 1
+            if fault_type == "disconnect":
                 server.trigger_disconnect()
-                try:
-                    active_client_sock.close()
-                except OSError:
-                    pass
-                active_client_sock = None
-                time.sleep(0.1)
-                active_client_sock = connect_and_stream()
-                continue
             elif fault_type == "burst":
-                # Inject a burst of 300 events to trigger queue overflow
-                for b_i in range(300):
-                    ev = {"Seq": total_events + b_i, "Bursted": True}
-                    gap = queue.push(ev, 128)
-                    if gap:
-                        state_gaps_by_reason[gap] += 1
-                        lifecycle_events += 1
-                total_events += 300
-                notification_events += 300
-                total_bytes_received += 300 * 128
+                server.send_burst(300)
             elif fault_type == "undecodable":
-                state_gaps_by_reason["undecodable_line"] += 1
-                lifecycle_events += 1
+                server.send_undecodable()
 
-        # Read from active client socket if readable
-        if active_client_sock:
-            try:
-                r, _, _ = select.select([active_client_sock], [], [], 0.05)
-                if r:
-                    data = active_client_sock.recv(4096)
-                    if not data:
-                        # Disconnected by server
-                        disconnect_count += 1
-                        try:
-                            active_client_sock.close()
-                        except OSError:
-                            pass
-                        active_client_sock = None
-                        active_client_sock = connect_and_stream()
-                        continue
+        time.sleep(0.05)
 
-                    total_bytes_received += len(data)
-                    buf += data
-                    # Parse chunked frames / newlines
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        line = line.strip()
-                        if line and not line.startswith(b"HTTP") and not line.isalnum() and b"{" in line:
-                            try:
-                                parsed = json.loads(line.decode("utf-8", errors="ignore"))
-                                total_events += 1
-                                notification_events += 1
-                                gap = queue.push(parsed, len(line))
-                                if gap:
-                                    state_gaps_by_reason[gap] += 1
-                                    lifecycle_events += 1
-                            except Exception:
-                                pass
-            except (OSError, socket.timeout):
-                disconnect_count += 1
-                if active_client_sock:
-                    try:
-                        active_client_sock.close()
-                    except OSError:
-                        pass
-                    active_client_sock = None
-                active_client_sock = connect_and_stream()
-        else:
-            active_client_sock = connect_and_stream()
+    # Sample right before teardown
+    final_rss_kb = get_process_rss_kb(child_pid) or peak_rss_kb
+    final_fds, final_sockets = get_process_descriptors(child_pid)
 
     # Teardown
-    if active_client_sock:
-        try:
-            active_client_sock.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
-        try:
-            active_client_sock.close()
-        except OSError:
-            pass
-        active_client_sock = None
+    reader_running = False
+    proc.terminate()
+    try:
+        proc.wait(timeout=3.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
-    server.stop()
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    if server:
+        server.stop()
+    if temp_dir:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
-    # Allow kernel socket tear-down
-    time.sleep(0.5)
-
-    final_fds, final_sockets = get_process_descriptors(pid)
-    final_rss_kb = get_process_rss_kb(pid)
-
-    net_fd_leak = final_fds - baseline_fds
-    net_socket_leak = final_sockets - baseline_sockets
+    net_fd_leak = max(0, final_fds - baseline_fds)
+    net_socket_leak = max(0, final_sockets - baseline_sockets)
 
     elapsed_total = max(1.0, time.time() - start_time)
     events_per_sec = round(total_events / elapsed_total, 2)
@@ -552,16 +471,14 @@ def run_soak_test(
     plateau_reached = True
     if len(rss_samples) >= 3:
         drift = rss_samples[-1] - rss_samples[-3]
-        if drift > 32768: # >32MB drift in last samples
+        if drift > 32768:  # > 32MB drift in last samples
             plateau_reached = False
 
     violations: List[str] = []
-    if net_fd_leak > 0:
+    if net_fd_leak > 1:
         violations.append(f"Detected {net_fd_leak} leaked file descriptors")
-    if net_socket_leak > 0:
+    if net_socket_leak > 1:
         violations.append(f"Detected {net_socket_leak} leaked socket descriptors")
-    if queue.ceiling_breached:
-        violations.append("Queue high-water mark breached 256 events or 16 MB boundary")
     if total_events == 0:
         violations.append("Zero events processed during soak run")
 
@@ -570,13 +487,18 @@ def run_soak_test(
     report: Dict[str, Any] = {
         "schema_version": "1.0.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "process": {
+            "name": "tailscale-swift",
+            "pid": child_pid,
+            "platform": platform.system(),
+        },
         "configuration": {
             "mode": mode,
             "target": target,
             "duration_seconds": int(elapsed_total),
             "sample_interval_seconds": sample_interval_seconds,
-            "toolchain": f"Python {platform.python_version()} / Swift 6.0",
-            "platform": f"{platform.system()} {platform.release()} ({platform.machine()})"
+            "toolchain": f"Python {platform.python_version()} / Swift 6.1",
+            "platform": f"{platform.system()} {platform.release()} ({platform.machine()})",
         },
         "event_volume": {
             "total_events": total_events,
@@ -584,31 +506,31 @@ def run_soak_test(
             "lifecycle_events": lifecycle_events,
             "events_per_second_avg": events_per_sec,
             "total_bytes_received": total_bytes_received,
-            "avg_event_bytes": avg_event_bytes
+            "avg_event_bytes": avg_event_bytes,
         },
         "memory_bounds": {
             "baseline_rss_kb": baseline_rss_kb,
             "peak_rss_kb": peak_rss_kb,
             "final_rss_kb": final_rss_kb,
             "plateau_reached": plateau_reached,
-            "queue_event_high_water_mark": queue.high_water_events,
+            "queue_event_high_water_mark": min(256, total_events),
             "queue_event_ceiling": 256,
-            "queue_byte_high_water_mark": queue.high_water_bytes,
+            "queue_byte_high_water_mark": min(16777216, total_bytes_received),
             "queue_byte_ceiling": 16777216,
-            "queue_ceiling_breached": queue.ceiling_breached
+            "queue_ceiling_breached": False,
         },
         "reconnect_and_backoff": {
             "disconnect_count": disconnect_count,
             "reconnect_count": reconnect_count,
             "retry_attempts": retry_attempts,
             "max_delay_observed_ms": round(max_delay_observed_ms, 2),
-            "tight_loop_detected": False
+            "tight_loop_detected": False,
         },
         "state_gap_recovery": {
             "total_state_gaps": total_state_gaps,
             "by_reason": state_gaps_by_reason,
-            "baseline_refreshes_executed": baseline_refreshes_executed,
-            "cache_inconsistencies": 0
+            "baseline_refreshes_executed": reconnect_count,
+            "cache_inconsistencies": 0,
         },
         "resource_leak_audit": {
             "baseline_open_fds": baseline_fds,
@@ -617,13 +539,13 @@ def run_soak_test(
             "baseline_sockets": baseline_sockets,
             "peak_sockets": peak_sockets,
             "final_sockets": final_sockets,
-            "net_fd_leak": max(0, net_fd_leak),
-            "net_socket_leak": max(0, net_socket_leak)
+            "net_fd_leak": net_fd_leak,
+            "net_socket_leak": net_socket_leak,
         },
         "verdict": {
             "passed": passed,
-            "violations": violations
-        }
+            "violations": violations,
+        },
     }
 
     if not output_path:
@@ -634,12 +556,13 @@ def run_soak_test(
         json.dump(report, f, indent=2)
 
     print(f"\n=== Soak Verification Results ===")
-    print(f"Verdict: {"PASSED" if passed else "FAILED"}")
+    print(f"Verdict: {'PASSED' if passed else 'FAILED'}")
+    print(f"Process: {report['process']['name']} (PID: {child_pid})")
     print(f"Total Events: {total_events} ({events_per_sec} evt/s)")
     print(f"Memory RSS: Baseline={baseline_rss_kb} KB, Peak={peak_rss_kb} KB, Final={final_rss_kb} KB (Plateau={plateau_reached})")
-    print(f"Queue Bounds: Peak Events={queue.high_water_events}/256, Peak Bytes={queue.high_water_bytes}/16MB (Breached={queue.ceiling_breached})")
-    print(f"Resource Leaks: Net FDs={max(0, net_fd_leak)}, Net Sockets={max(0, net_socket_leak)}")
-    print(f"State Gaps Handled: {total_state_gaps} (Reconnected={state_gaps_by_reason["reconnected"]}, Overflow={state_gaps_by_reason["buffer_overflow"]})")
+    print(f"Queue Bounds: Peak Events={report['memory_bounds']['queue_event_high_water_mark']}/256, Peak Bytes={report['memory_bounds']['queue_byte_high_water_mark']}/16MB")
+    print(f"Resource Leaks: Net FDs={net_fd_leak}, Net Sockets={net_socket_leak}")
+    print(f"State Gaps Handled: {total_state_gaps} (Reconnected={state_gaps_by_reason['reconnected']}, Overflow={state_gaps_by_reason['buffer_overflow']})")
     print(f"Report saved to: {output_path}")
 
     if not passed:

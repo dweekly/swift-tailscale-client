@@ -77,8 +77,9 @@ When an `IPNBusEvent.lifecycle(.stateGap(reason:))` event is received:
 ## 3. Soak Verification Harness (`Scripts/run-soak-verification.py`)
 
 A dedicated, zero-dependency Python 3 harness executes and audits soak runs:
-- **Darwin Introspection**: Directly invokes `/usr/lib/libproc.dylib` (`proc_pidinfo` with `PROC_PIDLISTFDS` and `PROX_FDTYPE_SOCKET`) to inspect real kernel descriptor tables.
-- **Linux Introspection**: Scans `/proc/<pid>/fd` to inspect descriptor targets and socket inodes.
+- **Child Swift Process**: Launches and drives the compiled `tailscale-swift watch --json --events --reconnect` binary, verifying real Swift runtime execution, memory stability, and stream consumption.
+- **Darwin Introspection**: Directly invokes `/usr/lib/libproc.dylib` (`proc_pidinfo` with `PROC_PIDLISTFDS` and `PROX_FDTYPE_SOCKET`) to inspect real kernel descriptor tables of the child Swift process.
+- **Linux Introspection**: Scans `/proc/<pid>/fd` to inspect descriptor targets and socket inodes of the child Swift process.
 - **Fault Injection Engine**: Periodically terminates socket connections, injects bursts exceeding 256 events, and transmits invalid JSON to test recovery pathways.
 - **Execution Modes**:
   - `--mode accelerated`: 5–10 minute run with high-frequency event generation (200–500 evt/s) and adversarial fault injection for CI and release rehearsal.
@@ -92,7 +93,7 @@ A dedicated, zero-dependency Python 3 harness executes and audits soak runs:
 
 - **Target**: `synthetic_fault_server`
 - **Duration**: 3,600 seconds (1 hour)
-- **Toolchain**: Swift 6.0 / macOS 14 (Darwin arm64)
+- **Toolchain**: Swift 6.1+ / macOS (Darwin arm64)
 
 ```json
 {
