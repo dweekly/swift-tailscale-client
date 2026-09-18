@@ -165,7 +165,7 @@ final class Tier2BoundaryTests: XCTestCase {
     let line = "hello\n"
     var collected: [Data] = []
     for byte in line.utf8 {
-      let lines = framer.feed(Data([byte]))
+      let lines = try framer.feed(Data([byte]))
       collected.append(contentsOf: lines)
     }
     XCTAssertEqual(collected.count, 1)
@@ -175,13 +175,13 @@ final class Tier2BoundaryTests: XCTestCase {
   func test_boundary_newlineFramerConsecutiveEmptyLines() throws {
     var framer = NewlineFramer()
     let data = Data("\n\n\n".utf8)
-    let lines = framer.feed(data)
+    let lines = try framer.feed(data)
     XCTAssertEqual(lines.count, 0)
   }
 
   func test_boundary_newlineFramerLineWithoutTrailingNewline() throws {
     var framer = NewlineFramer()
-    let unclosed = framer.feed(Data("unterminated line".utf8))
+    let unclosed = try framer.feed(Data("unterminated line".utf8))
     XCTAssertEqual(unclosed.count, 0)
   }
 

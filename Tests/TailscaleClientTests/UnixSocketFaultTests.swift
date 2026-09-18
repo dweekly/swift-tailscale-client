@@ -209,6 +209,71 @@ import XCTest
       }
     }
 
+    func testUnaryThrowsOnOversizedResponseBodyOverSocket() async throws {
+      let path = NSTemporaryDirectory() + "huge-unary-\(UUID().uuidString.prefix(8)).sock"
+      let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      guard fd >= 0 else { throw POSIXError(.EIO) }
+      defer {
+        close(fd)
+        unlink(path)
+      }
+
+      var addr = sockaddr_un()
+      addr.sun_family = sa_family_t(AF_UNIX)
+      let maxLength = MemoryLayout.size(ofValue: addr.sun_path) / MemoryLayout<CChar>.stride
+      withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
+        let base = buffer.baseAddress!.assumingMemoryBound(to: CChar.self)
+        _ = strncpy(base, path, maxLength - 1)
+      }
+      let size = socklen_t(MemoryLayout<sockaddr_un>.size)
+      let bound = withUnsafePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+          #if canImport(Darwin)
+            return Darwin.bind(fd, $0, size)
+          #else
+            return Glibc.bind(fd, $0, size)
+          #endif
+        }
+      }
+      guard bound == 0, listen(fd, 1) == 0 else {
+        throw POSIXError(.EIO)
+      }
+
+      let serverThread = Thread {
+        let clientFD = accept(fd, nil, nil)
+        guard clientFD >= 0 else { return }
+        defer { close(clientFD) }
+        #if canImport(Darwin)
+          var one: Int32 = 1
+          setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
+        #endif
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"
+        _ = head.withCString { write(clientFD, $0, strlen($0)) }
+        let chunk = [UInt8](repeating: 0x41, count: 64 * 1024)
+        while true {
+          #if canImport(Darwin)
+            let written = write(clientFD, chunk, chunk.count)
+          #else
+            let written = send(clientFD, chunk, chunk.count, MSG_NOSIGNAL)
+          #endif
+          if written <= 0 { break }
+        }
+      }
+      serverThread.start()
+
+      let client = makeClient(path: path, timeout: .seconds(5))
+      await assertThrowsErrorAsync(try await client.status()) { error in
+        guard let clientError = error as? TailscaleClientError,
+          case .transport(let transportError) = clientError,
+          case .malformedResponse(let detail) = transportError
+        else {
+          XCTFail("Expected malformedResponse for exceeding 16 MiB unary limit, got \(error)")
+          return
+        }
+        XCTAssertTrue(detail.contains("Unary response exceeded maximum allowed limit"))
+      }
+    }
+
     // MARK: - Cooperative Cancellation Scenarios (< 1s Completion) (PR 05)
 
     func testCooperativeCancellationDuringReadHeaderTerminatesUnderOneSecond() async throws {

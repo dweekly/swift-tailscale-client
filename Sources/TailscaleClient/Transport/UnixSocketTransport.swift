@@ -56,6 +56,9 @@ final class ManagedSocketFD: @unchecked Sendable {
 /// concerns live in `HTTPWireFormat`/`ChunkedTransferDecoder`, which are pure
 /// and unit-tested; this type owns only the socket lifecycle.
 struct UnixSocketTransport {
+  /// Maximum response body size for unary requests over Unix socket (16 MiB).
+  static let maxUnaryResponseBytes = 16 * 1024 * 1024
+
   let path: String
 
   func send(_ request: TailscaleRequest, capabilityVersion: Int) async throws -> TailscaleResponse {
@@ -105,7 +108,7 @@ struct UnixSocketTransport {
       throw TailscaleTransportError.networkFailure(underlying: error)
     }
 
-    let bodyStream = AsyncThrowingStream<Data, Error> { continuation in
+    let bodyStream = AsyncThrowingStream<Data, Error>(bufferingPolicy: .bufferingNewest(256)) { continuation in
       let task = Task.detached(priority: .userInitiated) {
         defer { connection.socket.close() }
         do {
@@ -188,15 +191,15 @@ struct UnixSocketTransport {
         if chunkDecoder != nil {
           payload = try chunkDecoder!.feed(pending)
           if chunkDecoder!.isComplete {
-            for line in framer.feed(payload) { continuation.yield(line) }
-            if let remainder = framer.flushRemainder() { continuation.yield(remainder) }
+            for line in try framer.feed(payload) { continuation.yield(line) }
+            if let remainder = try framer.flushRemainder() { continuation.yield(remainder) }
             continuation.finish()
             return
           }
         } else {
           payload = pending
         }
-        for line in framer.feed(payload) { continuation.yield(line) }
+        for line in try framer.feed(payload) { continuation.yield(line) }
         pending = Data()
       }
 
@@ -206,7 +209,7 @@ struct UnixSocketTransport {
       pending = Data(bytes: buffer, count: readCount)
     }
 
-    if let remainder = framer.flushRemainder() {
+    if let remainder = try framer.flushRemainder() {
       continuation.yield(remainder)
     }
     continuation.finish()
@@ -234,6 +237,10 @@ struct UnixSocketTransport {
       guard try waitReadable(socket.fd, timeoutMilliseconds: 500) else { continue }
       guard let readCount = try readSome(socket.fd, into: &buffer) else { continue }
       guard readCount > 0 else { break }
+      guard responseData.count + readCount <= Self.maxUnaryResponseBytes else {
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Unary response exceeded maximum allowed limit of \(Self.maxUnaryResponseBytes) bytes")
+      }
       responseData.append(buffer, count: readCount)
     }
 

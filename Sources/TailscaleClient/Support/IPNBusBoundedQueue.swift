@@ -56,14 +56,14 @@ actor IPNBusBoundedQueue {
         if let cont = consumerContinuation {
           consumerContinuation = nil
           cont.resume(returning: gapEvent)
-          if byteSize <= bounds.maxByteCount {
+          if (currentByteCount + byteSize) <= bounds.maxByteCount {
             buffer.append(Entry(event: event, byteSize: byteSize))
             currentByteCount += byteSize
           }
         } else {
           buffer.append(Entry(event: gapEvent, byteSize: 64))
           currentByteCount += 64
-          if byteSize <= bounds.maxByteCount {
+          if (currentByteCount + byteSize) <= bounds.maxByteCount {
             buffer.append(Entry(event: event, byteSize: byteSize))
             currentByteCount += byteSize
           }

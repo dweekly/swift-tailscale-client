@@ -190,33 +190,68 @@ final class HTTPParsingTests: XCTestCase {
 
   // MARK: - NewlineFramer
 
-  func testFramerSplitsLinesAcrossFeeds() {
+  func testFramerSplitsLinesAcrossFeeds() throws {
     var framer = NewlineFramer()
-    XCTAssertEqual(framer.feed(Data("{\"a\":1}\n{\"b\"".utf8)).count, 1)
-    let lines = framer.feed(Data(":2}\n\n{\"c\":3}\n".utf8))
+    XCTAssertEqual(try framer.feed(Data("{\"a\":1}\n{\"b\"".utf8)).count, 1)
+    let lines = try framer.feed(Data(":2}\n\n{\"c\":3}\n".utf8))
     XCTAssertEqual(lines.count, 2, "empty line must be dropped")
     XCTAssertEqual(String(decoding: lines[0], as: UTF8.self), "{\"b\":2}")
     XCTAssertEqual(String(decoding: lines[1], as: UTF8.self), "{\"c\":3}")
-    XCTAssertNil(framer.flushRemainder())
+    XCTAssertNil(try framer.flushRemainder())
   }
 
-  func testFramerUTF8SplitAcrossFeeds() {
+  func testFramerUTF8SplitAcrossFeeds() throws {
     var framer = NewlineFramer()
     let json = "{\"name\":\"héllo\"}"
     let bytes = Array(json.utf8)
     // Split inside the two-byte UTF-8 sequence for "é".
     let splitIndex = 9
-    XCTAssertTrue(framer.feed(Data(bytes[..<splitIndex])).isEmpty)
-    let lines = framer.feed(Data(bytes[splitIndex...] + [UInt8(ascii: "\n")]))
+    XCTAssertTrue(try framer.feed(Data(bytes[..<splitIndex])).isEmpty)
+    let lines = try framer.feed(Data(bytes[splitIndex...] + [UInt8(ascii: "\n")]))
     XCTAssertEqual(lines.count, 1)
     XCTAssertEqual(String(data: lines[0], encoding: .utf8), json)
   }
 
-  func testFramerFlushRemainderAtEOF() {
+  func testFramerFlushRemainderAtEOF() throws {
     var framer = NewlineFramer()
-    XCTAssertTrue(framer.feed(Data("partial".utf8)).isEmpty)
+    XCTAssertTrue(try framer.feed(Data("partial".utf8)).isEmpty)
     XCTAssertEqual(
-      framer.flushRemainder().map { String(decoding: $0, as: UTF8.self) }, "partial")
-    XCTAssertNil(framer.flushRemainder())
+      try framer.flushRemainder().map { String(decoding: $0, as: UTF8.self) }, "partial")
+    XCTAssertNil(try framer.flushRemainder())
+  }
+
+  func testFramerRejectsOversizedLine() throws {
+    var framer = NewlineFramer(maxLineBytes: 1024)
+    let oversized = Data(repeating: 0x61, count: 1025) + Data("\n".utf8)
+    XCTAssertThrowsError(try framer.feed(oversized)) { error in
+      guard case TailscaleTransportError.malformedResponse = error else {
+        XCTFail("Expected malformedResponse, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testFramerRejectsOversizedUnterminatedBuffer() throws {
+    var framer = NewlineFramer(maxLineBytes: 1024)
+    let oversizedUnterminated = Data(repeating: 0x61, count: 1025)
+    XCTAssertThrowsError(try framer.feed(oversizedUnterminated)) { error in
+      guard case TailscaleTransportError.malformedResponse = error else {
+        XCTFail("Expected malformedResponse, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testFramerRejectsOversizedTrailingLineAtEOF() throws {
+    var framer = NewlineFramer(maxLineBytes: 1024)
+    _ = try framer.feed(Data(repeating: 0x61, count: 1000))
+    _ = try framer.feed(Data(repeating: 0x61, count: 24))
+    // Total is 1024 bytes (at limit). Now add 1 more byte:
+    XCTAssertThrowsError(try framer.feed(Data([0x61]))) { error in
+      guard case TailscaleTransportError.malformedResponse = error else {
+        XCTFail("Expected malformedResponse, got \(error)")
+        return
+      }
+    }
   }
 }

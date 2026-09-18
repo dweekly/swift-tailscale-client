@@ -231,19 +231,21 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
         }
       }
 
-      let bodyStream = AsyncThrowingStream<Data, Error> { continuation in
+      let bodyStream = AsyncThrowingStream<Data, Error>(bufferingPolicy: .bufferingNewest(256)) { continuation in
         let task = Task {
           var framer = NewlineFramer()
           do {
             for try await byte in bytes {
-              for line in framer.feed(Data([byte])) {
+              for line in try framer.feed(Data([byte])) {
                 continuation.yield(line)
               }
             }
-            if let remainder = framer.flushRemainder() {
+            if let remainder = try framer.flushRemainder() {
               continuation.yield(remainder)
             }
             continuation.finish()
+          } catch let transportError as TailscaleTransportError {
+            continuation.finish(throwing: transportError)
           } catch {
             continuation.finish(
               throwing: TailscaleTransportError.networkFailure(underlying: error))

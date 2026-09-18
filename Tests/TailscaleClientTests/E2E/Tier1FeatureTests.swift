@@ -411,14 +411,14 @@ final class Tier1FeatureTests: XCTestCase {
   func test_feat09_newlineFramerYieldsCompleteLines() throws {
     var framer = NewlineFramer()
     let data = Data("line1\nline2\n".utf8)
-    let lines = framer.feed(data)
+    let lines = try framer.feed(data)
     XCTAssertEqual(lines.count, 2)
   }
 
   func test_feat09_newlineFramerRejectsOversizedLine() throws {
-    var buffer = HTTPHeadBuffer()
-    let oversized = Data(repeating: 0x41, count: HTTPHeadBuffer.maxHeadBytes + 1)
-    XCTAssertThrowsError(try buffer.feed(oversized)) { error in
+    var framer = NewlineFramer(maxLineBytes: 1024)
+    let oversized = Data(repeating: 0x41, count: 1025)
+    XCTAssertThrowsError(try framer.feed(oversized)) { error in
       if case TailscaleTransportError.malformedResponse = error {
         // expected
       } else {
@@ -430,22 +430,22 @@ final class Tier1FeatureTests: XCTestCase {
   func test_feat09_newlineFramerHandlesCRLFAndLFVariations() throws {
     var framer = NewlineFramer()
     let data = Data("crlf\r\nlf\n".utf8)
-    let lines = framer.feed(data)
+    let lines = try framer.feed(data)
     XCTAssertEqual(lines.count, 2)
   }
 
   func test_feat09_newlineFramerBuffersPartialLinesAcrossChunks() throws {
     var framer = NewlineFramer()
-    let chunk1 = framer.feed(Data("part1".utf8))
+    let chunk1 = try framer.feed(Data("part1".utf8))
     XCTAssertEqual(chunk1.count, 0)
-    let chunk2 = framer.feed(Data("part2\n".utf8))
+    let chunk2 = try framer.feed(Data("part2\n".utf8))
     XCTAssertEqual(chunk2.count, 1)
   }
 
   func test_feat09_newlineFramerFlushesCleanlyAtEOF() throws {
     var framer = NewlineFramer()
-    _ = framer.feed(Data("final line\n".utf8))
-    let remainder = framer.flushRemainder()
+    _ = try framer.feed(Data("final line\n".utf8))
+    let remainder = try framer.flushRemainder()
     XCTAssertNil(remainder)
   }
 

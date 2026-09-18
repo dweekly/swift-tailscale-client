@@ -138,27 +138,51 @@ struct HTTPHeadBuffer {
 
 /// Splits a byte stream into newline-delimited frames, tolerating frame
 /// boundaries (including multi-byte UTF-8 sequences) split across reads.
+/// Bounded by `maxLineBytes` (default 4 MiB) to prevent memory exhaustion from unterminated lines.
 struct NewlineFramer {
+  /// Maximum allowed bytes per line before throwing malformedResponse. Default 4 MiB.
+  static let defaultMaxLineBytes = 4 * 1024 * 1024
+
+  let maxLineBytes: Int
   private var buffer = Data()
+
+  init(maxLineBytes: Int = NewlineFramer.defaultMaxLineBytes) {
+    self.maxLineBytes = maxLineBytes
+  }
 
   /// Appends `data` and returns all complete lines (without the trailing
   /// newline; empty lines are dropped, matching the IPN bus framing).
-  mutating func feed(_ data: Data) -> [Data] {
+  ///
+  /// - Throws: ``TailscaleTransportError/malformedResponse(detail:)`` if a single
+  ///   line or unterminated buffer exceeds `maxLineBytes`.
+  mutating func feed(_ data: Data) throws -> [Data] {
     buffer.append(data)
     var lines: [Data] = []
     while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
       let line = Data(buffer[buffer.startIndex..<newline])
       buffer.removeSubrange(buffer.startIndex...newline)
+      guard line.count <= maxLineBytes else {
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Line length (\(line.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes")
+      }
       if !line.isEmpty {
         lines.append(line)
       }
+    }
+    guard buffer.count <= maxLineBytes else {
+      throw TailscaleTransportError.malformedResponse(
+        detail: "Unterminated line buffer (\(buffer.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes")
     }
     return lines
   }
 
   /// Returns any trailing bytes that never received a newline (call at EOF).
-  mutating func flushRemainder() -> Data? {
+  mutating func flushRemainder() throws -> Data? {
     guard !buffer.isEmpty else { return nil }
+    guard buffer.count <= maxLineBytes else {
+      throw TailscaleTransportError.malformedResponse(
+        detail: "Trailing line length (\(buffer.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes")
+    }
     let remainder = buffer
     buffer.removeAll()
     return remainder

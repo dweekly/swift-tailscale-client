@@ -245,6 +245,34 @@ final class IPNBusStreamingChallengerTests: XCTestCase {
     )
   }
 
+  func testQueueOverflowArithmeticNeverExceedsByteCeiling() async throws {
+    // bounds has maxByteCount = 100 bytes, overflowStrategy = .reportGap.
+    // gapEvent requires 64 bytes.
+    // If an incoming event is 50 bytes:
+    // With 64 + 50 = 114 > 100, the 50 byte event MUST NOT be appended along with gapEvent,
+    // so total buffered bytes NEVER exceeds 100 bytes.
+    let bounds = StreamBufferBounds(maxEventCount: 10, maxByteCount: 100, overflowStrategy: .reportGap)
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+
+    // Pre-fill queue to 80 bytes
+    await queue.enqueue(.notification(IPNNotify(version: "1")), byteSize: 80)
+
+    // Next event is 50 bytes -> triggers overflow (80 + 50 = 130 > 100).
+    // Buffer is cleared. gapEvent (64 bytes) is added.
+    // Since 64 + 50 > 100, the 50-byte event must NOT be enqueued.
+    await queue.enqueue(.notification(IPNNotify(version: "2")), byteSize: 50)
+    await queue.finish()
+
+    var received: [IPNBusEvent] = []
+    while let event = try await queue.next() {
+      received.append(event)
+    }
+
+    // Only the gapEvent should be received, NOT the 50-byte event.
+    XCTAssertEqual(received.count, 1)
+    XCTAssertEqual(received.first, .lifecycle(.stateGap(reason: "buffer_overflow")))
+  }
+
   // MARK: - 3. Queue Overflow in .fail Mode (bounds: .throwing) (PR 07, FEAT-16)
 
   func testQueueDepthOverflowInFailModeThrowsStreamOverflow() async throws {
