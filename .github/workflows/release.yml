@@ -1,9 +1,13 @@
 name: Release
 
 # Cutting a release = merging the CHANGELOG roll, then pushing an annotated
-# tag (see Documentation/RELEASING.md). This workflow does the rest: verifies
-# the tag has a CHANGELOG entry, re-runs the tests, and publishes a GitHub
-# Release with the entry as its notes.
+# tag (see Documentation/RELEASING.md). This workflow does the rest:
+# 1. Validates annotated tag and exact commit SHA match.
+# 2. Creates a staged draft release with release notes.
+# 3. Compiles and smoke-tests macOS universal binary.
+# 4. Compiles and smoke-tests Linux x86_64 binary in swift:6.1 container.
+# 5. Generates and verifies canonical SHA256SUMS.txt manifest.
+# 6. Uploads all assets to draft and promotes to public release.
 
 on:
   push:
@@ -13,12 +17,48 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Create GitHub Release
+  validate-and-stage:
+    name: Validate Tag & Stage Draft Release
     runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is an annotated tag
+        run: |
+          TAG_REF="${GITHUB_REF:-refs/tags/$GITHUB_REF_NAME}"
+          TAG_TYPE=$(git cat-file -t "$TAG_REF" 2>/dev/null || true)
+          if [ "$TAG_TYPE" != "tag" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is of object type '$TAG_TYPE', expected 'tag'."
+            echo "::error::Release tags MUST be annotated tags created with 'git tag -a $GITHUB_REF_NAME -m \"...\"'."
+            exit 1
+          fi
+          TAG_SUBJECT=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME" | xargs)
+          if [ -z "$TAG_SUBJECT" ]; then
+            echo "::error::Annotated tag '$GITHUB_REF_NAME' contains an empty annotation message."
+            exit 1
+          fi
+          echo "✓ Tag '$GITHUB_REF_NAME' is a valid annotated tag: '$TAG_SUBJECT'"
+
+      - name: Verify exact commit match and clean working tree
+        run: |
+          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          echo "Tagged commit:    $TAG_COMMIT"
+          echo "Checked-out HEAD: $HEAD_COMMIT"
+          if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+            echo "::error::Checked-out HEAD ($HEAD_COMMIT) does not match tagged commit ($TAG_COMMIT)."
+            echo "::error::Release assets must be built from the exact tagged commit."
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working directory is dirty. Uncommitted changes detected:"
+            git status --porcelain
+            exit 1
+          fi
+          echo "✓ Clean working tree verified at commit $TAG_COMMIT"
 
       - name: Verify tag matches a CHANGELOG entry
         run: |
@@ -28,81 +68,157 @@ jobs:
             exit 1
           fi
 
-      # The tag must agree with every place the docs advertise a version
-      # (README, DocC, agent skill, coverage matrix, CLAUDE.md, CHANGELOG).
       - name: Verify docs agree with the tag
         run: ./Scripts/check-release-consistency.sh "${GITHUB_REF_NAME}"
 
       - name: Run tests
         run: swift test
 
-      - name: Extract release notes from CHANGELOG
+      - name: Extract release notes and create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" { found = 1; next }
             found && /^## \[/ { exit }
             found { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          cat "$RUNNER_TEMP/notes.md"
+          ' CHANGELOG.md > notes.md
+          cat notes.md
 
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            --verify-tag
+          EXISTING_DRAFT=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' 2>/dev/null || echo "not_found")
+          if [ "$EXISTING_DRAFT" = "false" ]; then
+            echo "::error::Release $GITHUB_REF_NAME already exists and is not a draft (cannot overwrite published release)"
+            exit 1
+          elif [ "$EXISTING_DRAFT" = "true" ]; then
+            echo "Draft release already exists for $GITHUB_REF_NAME; updating notes"
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --draft \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file notes.md \
+              --verify-tag
+          fi
 
-      - name: Build and attach universal macOS CLI binary
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build-macos-universal:
+    name: Build & Smoke-Test macOS Binary
+    needs: validate-and-stage
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build universal CLI binary (arm64 + x86_64)
         run: |
           swift build -c release --arch arm64 --arch x86_64 --product tailscale-swift
           BIN_DIR=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
-          ARCHIVE="$RUNNER_TEMP/tailscale-swift-${GITHUB_REF_NAME}-macos-universal.tar.gz"
+          BIN="$BIN_DIR/tailscale-swift"
+
+          test -x "$BIN"
+
+          LIPO_OUT=$(lipo -info "$BIN")
+          echo "$LIPO_OUT"
+          echo "$LIPO_OUT" | grep -q "arm64"
+          echo "$LIPO_OUT" | grep -q "x86_64"
+
+          # CLI smoke tests
+          "$BIN" --help | grep -q "OVERVIEW:"
+          "$BIN" --help | grep -q "SUBCOMMANDS:"
+          VERSION_OUT=$("$BIN" --version)
+          echo "CLI version: $VERSION_OUT"
+          test "$VERSION_OUT" = "${GITHUB_REF_NAME#v}"
+          "$BIN" help status >/dev/null
+          "$BIN" help serve >/dev/null
+
+          # Graceful LocalAPI error handling
+          TAILSCALE_LOCALAPI_SOCKET=/tmp/nonexistent-daemon.sock "$BIN" status 2>/dev/null || ERR=$?
+          if [ "${ERR:-0}" -gt 128 ]; then
+            echo "::error::Binary crashed with exit code $ERR"
+            exit 1
+          fi
+
+          ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-macos-universal.tar.gz"
           tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
           shasum -a 256 "$ARCHIVE"
-          gh release upload "$GITHUB_REF_NAME" "$ARCHIVE"
 
-  linux-binary:
-    name: Attach Linux CLI binary
-    needs: release
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: tailscale-swift-*-macos-universal.tar.gz
+
+  build-linux-x86_64:
+    name: Build & Smoke-Test Linux Binary
+    needs: validate-and-stage
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container: swift:6.1
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install curl
-        # The swift container image ships without curl, which the upload
-        # step needs (learned the hard way on v0.6.0).
-        run: apt-get update -qq && apt-get install -y -qq curl ca-certificates
-
-      - name: Build CLI
+      - name: Build Linux CLI binary
         run: |
           swift build -c release --product tailscale-swift
           BIN_DIR=$(swift build -c release --show-bin-path)
+          BIN="$BIN_DIR/tailscale-swift"
+
+          test -x "$BIN"
+
+          # CLI smoke tests
+          "$BIN" --help | grep -q "OVERVIEW:"
+          "$BIN" --help | grep -q "SUBCOMMANDS:"
+          VERSION_OUT=$("$BIN" --version)
+          echo "CLI version: $VERSION_OUT"
+          test "$VERSION_OUT" = "${GITHUB_REF_NAME#v}"
+          "$BIN" help status >/dev/null
+          "$BIN" help serve >/dev/null
+
+          # Graceful LocalAPI error handling
+          TAILSCALE_LOCALAPI_SOCKET=/tmp/nonexistent-daemon.sock "$BIN" status 2>/dev/null || ERR=$?
+          if [ "${ERR:-0}" -gt 128 ]; then
+            echo "::error::Binary crashed with exit code $ERR"
+            exit 1
+          fi
+
           ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
           tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
           sha256sum "$ARCHIVE"
 
-      - name: Upload asset
-        # The swift container has no gh CLI; the Releases asset API only
-        # needs curl and the workflow token.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: tailscale-swift-*-linux-x86_64.tar.gz
+
+  publish-release:
+    name: Verify Checksums & Publish Release
+    needs:
+      - validate-and-stage
+      - build-macos-universal
+      - build-linux-x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Compute and verify SHA256SUMS.txt
         run: |
-          ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
-          RELEASE_ID=$(curl -sf \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
-            | grep -m1 '"id":' | tr -dc '0-9')
-          curl -sf -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/gzip" \
-            --data-binary "@$ARCHIVE" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ARCHIVE" \
-            > /dev/null
-          echo "Attached $ARCHIVE to release $RELEASE_ID"
+          cd artifacts
+          ls -la
+          sha256sum tailscale-swift-*.tar.gz | LC_ALL=C sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Attach assets and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd artifacts
+          gh release upload "$GITHUB_REF_NAME" tailscale-swift-*.tar.gz SHA256SUMS.txt --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+          echo "✓ Release $GITHUB_REF_NAME published successfully."

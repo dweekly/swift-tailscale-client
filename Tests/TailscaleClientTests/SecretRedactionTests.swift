@@ -145,7 +145,11 @@ final class SecretRedactionTests: XCTestCase {
     let error = LocalAPIDiscoveryError.inaccessible(path: rawPath, reason: "Permission denied")
     assertFree(of: secret, "\(error)", "LocalAPIDiscoveryError.description")
     assertFree(of: secret, error.errorDescription ?? "", "LocalAPIDiscoveryError.errorDescription")
-    assertFree(of: secret, error.recoverySuggestion ?? "", "LocalAPIDiscoveryError.recoverySuggestion")
+    assertFree(
+      of: secret,
+      error.recoverySuggestion ?? "",
+      "LocalAPIDiscoveryError.recoverySuggestion"
+    )
 
     let clientError = TailscaleClientError.discovery(error)
     assertFree(of: secret, "\(clientError)", "TailscaleClientError.description")

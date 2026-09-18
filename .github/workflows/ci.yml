@@ -250,3 +250,78 @@ jobs:
             -destination '${{ matrix.destination }}' \
             -skipPackagePluginValidation \
             -skipMacroValidation
+
+  integration-linux:
+    name: Integration (Linux)
+    uses: ./.github/workflows/integration-linux.yml
+    with:
+      include-unstable: true
+
+  all-required:
+    name: All Required Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - test-macos
+      - test-linux
+      - docs-consistency
+      - docs-build-strict
+      - test-tsan
+      - build-platforms
+      - integration-linux
+    steps:
+      - name: Evaluate required job statuses
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 -c '
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+
+          failed = []
+          skipped = []
+          successful = []
+
+          print("==================================================")
+          print("       EVALUATING REQUIRED MERGE GATES            ")
+          print("==================================================")
+          for job_id, details in sorted(needs.items()):
+              res = details.get("result", "unknown")
+              print(f"[{res.upper():9}] {job_id}")
+              if res == "success":
+                  successful.append(job_id)
+              elif res == "skipped":
+                  skipped.append(job_id)
+              else:
+                  failed.append((job_id, res))
+
+          print("--------------------------------------------------")
+          print(f"Total: {len(needs)} | Succeeded: {len(successful)} | Failed: {len(failed)} | Skipped: {len(skipped)}")
+          print("==================================================")
+
+          has_errors = False
+          if failed:
+              has_errors = True
+              print("\n::error::The following required CI jobs failed or were cancelled:")
+              for job_id, res in failed:
+                  print(f"  ❌ {job_id} (result: {res})")
+
+          if skipped:
+              has_errors = True
+              print("\n::error::The following required CI jobs were unexpectedly skipped:")
+              for job_id in skipped:
+                  print(f"  ⚠️ {job_id} (result: skipped)")
+
+          if has_errors:
+              print("\n❌ MERGE BLOCKED: One or more required checks did not succeed.")
+              sys.exit(1)
+
+          print("\n✅ MERGE ALLOWED: All required checks passed successfully.")
+          sys.exit(0)
+          '
+
