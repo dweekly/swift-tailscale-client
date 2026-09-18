@@ -9,12 +9,12 @@ import XCTest
 /// Reproducible regression tests documenting the pre-1.0 readiness review findings
 /// detailed in Documentation/PLAN-1.0.md (Milestone 0 / W0).
 ///
-/// These tests capture the exact edge cases and data-loss/framing vulnerabilities
-/// present prior to W1 and W2 hardening:
-/// 1. Unknown ServeConfig fields (root and nested) are dropped upon decode/re-encode.
-/// 2. HTTPHeadBuffer allows heads > 64 KiB when the `\r\n\r\n` delimiter is present.
-/// 3. Chunked transfer decoding in unary transport does not require `isComplete`.
-/// 4. Content-Length header is not validated against body byte count in unary responses.
+/// These tests capture the exact edge cases and data-loss/framing defenses
+/// implemented across W1 and W2 hardening:
+/// 1. Unknown ServeConfig fields (root and nested) are preserved across decode/re-encode.
+/// 2. HTTPHeadBuffer rejects heads > 64 KiB even when the `\r\n\r\n` delimiter is present.
+/// 3. Chunked transfer decoding in unary transport requires `isComplete`.
+/// 4. Content-Length header is validated against body byte count in unary responses.
 final class ReadinessRegressionTests: XCTestCase {
 
   // MARK: - Finding 1: ServeConfig Unknown Fields Loss (Defended in W1 / PR 02)
@@ -120,15 +120,11 @@ final class ReadinessRegressionTests: XCTestCase {
     XCTAssertEqual(redecoded, modified)
   }
 
-  // MARK: - Finding 2: HTTPHeadBuffer Header Size Limit Bypass
+  // MARK: - Finding 2: HTTPHeadBuffer Header Size Limit Enforcement (Defended in W2 / PR 04)
 
-  /// Demonstrates that `HTTPHeadBuffer` only checks `maxHeadBytes` (64 KiB)
-  /// when `\r\n\r\n` has NOT yet been found in the accumulated buffer.
-  /// If an oversized header block arrives with the delimiter already present,
-  /// `HTTPHeadBuffer` returns the oversized head without throwing.
-  ///
-  /// W2 will enforce the header limit even when the delimiter is present.
-  func testHTTPHeadBufferAcceptsOver64KiBWhenDelimiterIsPresent() throws {
+  /// Verifies that `HTTPHeadBuffer` rejects HTTP heads exceeding `maxHeadBytes` (64 KiB),
+  /// even when the `\r\n\r\n` delimiter is present in the feed buffer.
+  func testHTTPHeadBufferRejectsOver64KiBWhenDelimiterIsPresent() throws {
     var buffer = HTTPHeadBuffer()
 
     // Construct a header block exceeding maxHeadBytes (64 KiB = 65,536 bytes)
@@ -137,62 +133,56 @@ final class ReadinessRegressionTests: XCTestCase {
     let wire = "HTTP/1.1 200 OK\r\nX-Oversized: \(oversizedValue)\r\n\r\n{\"status\":\"ok\"}"
     let wireData = Data(wire.utf8)
 
-    // Feeding this directly succeeds instead of throwing!
-    let result = try buffer.feed(wireData)
-    let (headData, remainderData) = try XCTUnwrap(result)
-
-    // REPRODUCED BEHAVIOR:
-    // Head exceeds 64 KiB (maxHeadBytes) but was accepted anyway
-    XCTAssertGreaterThan(
-      headData.count,
-      HTTPHeadBuffer.maxHeadBytes,
-      "Vulnerability reproduction: HTTPHeadBuffer accepted head > 64 KiB because \\r\\n\\r\\n was present"
-    )
-    XCTAssertEqual(String(decoding: remainderData, as: UTF8.self), "{\"status\":\"ok\"}")
+    // DEFENSE VERIFICATION:
+    // Feeding an oversized head now throws `TailscaleTransportError.malformedResponse`
+    // despite `\r\n\r\n` being present.
+    XCTAssertThrowsError(try buffer.feed(wireData)) { error in
+      guard case TailscaleTransportError.malformedResponse(let detail) = error else {
+        return XCTFail("Expected malformedResponse, got \(error)")
+      }
+      XCTAssertTrue(
+        detail.contains("HTTP head exceeds"),
+        "Expected error detail to mention head size limit, got: '\(detail)'"
+      )
+    }
   }
 
-  // MARK: - Finding 3: Chunked Transfer Decoder Completion Check
+  // MARK: - Finding 3: Chunked Transfer Decoder Completion Check (Defended in W2 / PR 04)
 
-  /// Demonstrates that feeding truncated chunked data into `ChunkedTransferDecoder`
-  /// returns whatever chunk data was parsed without throwing, while leaving
-  /// `isComplete == false`. In `UnixSocketTransport.performSend`, this result was
-  /// returned directly as the response body without checking `isComplete`,
-  /// meaning a truncated chunked response (e.g. socket closed early) would be
-  /// silently accepted as a valid complete response.
-  ///
-  /// W2 will require `decoder.isComplete` before completing unary responses.
-  func testChunkedTransferDecoderAllowsTruncatedStreamWithoutCompletionCheck() throws {
+  /// Verifies that unary response body decoding rejects truncated chunked streams
+  /// where `decoder.isComplete` is false (e.g. terminal 0-chunk missing upon EOF).
+  func testChunkedTransferDecoderRejectsTruncatedStreamWithoutCompletionCheck() throws {
     var decoder = ChunkedTransferDecoder()
 
     // Truncated chunked payload: 5 bytes ("hello"), followed by EOF without "0\r\n\r\n"
     let truncatedWire = Data("5\r\nhello\r\n".utf8)
     let payload = try decoder.feed(truncatedWire)
 
-    // Payload was yielded without error
+    // Raw decoder yields the partial payload but leaves isComplete == false
     XCTAssertEqual(String(decoding: payload, as: UTF8.self), "hello")
+    XCTAssertFalse(decoder.isComplete)
 
-    // REPRODUCED BEHAVIOR:
-    // The decoder is NOT complete, but no error was thrown.
-    // In UnixSocketTransport.performSend:
-    //   if head.isChunked {
-    //     var decoder = ChunkedTransferDecoder()
-    //     bodyData = try decoder.feed(body)
-    //   }
-    // `isComplete` is never inspected, so truncated chunks are returned as valid responses!
-    XCTAssertFalse(
-      decoder.isComplete,
-      "Vulnerability reproduction: decoder is incomplete, but unary path does not check isComplete"
+    // DEFENSE VERIFICATION:
+    // Response body decoding for chunked transfers enforces decoder.isComplete,
+    // rejecting incomplete chunked bodies with typed malformedResponse error.
+    let head = HTTPWireFormat.ResponseHead(
+      statusCode: 200,
+      headers: ["transfer-encoding": "chunked"]
     )
+    XCTAssertThrowsError(try HTTPWireFormat.decodeResponseBody(truncatedWire, head: head)) {
+      error in
+      guard case TailscaleTransportError.malformedResponse(let detail) = error else {
+        return XCTFail("Expected malformedResponse, got \(error)")
+      }
+      XCTAssertEqual(detail, "Incomplete chunked transfer")
+    }
   }
 
-  // MARK: - Finding 4: Content-Length Validation in Unary Responses
+  // MARK: - Finding 4: Content-Length Validation in Unary Responses (Defended in W2 / PR 04)
 
-  /// Demonstrates that `HTTPWireFormat.parseResponseHead` parses the Content-Length
-  /// header into the dictionary, but UnixSocketTransport.performSend does not validate
-  /// that the received body byte count matches `Content-Length`.
-  ///
-  /// W2 will enforce Content-Length validation on unary responses.
-  func testContentLengthParsedHeaderIsNotValidatedAgainstBodyLength() throws {
+  /// Verifies that unary response body decoding validates received byte count against
+  /// the `Content-Length` header, rejecting truncated bodies with typed malformedResponse error.
+  func testContentLengthParsedHeaderIsValidatedAgainstBodyLength() throws {
     let headWire = Data("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n".utf8)
     let head = try HTTPWireFormat.parseResponseHead(headWire)
 
@@ -201,14 +191,19 @@ final class ReadinessRegressionTests: XCTestCase {
     // If only 10 bytes arrive before socket close:
     let partialBody = Data("1234567890".utf8)
 
-    // REPRODUCED BEHAVIOR:
-    // In current UnixSocketTransport.performSend:
-    //   return TailscaleResponse(statusCode: head.statusCode, data: bodyData, headers: head.headers)
-    // partialBody.count (10) != 100, yet TailscaleResponse is constructed without error.
-    XCTAssertNotEqual(
-      partialBody.count,
-      Int(head.headers["content-length"]!)!,
-      "Vulnerability reproduction: body length does not match Content-Length header"
-    )
+    // DEFENSE VERIFICATION:
+    // Response body decoding validates body byte count against Content-Length,
+    // throwing malformedResponse when truncated.
+    XCTAssertThrowsError(try HTTPWireFormat.decodeResponseBody(partialBody, head: head)) { error in
+      guard case TailscaleTransportError.malformedResponse(let detail) = error else {
+        return XCTFail("Expected malformedResponse, got \(error)")
+      }
+      XCTAssertEqual(detail, "Truncated Content-Length body")
+    }
+
+    // Matching body length succeeds:
+    let fullBody = Data(repeating: UInt8(ascii: "x"), count: 100)
+    let decoded = try HTTPWireFormat.decodeResponseBody(fullBody, head: head)
+    XCTAssertEqual(decoded.count, 100)
   }
 }

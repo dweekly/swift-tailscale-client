@@ -75,6 +75,37 @@ enum HTTPWireFormat {
     }
     return ResponseHead(statusCode: statusCode, headers: headers)
   }
+
+  /// Decodes and validates the body of an HTTP response according to its headers
+  /// (`Transfer-Encoding: chunked` or `Content-Length`).
+  ///
+  /// - Parameters:
+  ///   - body: Raw body bytes read after the HTTP head.
+  ///   - head: The parsed response head containing status code and headers.
+  /// - Returns: The validated and/or decoded body bytes.
+  /// - Throws: `TailscaleTransportError.malformedResponse` if chunked decoding
+  ///   is incomplete or if the body length does not match `Content-Length`.
+  static func decodeResponseBody(_ body: Data, head: ResponseHead) throws -> Data {
+    if head.isChunked {
+      var decoder = ChunkedTransferDecoder()
+      let decoded = try decoder.feed(body)
+      guard decoder.isComplete else {
+        throw TailscaleTransportError.malformedResponse(detail: "Incomplete chunked transfer")
+      }
+      return decoded
+    } else if let contentLengthString = head.headers["content-length"] {
+      guard let expectedLength = Int(contentLengthString), expectedLength >= 0 else {
+        throw TailscaleTransportError.malformedResponse(
+          detail: "Invalid Content-Length header: '\(contentLengthString)'")
+      }
+      guard body.count == expectedLength else {
+        throw TailscaleTransportError.malformedResponse(detail: "Truncated Content-Length body")
+      }
+      return body
+    } else {
+      return body
+    }
+  }
 }
 
 /// Accumulates bytes until the head/body separator (`\r\n\r\n`) arrives —
@@ -95,6 +126,11 @@ struct HTTPHeadBuffer {
           detail: "HTTP head exceeds \(Self.maxHeadBytes) bytes")
       }
       return nil
+    }
+    let headLength = buffer.distance(from: buffer.startIndex, to: range.lowerBound)
+    guard headLength <= Self.maxHeadBytes else {
+      throw TailscaleTransportError.malformedResponse(
+        detail: "HTTP head exceeds \(Self.maxHeadBytes) bytes")
     }
     return (Data(buffer[..<range.lowerBound]), Data(buffer[range.upperBound...]))
   }

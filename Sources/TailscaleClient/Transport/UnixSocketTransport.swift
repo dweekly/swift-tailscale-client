@@ -191,11 +191,7 @@ struct UnixSocketTransport {
     }
     let head = try HTTPWireFormat.parseResponseHead(headData)
 
-    var bodyData = body
-    if head.isChunked {
-      var decoder = ChunkedTransferDecoder()
-      bodyData = try decoder.feed(body)
-    }
+    let bodyData = try HTTPWireFormat.decodeResponseBody(body, head: head)
     return TailscaleResponse(statusCode: head.statusCode, data: bodyData, headers: head.headers)
   }
 
