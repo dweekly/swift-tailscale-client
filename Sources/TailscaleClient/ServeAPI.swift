@@ -60,9 +60,10 @@ extension TailscaleClient {
     else {
       throw TailscaleClientError.missingConcurrencyToken
     }
+    let targetId = response.targetIdentifier ?? self.targetIdentifier
     return ServeConfigSnapshot(
       etag: etag,
-      targetIdentifier: self.targetIdentifier,
+      targetIdentifier: targetId,
       fetchedAt: Date(),
       config: config
     )
@@ -104,7 +105,9 @@ extension TailscaleClient {
       method: "POST",
       path: endpoint,
       body: body,
-      additionalHeaders: ["If-Match": snapshot.etag])
+      additionalHeaders: ["If-Match": snapshot.etag],
+      expectedTargetIdentifier: snapshot.targetIdentifier
+    )
     let response = try await executeWithDeadline(request, endpoint: endpoint)
     if let error = Self.commonStatusError(response, endpoint: endpoint) {
       throw error
@@ -117,12 +120,13 @@ extension TailscaleClient {
     let etagHeader = response.headers.first { key, _ in
       key.caseInsensitiveCompare("Etag") == .orderedSame
     }
+    let targetId = response.targetIdentifier ?? snapshot.targetIdentifier
     if let newEtag = etagHeader?.value,
       !newEtag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     {
       return ServeConfigSnapshot(
         etag: newEtag,
-        targetIdentifier: self.targetIdentifier,
+        targetIdentifier: targetId,
         fetchedAt: Date(),
         config: newConfig
       )
@@ -184,7 +188,9 @@ extension TailscaleClient {
       method: "POST",
       path: endpoint,
       body: body,
-      additionalHeaders: ["If-Match": ""])
+      additionalHeaders: ["If-Match": ""],
+      expectedTargetIdentifier: self.targetIdentifier
+    )
     _ = try await performRawRequest(request, endpoint: endpoint)
   }
 

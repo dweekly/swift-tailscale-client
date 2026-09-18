@@ -511,4 +511,82 @@ final class ServeConfigConcurrencyChallengerTests: XCTestCase {
     let conflicts = await server.conflictCount
     XCTAssertGreaterThan(conflicts, 0)
   }
+
+  // MARK: - Target Identity & Replay Protection (Issue 2)
+
+  func testSnapshotPreservesTargetIdentityFromResponse() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(
+        statusCode: 200,
+        data: Data("{}".utf8),
+        headers: ["ETag": "\"v1\""],
+        targetIdentifier: "responding-daemon-sha256"
+      )
+    }
+    let client = makeClient(transport: transport)
+    let snapshot = try await client.serveConfigSnapshot()
+    XCTAssertEqual(snapshot.targetIdentifier, "responding-daemon-sha256")
+  }
+
+  func testSetServeConfigRejectsReplayWhenExpectedTargetMismatches() async throws {
+    let clientA = makeClient(transport: MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"v1\""])
+    })
+    let snapshotFromA = try await clientA.serveConfigSnapshot()
+
+    let configB = TailscaleClientConfiguration(
+      endpoint: .url(URL(string: "http://other-daemon.sock")!),
+      authToken: nil,
+      capabilityVersion: 1,
+      transport: MockTransport { _, _ in
+        TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"v2\""])
+      }
+    )
+    let clientB = TailscaleClient(configuration: configB)
+
+    // Attempting to apply snapshot from A to client B must fail with targetMismatch
+    do {
+      _ = try await clientB.setServeConfig(ServeConfig(), matching: snapshotFromA)
+      XCTFail("Must reject snapshot from mismatched target")
+    } catch let error as TailscaleClientError {
+      guard case .targetMismatch(let expected, let actual) = error else {
+        XCTFail("Expected .targetMismatch, got \(error)")
+        return
+      }
+      XCTAssertEqual(expected, clientB.targetIdentifier)
+      XCTAssertEqual(actual, clientA.targetIdentifier)
+    }
+  }
+
+  func testExecuteWithRecoveryRejectsRequestWhenTargetSwitchesMidFlight() async throws {
+    let config = TailscaleClientConfiguration(
+      endpoint: .url(URL(string: "http://initial-daemon.sock")!),
+      authToken: nil,
+      capabilityVersion: 1,
+      transport: MockTransport { _, _ in
+        TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: [:])
+      }
+    )
+    let client = TailscaleClient(configuration: config)
+
+    // A request carrying an expected target identifier different from client's targetIdentifier
+    let request = TailscaleRequest(
+      method: "POST",
+      path: "/localapi/v0/serve-config",
+      body: Data("{}".utf8),
+      expectedTargetIdentifier: "mismatched-target-ident"
+    )
+
+    do {
+      _ = try await client.performRawRequest(request, endpoint: "/localapi/v0/serve-config")
+      XCTFail("Must reject request with mismatched expected target identifier")
+    } catch let error as TailscaleClientError {
+      guard case .targetMismatch(let expected, let actual) = error else {
+        XCTFail("Expected .targetMismatch, got \(error)")
+        return
+      }
+      XCTAssertEqual(expected, "mismatched-target-ident")
+      XCTAssertEqual(actual, client.targetIdentifier)
+    }
+  }
 }

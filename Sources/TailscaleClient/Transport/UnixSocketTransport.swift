@@ -108,19 +108,21 @@ struct UnixSocketTransport {
       throw TailscaleTransportError.networkFailure(underlying: error)
     }
 
-    let bodyStream = AsyncThrowingStream<Data, Error>(bufferingPolicy: .bufferingNewest(256)) { continuation in
-      let task = Task.detached(priority: .userInitiated) {
-        defer { connection.socket.close() }
-        do {
-          try transport.streamBody(connection, continuation: continuation)
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-      continuation.onTermination = { _ in
-        task.cancel()
+    let queue = TransportByteBoundedQueue()
+    let readerTask = Task.detached(priority: .userInitiated) {
+      defer { connection.socket.close() }
+      do {
+        try await transport.streamBody(connection, queue: queue)
+        await queue.finish()
+      } catch {
+        await queue.fail(error)
       }
     }
+
+    let context = TransportStreamContext(queue: queue, task: readerTask)
+    let bodyStream = AsyncThrowingStream<Data, Error>(unfolding: {
+      try await context.queue.next()
+    })
 
     return StreamingResponse(
       statusCode: connection.statusCode,
@@ -178,8 +180,8 @@ struct UnixSocketTransport {
 
   private func streamBody(
     _ connection: StreamConnection,
-    continuation: AsyncThrowingStream<Data, Error>.Continuation
-  ) throws {
+    queue: TransportByteBoundedQueue
+  ) async throws {
     var framer = NewlineFramer()
     var chunkDecoder = connection.isChunked ? ChunkedTransferDecoder() : nil
     var buffer = [UInt8](repeating: 0, count: 4096)
@@ -191,15 +193,20 @@ struct UnixSocketTransport {
         if chunkDecoder != nil {
           payload = try chunkDecoder!.feed(pending)
           if chunkDecoder!.isComplete {
-            for line in try framer.feed(payload) { continuation.yield(line) }
-            if let remainder = try framer.flushRemainder() { continuation.yield(remainder) }
-            continuation.finish()
+            for line in try framer.feed(payload) {
+              try await queue.enqueue(line)
+            }
+            if let remainder = try framer.flushRemainder() {
+              try await queue.enqueue(remainder)
+            }
             return
           }
         } else {
           payload = pending
         }
-        for line in try framer.feed(payload) { continuation.yield(line) }
+        for line in try framer.feed(payload) {
+          try await queue.enqueue(line)
+        }
         pending = Data()
       }
 
@@ -210,9 +217,8 @@ struct UnixSocketTransport {
     }
 
     if let remainder = try framer.flushRemainder() {
-      continuation.yield(remainder)
+      try await queue.enqueue(remainder)
     }
-    continuation.finish()
   }
 
   // MARK: - Unary

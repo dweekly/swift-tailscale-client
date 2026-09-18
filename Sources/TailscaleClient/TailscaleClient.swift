@@ -686,8 +686,15 @@ public actor TailscaleClient {
     let finalRequest = request
     let openStream: @Sendable () async throws -> StreamingResponse = {
       let config = client.configuration
+      let targetId = config.targetIdentifier
       return try await Self.withDeadline(config.requestTimeout, endpoint: endpoint) {
-        try await config.transport.sendStreaming(finalRequest, configuration: config)
+        let resp = try await config.transport.sendStreaming(finalRequest, configuration: config)
+        return StreamingResponse(
+          statusCode: resp.statusCode,
+          headers: resp.headers,
+          body: resp.body,
+          targetIdentifier: targetId
+        )
       }
     }
 
@@ -951,25 +958,33 @@ public actor TailscaleClient {
       onUndecodableLine: onUndecodableLine
     )
 
-    return AsyncThrowingStream<IPNNotify, Error> { continuation in
-      let filterTask = Task {
-        do {
-          for try await event in eventStream {
-            switch event {
-            case .notification(let notify):
-              continuation.yield(notify)
-            case .lifecycle:
-              break
-            }
-          }
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-      continuation.onTermination = { _ in filterTask.cancel() }
-    }
+    let unfolder = IPNNotifyUnfolder(iterator: eventStream.makeAsyncIterator())
+    return AsyncThrowingStream<IPNNotify, Error>(unfolding: {
+      try await unfolder.next()
+    })
   }
+
+private final class IPNNotifyUnfolder: @unchecked Sendable {
+  private var iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator
+
+  init(iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator) {
+    self.iterator = iterator
+  }
+
+  func next() async throws -> IPNNotify? {
+    while let event = try await iterator.next() {
+      switch event {
+      case .notification(let notify):
+        return notify
+      case .lifecycle(.stateGap):
+        throw TailscaleClientError.streamOverflow
+      case .lifecycle:
+        continue
+      }
+    }
+    return nil
+  }
+}
 
   // MARK: - Private Helpers
 
@@ -1100,6 +1115,11 @@ public actor TailscaleClient {
       }
     }
     let currentConfig = self.activeConfiguration
+    let currentTarget = currentConfig.targetIdentifier
+    if let expected = request.expectedTargetIdentifier, expected != currentTarget {
+      throw TailscaleClientError.targetMismatch(expected: expected, actual: currentTarget)
+    }
+
     var pending = request
     if let reason = Self.auditReason, !reason.isEmpty,
       pending.additionalHeaders["X-Tailscale-Reason"] == nil
@@ -1113,10 +1133,19 @@ public actor TailscaleClient {
     let finalRequest = pending
 
     do {
-      let response = try await Self.withDeadline(
+      var response = try await Self.withDeadline(
         currentConfig.requestTimeout, endpoint: endpoint
       ) {
         try await currentConfig.transport.send(finalRequest, configuration: currentConfig)
+      }
+      if response.targetIdentifier == nil {
+        response.targetIdentifier = currentTarget
+      }
+      if let expected = request.expectedTargetIdentifier,
+        let actual = response.targetIdentifier,
+        expected != actual
+      {
+        throw TailscaleClientError.targetMismatch(expected: expected, actual: actual)
       }
       recordObservedDaemonVersion(from: response.headers)
 

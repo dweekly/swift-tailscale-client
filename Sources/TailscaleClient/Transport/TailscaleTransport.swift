@@ -19,6 +19,8 @@ public struct TailscaleRequest: Sendable {
   public var body: Data?
   /// Additional HTTP headers to include in the request.
   public var additionalHeaders: [String: String]
+  /// Expected target identifier to prevent cross-target replay across rediscovery.
+  public var expectedTargetIdentifier: String?
 
   /// Creates a new LocalAPI request.
   ///
@@ -40,6 +42,32 @@ public struct TailscaleRequest: Sendable {
     self.queryItems = queryItems
     self.body = body
     self.additionalHeaders = additionalHeaders
+    self.expectedTargetIdentifier = nil
+  }
+
+  /// Creates a new LocalAPI request with an expected target identifier.
+  ///
+  /// - Parameters:
+  ///   - method: HTTP method.
+  ///   - path: Request path relative to the LocalAPI base URL.
+  ///   - queryItems: URL query parameters.
+  ///   - body: Optional request body data.
+  ///   - additionalHeaders: Additional HTTP headers.
+  ///   - expectedTargetIdentifier: Expected target identifier for mutation safety.
+  public init(
+    method: String = "GET",
+    path: String,
+    queryItems: [URLQueryItem] = [],
+    body: Data? = nil,
+    additionalHeaders: [String: String] = [:],
+    expectedTargetIdentifier: String?
+  ) {
+    self.method = method
+    self.path = path
+    self.queryItems = queryItems
+    self.body = body
+    self.additionalHeaders = additionalHeaders
+    self.expectedTargetIdentifier = expectedTargetIdentifier
   }
 }
 
@@ -51,6 +79,8 @@ public struct TailscaleResponse: Sendable {
   public var data: Data
   /// HTTP response headers.
   public var headers: [String: String]
+  /// The target identifier of the daemon endpoint that produced this response.
+  public var targetIdentifier: String?
 
   /// Creates a new LocalAPI response.
   ///
@@ -62,6 +92,21 @@ public struct TailscaleResponse: Sendable {
     self.statusCode = statusCode
     self.data = data
     self.headers = headers
+    self.targetIdentifier = nil
+  }
+
+  /// Creates a new LocalAPI response with target identification.
+  ///
+  /// - Parameters:
+  ///   - statusCode: HTTP status code.
+  ///   - data: Response body data.
+  ///   - headers: HTTP response headers.
+  ///   - targetIdentifier: The target identifier of the responding daemon.
+  public init(statusCode: Int, data: Data, headers: [String: String] = [:], targetIdentifier: String?) {
+    self.statusCode = statusCode
+    self.data = data
+    self.headers = headers
+    self.targetIdentifier = targetIdentifier
   }
 }
 
@@ -231,31 +276,30 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
         }
       }
 
-      let bodyStream = AsyncThrowingStream<Data, Error>(bufferingPolicy: .bufferingNewest(256)) { continuation in
-        let task = Task {
-          var framer = NewlineFramer()
-          do {
-            for try await byte in bytes {
-              for line in try framer.feed(Data([byte])) {
-                continuation.yield(line)
-              }
+      let queue = TransportByteBoundedQueue()
+      let readerTask = Task {
+        var framer = NewlineFramer()
+        do {
+          for try await byte in bytes {
+            for line in try framer.feed(Data([byte])) {
+              try await queue.enqueue(line)
             }
-            if let remainder = try framer.flushRemainder() {
-              continuation.yield(remainder)
-            }
-            continuation.finish()
-          } catch let transportError as TailscaleTransportError {
-            continuation.finish(throwing: transportError)
-          } catch {
-            continuation.finish(
-              throwing: TailscaleTransportError.networkFailure(underlying: error))
           }
-        }
-
-        continuation.onTermination = { _ in
-          task.cancel()
+          if let remainder = try framer.flushRemainder() {
+            try await queue.enqueue(remainder)
+          }
+          await queue.finish()
+        } catch let transportError as TailscaleTransportError {
+          await queue.fail(transportError)
+        } catch {
+          await queue.fail(TailscaleTransportError.networkFailure(underlying: error))
         }
       }
+
+      let context = TransportStreamContext(queue: queue, task: readerTask)
+      let bodyStream = AsyncThrowingStream<Data, Error>(unfolding: {
+        try await context.queue.next()
+      })
 
       return StreamingResponse(
         statusCode: http.statusCode,

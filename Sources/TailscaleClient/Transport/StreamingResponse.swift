@@ -23,6 +23,9 @@ public struct StreamingResponse: Sendable, AsyncSequence {
   /// Asynchronous stream yielding framed body lines or chunks.
   public let body: AsyncThrowingStream<Data, Error>
 
+  /// The target identifier of the daemon endpoint that produced this response.
+  public let targetIdentifier: String?
+
   /// Creates a new streaming response.
   ///
   /// - Parameters:
@@ -37,6 +40,26 @@ public struct StreamingResponse: Sendable, AsyncSequence {
     self.statusCode = statusCode
     self.headers = headers
     self.body = body
+    self.targetIdentifier = nil
+  }
+
+  /// Creates a new streaming response with target identification.
+  ///
+  /// - Parameters:
+  ///   - statusCode: The HTTP status code returned by the daemon.
+  ///   - headers: The response headers returned by the daemon.
+  ///   - body: The stream yielding response body data chunks or lines.
+  ///   - targetIdentifier: The target identifier of the responding daemon.
+  public init(
+    statusCode: Int,
+    headers: [String: String] = [:],
+    body: AsyncThrowingStream<Data, Error>,
+    targetIdentifier: String?
+  ) {
+    self.statusCode = statusCode
+    self.headers = headers
+    self.body = body
+    self.targetIdentifier = targetIdentifier
   }
 
   /// Looks up a response header using case-insensitive key comparison.
