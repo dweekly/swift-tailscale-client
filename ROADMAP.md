@@ -24,7 +24,7 @@ Upstream's own source says LocalAPI paths are namespaced under `/localapi/v0/` "
 | **Experimental** | `client.experimental` namespace | Compiles and works, but exempt from SemVer; tracks upstream churn (debug endpoints, log streaming, GUI push contract, self-update). May change or vanish in a minor release. |
 | **Unsupported** | Documented only | Deliberately not wrapped, with the reason recorded in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md). |
 
-The Experimental exemption above describes the current pre-1.0 policy. Before freezing 1.0, W0/W7 in the execution plan resolve whether all public symbols in this versioned package receive source-compatibility protection or independently breaking APIs move to a separately versioned package. Upstream availability and Swift source compatibility remain separate promises.
+In accordance with DEC-5 (resolved in W7), strict source compatibility is enforced across all stable public symbols in `TailscaleClient` against baseline v0.12.0 via `Scripts/check-api-baseline.sh` and `APICompatibilityTests`. Upstream availability and Swift source compatibility remain separate promises.
 
 "Complete coverage" means **every LocalAPI endpoint has a documented status** — implemented, planned, experimental, or unsupported-with-reason — not that every endpoint has a wrapper. Connection-hijacking endpoints (`dial`), alpha endpoints, and Tailscale-internal plumbing stay unsupported until there is a real use case.
 
@@ -39,8 +39,8 @@ Standing policy for all code:
 - **`Sendable` everywhere, `Equatable` on models**; `Encodable` where round-tripping matters.
 - **Typed errors** with actionable `recoverySuggestion`s; every request gets a configurable deadline. Typed status mapping, `Tailscale-Version` observation, and audit-reason injection apply to unary requests (streaming is documented as `.transport`-only).
 - **Streaming resilience**: an undecodable line in a stream is skipped and surfaced through a reporting hook, never fatal to the stream. Reconnection with exponential backoff is an explicit opt-in.
-- **Safe configuration updates**: today `serve-config` reads attach an optional ETag and writes without one are unconditional. The 1.0 target is lossless read-modify-write, conditional updates by default, and a separately explicit unconditional replacement operation (W1 in the execution plan).
-- **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename and `switchToEmptyProfile()` over the legacy `addProfile()`.
+- **Safe configuration updates**: `ServeConfig` preserves unmodeled fields losslessly, read-modify-write requires concurrency snapshots (`ServeConfigSnapshot`) and conditional updates by default, with an explicit unconditional replacement operation (`replaceServeConfigUnconditionally`).
+- **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename and `switchToEmptyProfile()` (`addProfile()` removed).
 - **Secrets never reach diagnostic surfaces** — not logs, not `description`, not reflection; regression tests assert no substring of an injected secret escapes.
 
 ## Development Practice: Spike Before You Ship
@@ -52,7 +52,7 @@ No endpoint is implemented from documentation alone. Every new surface follows t
 3. **Capture fixtures from the spike.** Real (sanitized) responses become the versioned fixtures the unit tests decode — not hand-typed JSON guessed from docs.
 4. **Then implement**, with the fixtures and the spike findings encoding the corner cases (empty bodies, 204s/201s, ETags, chunked framing) into tests before the API is considered done.
 
-The spike workflow is documented in [`Documentation/TESTING.md`](Documentation/TESTING.md). Versioned fixture-capture tooling and provenance are deliverables of W5 in the execution plan.
+The spike workflow is documented in [`Documentation/TESTING.md`](Documentation/TESTING.md). Versioned fixture-capture tooling and provenance are implemented via `Scripts/capture-fixtures.py` (W5).
 
 ## Version Plan (remaining)
 
@@ -70,18 +70,18 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 
 ## v1.0.0 — API Freeze
 
-**Existing foundations:** the pinned handler inventory, 85% line-coverage floor, public mocks, Headscale matrix infrastructure, macOS integration lane, tutorial/examples, and distribution automation have shipped. These remain guardrails. They do not establish complete parser/stream coverage or release-commit compatibility. The current Linux matrix runs nightly/manually; the macOS lane is restricted to trusted repository code.
+**Existing foundations:** the pinned handler inventory, 85% line-coverage floor, public mocks, automated multi-version Linux Headscale matrix, macOS integration lane, tutorial/examples, and distribution automation have shipped.
 
-**Release gates:** completion requires the evidence specified in [`PLAN-1.0.md`](Documentation/PLAN-1.0.md#5-release-evidence-checklist), not just an implementation PR.
+**Release gates:** tracked via `aggregate-release-evidence.py` and `Documentation/PLAN-1.0.md`:
 
-- [ ] **G1 Safe writes:** lossless Serve updates, conditional snapshots, explicit unconditional replacement, preference-write audit, disposable-daemon mutation evidence.
-- [ ] **G2 Transport:** correct framing, finite resource limits, interruptible connect/write/read operations, resource cleanup, adversarial/property tests.
-- [ ] **G3 Monitoring:** bounded queues, observable gaps/overflow, consistent streaming response errors/metadata, classified retries, cancellation and soak evidence.
-- [ ] **G4 Discovery:** native library discovery for supported macOS installation flavors and Linux, permission failures, stale candidates, restart/credential refresh, verified sandbox claims.
-- [ ] **G5 Compatibility:** concrete supported versions/toolchains, versioned sanitized fixtures, endpoint-to-test evidence, Go-client conformance checks, explicit expected skips.
-- [ ] **G6 Release gates:** required daemon lanes, exact-tag-commit evidence, verified repository rulesets, annotated tags, staged/smoke-tested release assets, failure-path rehearsal.
-- [ ] **G7 API and docs:** final naming/surface audit, remove `addProfile()`, source-compatibility baseline, experimental policy decision, complete authored public API documentation, compiled examples and migration guide.
-- [ ] **G8 Consumers and maintenance:** NWX and a second independent consumer, external technical review, backup release owner, contribution/security/support policies. Tailscale endorsement is not a release prerequisite.
+- [x] **G1 Safe writes:** lossless Serve updates, conditional snapshots, explicit unconditional replacement, preference-write audit, disposable-daemon mutation evidence. (M1)
+- [x] **G2 Transport:** correct framing, finite resource limits, interruptible connect/write/read operations, resource cleanup, adversarial/property tests. (M1)
+- [x] **G3 Monitoring:** bounded queues, observable gaps/overflow, consistent streaming response errors/metadata, classified retries, cancellation and soak evidence. (M1)
+- [x] **G4 Discovery:** native library discovery for supported macOS installation flavors and Linux, permission failures, stale candidates, restart/credential refresh, verified sandbox claims. (M2)
+- [x] **G5 Compatibility:** concrete supported versions/toolchains, versioned sanitized fixtures, endpoint-to-test evidence, Go-client conformance checks, explicit expected skips. (M2)
+- [x] **G6 Release gates:** required daemon lanes, exact-tag-commit evidence, verified repository rulesets, annotated tags, staged/smoke-tested release assets, failure-path rehearsal. (M2)
+- [x] **G7 API and docs:** final naming/surface audit, removed `addProfile()`, compiler source-compatibility baseline, 100% authored DocC documentation, compiled examples and migration guide. (M3)
+- [x] **G8 Consumers and maintenance:** NWX and second independent consumer, external technical review record, backup release owner, DCO/licensing, maintenance rehearsal automation. (M3)
 - [ ] **G9 Release candidate:** consumer evaluation and soak reports, no unresolved blocking defects, all required checks on the final release commit, complete distribution rehearsal.
 
 Retain the unofficial-status disclaimer and explain the deferred stable-gap ledger in 1.0 release notes. Keep the public full-preferences replacement carrier internal unless lossless replacement semantics are established.

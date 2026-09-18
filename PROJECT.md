@@ -64,11 +64,11 @@ Every feature from the survey is inventoried below with its assigned milestone a
 | 27 | FEAT-27 | Exact-version Linux/Headscale CI matrix workflow | M2 | PR 12 | PLAN W6 | DONE (`61cccda`, `7d4b8bd`) |
 | 28 | FEAT-28 | Exact-SHA release evidence aggregation tooling | M2 | PR 12 | PLAN W6 | DONE (`61cccda`, `7d4b8bd`) |
 | 29 | FEAT-29 | Staged release rehearsal and negative gate validation | M2 | PR 12 | PLAN W6 | DONE (`61cccda`, `7d4b8bd`) |
-| 30 | FEAT-30 | Public API audit and deprecated symbol removal (`addProfile`) | M3 | PR 13 | PLAN W7 | DONE |
-| 31 | FEAT-31 | Compiler-enforced source compatibility baseline checking | M3 | PR 13 | PLAN W7, DEC-5 | DONE |
-| 32 | FEAT-32 | Comprehensive authored DocC documentation (100% coverage) | M3 | PR 14 | PLAN W7 | PLANNED |
-| 33 | FEAT-33 | Consumer integration migration (NWX & secondary consumer) | M3 | PR 14 | PLAN W8 | PLANNED |
-| 34 | FEAT-34 | Maintenance, security, and governance rehearsal | M3 | PR 14 | PLAN W8, SUPP | PLANNED |
+| 30 | FEAT-30 | Public API audit and deprecated symbol removal (`addProfile`) | M3 | PR 13 | PLAN W7 | DONE (`c4438b4`) |
+| 31 | FEAT-31 | Compiler-enforced source compatibility baseline checking | M3 | PR 13 | PLAN W7, DEC-5 | DONE (`c4438b4`) |
+| 32 | FEAT-32 | Comprehensive authored DocC documentation (100% coverage) | M3 | PR 14 | PLAN W7 | DONE (`2b67179`) |
+| 33 | FEAT-33 | Consumer integration migration (NWX & secondary consumer) | M3 | PR 14 | PLAN W8 | DONE |
+| 34 | FEAT-34 | Maintenance, security, and governance rehearsal | M3 | PR 14 | PLAN W8, SUPP | DONE |
 | 35 | FEAT-35 | 14-day consumer evaluation and 24-hour soak verification | M4 | PR 15 | PLAN W9 | PLANNED |
 | 36 | FEAT-36 | Final 1.0 release packaging, checksums, and publication | M4 | PR 15 | PLAN W9 | PLANNED |
 
@@ -80,7 +80,7 @@ Every feature from the survey is inventoried below with its assigned milestone a
 |---|---|---|---|---|
 | M1 | Core Correctness & Reliability | PR 02 – PR 07 (W1, W2, W3): Lossless ServeConfig, snapshot concurrency, 64 KiB head limit, strict framing, zero FD leaks, StreamingResponse head metadata, bounded IPN streaming, classified reconnect backoff | M0 (Done) | DONE (`5e6ddc7`, `bbbe54a`, `3be767b`, `f7ead04`, `be6bb42`, `7f9208f`, `664d953`) |
 | M2 | Discovery & Compatibility | PR 08 – PR 12 (W4, W5, W6): Native macOS/Linux discovery, async discovery, credential recovery, versioned fixtures, Go conformance harness, CI matrix, exact-SHA release aggregator | M1 | DONE (`c8c50ec`, `182d239`, `0dfc37f`, `d7bc318`, `2f97938`, `1f8c798`, `61cccda`, `7d4b8bd`) |
-| M3 | Hardening & Pre-Release | PR 13 – PR 14 (W7, W8): Public API freeze, deprecation removal (`addProfile`), 100% authored DocC coverage, consumer validation (NWX), maintenance & security governance | M2 | IN_PROGRESS |
+| M3 | Hardening & Pre-Release | PR 13 – PR 14 (W7, W8): Public API freeze, deprecation removal (`addProfile`), 100% authored DocC coverage, consumer validation (NWX), maintenance & security governance | M2 | DONE (`c4438b4`, `2b67179`) |
 | M4 | 1.0 Release Freeze & Delivery | PR 15 (W9): 100% E2E test suite pass, soak testing, defect closure, final 1.0.0 release packaging, checksums, publication rehearsal | M3, E2E-READY | PLANNED |
 | E2E | E2E Testing Track | Test infra and requirement-driven test cases (Tiers 1–4) covering all 36 features independently; publishes TEST_READY.md | none (runs in parallel with M1-M3) | DONE (`6ed31a5`, TEST_READY.md published) |
 

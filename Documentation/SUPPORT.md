@@ -92,6 +92,15 @@ LocalAPI permissions depend on daemon configuration and user context:
 
 ## 6. Stability and Maintenance Lifecycle
 
+### Release Ownership & Governance Roles
+- **Primary Release Owner**: David E. Weekly (`@dweekly`, [david@weekly.org](mailto:david@weekly.org)). Responsible for release management, architecture, tag signing, and security triage.
+- **Designated Backup Maintainer**: [security-backup@weekly.org](mailto:security-backup@weekly.org). Empowered with repository admin permissions to triage security reports if the primary maintainer is unreachable (>48h for Critical incidents, >7 business days for releases), execute release rehearsals, and cut emergency patch releases.
+
+### Tag Immutability & Emergency Rollback
+- **Git Tag Immutability**: Published Git tags are **strictly immutable**. Once published, tags are never moved, rewritten, or deleted. In the Swift Package Manager ecosystem, moving a tag breaks consumer builds via `Package.resolved` fingerprint mismatch errors and corrupts index caches.
+- **Emergency Patch Protocol**: If a release contains a critical bug or vulnerability, the release is marked as **Yanked** on GitHub Releases, and a fast-track patch release (`1.0.(x+1)`) is cut from the tag commit and published immediately.
+
+### Versioning Policies
 - **Semantic Versioning**: 1.0 adopts strict SemVer for all public types and symbols in `TailscaleClient`.
 - **Patch Releases (1.0.x)**: Bug fixes, transport reliability enhancements, and documentation improvements. No breaking API changes.
 - **Minor Releases (1.x.0)**: New LocalAPI endpoint wrappers and additive models. Backwards compatible.
