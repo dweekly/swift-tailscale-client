@@ -1,0 +1,8 @@
+{
+  "Features": {
+    "acme": true,
+    "debug": true,
+    "serve": true,
+    "tailnetlock": true
+  }
+}

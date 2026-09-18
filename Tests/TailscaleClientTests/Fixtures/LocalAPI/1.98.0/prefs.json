@@ -1,0 +1,37 @@
+{
+  "AdvertiseRoutes": [
+    "192.168.1.0/24"
+  ],
+  "AdvertiseServices": [
+    "svc:metrics"
+  ],
+  "AdvertiseTags": [
+    "tag:client"
+  ],
+  "AppConnector": {
+    "Advertise": false
+  },
+  "AutoExitNode": "",
+  "AutoUpdate": {
+    "Apply": false,
+    "Check": true
+  },
+  "ControlURL": "https://controlplane.tailscale.com",
+  "CorpDNS": true,
+  "ExitNodeAllowLANAccess": true,
+  "ExitNodeID": "nExitNodeStable001",
+  "ExitNodeIP": "100.64.0.3",
+  "ForceDaemon": false,
+  "Hostname": "example-device",
+  "LoggedOut": false,
+  "NetfilterMode": 2,
+  "NoSNAT": false,
+  "OperatorUser": "admin",
+  "PostureChecking": false,
+  "ProfileName": "default",
+  "RouteAll": false,
+  "RunSSH": false,
+  "RunWebClient": false,
+  "ShieldsUp": false,
+  "WantRunning": true
+}

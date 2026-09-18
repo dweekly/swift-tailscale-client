@@ -1,0 +1,46 @@
+{
+  "CertDomains": [
+    "example-device.example.ts.net"
+  ],
+  "Domains": [
+    "example.ts.net"
+  ],
+  "ExitNodeFilteredSet": [
+    ".internal.example.com"
+  ],
+  "ExtraRecords": [
+    {
+      "Name": "wiki.example.ts.net",
+      "Type": "A",
+      "Value": "100.64.0.4"
+    }
+  ],
+  "FallbackResolvers": [
+    {
+      "Addr": "8.8.8.8",
+      "BootstrapResolution": [
+        "8.8.8.8"
+      ],
+      "UseWithExitNode": false
+    }
+  ],
+  "Proxied": true,
+  "Resolvers": [
+    {
+      "Addr": "1.1.1.1",
+      "BootstrapResolution": [
+        "1.1.1.1"
+      ],
+      "UseWithExitNode": false
+    }
+  ],
+  "Routes": {
+    "internal.example.com.": [
+      {
+        "Addr": "10.0.0.1",
+        "BootstrapResolution": [],
+        "UseWithExitNode": true
+      }
+    ]
+  }
+}
