@@ -6,7 +6,13 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Documentation
 
-- Added a detailed 1.0 implementation plan with work-item dependencies, a reviewable PR sequence, acceptance tests, exact-commit release gates, consumer validation, and upstream adoption preparation. Aligned the roadmap checklist with these gates and corrected claims about current ETag enforcement and integration workflow triggers.
+- Added a detailed 1.0 implementation plan ([`Documentation/PLAN-1.0.md`](Documentation/PLAN-1.0.md)) with work-item dependencies, a reviewable PR sequence, acceptance tests, exact-commit release gates, consumer validation, and upstream adoption preparation. Aligned the roadmap checklist with these gates and corrected claims about current ETag enforcement and integration workflow triggers.
+- Completed Milestone 0 (W0): recorded 1.0 public contract decisions in [`Documentation/DECISIONS-1.0.md`](Documentation/DECISIONS-1.0.md) (safe Serve writes with concurrency snapshots, streaming response metadata, bounded IPN bus lifecycle, automatic vs pinned discovery credential refresh, experimental API source compatibility, netcheck scope, and supported environments).
+- Defined official 1.0 platform, toolchain, and daemon compatibility matrix in [`Documentation/SUPPORT.md`](Documentation/SUPPORT.md).
+
+### Added
+
+- Added `ReadinessRegressionTests` covering pre-1.0 readiness review findings: unknown ServeConfig field drops, HTTP head size limit bypass with delimiter present, unvalidated chunked decoder completion, and unvalidated Content-Length framing.
 
 ## [0.12.0] - 2026-08-04
 

@@ -57,7 +57,7 @@ Dependencies:
 
 ### W0 — Record the public contract decisions
 
-**Deliverable:** a short design-decision record, checked into `Documentation/`, with proposed signatures, downstream usage examples, alternatives, and migration implications. Illustrative names in this plan are not approved API signatures.
+**Deliverable:** a short design-decision record, checked into `Documentation/`, with proposed signatures, downstream usage examples, alternatives, and migration implications. Completed in [`Documentation/DECISIONS-1.0.md`](DECISIONS-1.0.md) and [`Documentation/SUPPORT.md`](SUPPORT.md). Illustrative names in this plan are not approved API signatures.
 
 Decisions to settle:
 
