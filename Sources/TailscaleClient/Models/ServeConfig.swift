@@ -44,9 +44,19 @@ public struct ServeConfig: Codable, Sendable, Equatable {
   /// unconditionally.
   public var etag: String?
 
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var _unmodeledFields: [String: JSONValue]
+
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var unmodeledFields: [String: JSONValue] {
+    get { _unmodeledFields }
+    set { _unmodeledFields = newValue }
+  }
+
   /// Whether no serving is configured at all.
   public var isEmpty: Bool {
     tcp.isEmpty && web.isEmpty && services.isEmpty && allowFunnel.isEmpty && foreground.isEmpty
+      && _unmodeledFields.isEmpty
   }
 
   /// Creates an instance for tests, previews, or fixtures.
@@ -56,7 +66,8 @@ public struct ServeConfig: Codable, Sendable, Equatable {
     services: [String: ServiceConfig] = [:],
     allowFunnel: [String: Bool] = [:],
     foreground: [String: ServeConfig] = [:],
-    etag: String? = nil
+    etag: String? = nil,
+    unmodeledFields: [String: JSONValue] = [:]
   ) {
     self.tcp = tcp
     self.web = web
@@ -64,9 +75,10 @@ public struct ServeConfig: Codable, Sendable, Equatable {
     self.allowFunnel = allowFunnel
     self.foreground = foreground
     self.etag = etag
+    self._unmodeledFields = unmodeledFields
   }
 
-  private enum CodingKeys: String, CodingKey {
+  private enum CodingKeys: String, CodingKey, CaseIterable {
     case tcp = "TCP"
     case web = "Web"
     case services = "Services"
@@ -78,9 +90,22 @@ public struct ServeConfig: Codable, Sendable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     // Go serializes the uint16-keyed TCP map with string object keys;
     // Swift's [UInt16:] Codable would use a flat array, so map by hand.
-    let rawTCP = try container.decodeIfPresent([String: TCPPortHandler].self, forKey: .tcp) ?? [:]
-    tcp = rawTCP.reduce(into: [:]) { result, entry in
-      if let port = UInt16(entry.key) { result[port] = entry.value }
+    if let rawTCP = try container.decodeIfPresent([String: TCPPortHandler].self, forKey: .tcp) {
+      var parsed: [UInt16: TCPPortHandler] = [:]
+      for (key, handler) in rawTCP {
+        guard let port = UInt16(key) else {
+          throw DecodingError.dataCorruptedError(
+            forKey: .tcp,
+            in: container,
+            debugDescription:
+              "Invalid TCP port key '\(key)' in ServeConfig; expected UInt16 (0-65535)"
+          )
+        }
+        parsed[port] = handler
+      }
+      tcp = parsed
+    } else {
+      tcp = [:]
     }
     web = try container.decodeIfPresent([String: WebServerConfig].self, forKey: .web) ?? [:]
     services = try container.decodeIfPresent([String: ServiceConfig].self, forKey: .services) ?? [:]
@@ -88,6 +113,19 @@ public struct ServeConfig: Codable, Sendable, Equatable {
     foreground =
       try container.decodeIfPresent([String: ServeConfig].self, forKey: .foreground) ?? [:]
     etag = nil
+
+    let dynamicContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+    let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+    var unmodeled: [String: JSONValue] = [:]
+    for key in dynamicContainer.allKeys {
+      guard !knownKeys.contains(key.stringValue) else { continue }
+      if (try? dynamicContainer.decodeNil(forKey: key)) == true {
+        unmodeled[key.stringValue] = .null
+      } else {
+        unmodeled[key.stringValue] = try dynamicContainer.decode(JSONValue.self, forKey: key)
+      }
+    }
+    _unmodeledFields = unmodeled
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -102,6 +140,17 @@ public struct ServeConfig: Codable, Sendable, Equatable {
     if !services.isEmpty { try container.encode(services, forKey: .services) }
     if !allowFunnel.isEmpty { try container.encode(allowFunnel, forKey: .allowFunnel) }
     if !foreground.isEmpty { try container.encode(foreground, forKey: .foreground) }
+
+    if !_unmodeledFields.isEmpty {
+      var dynamicContainer = encoder.container(keyedBy: AnyCodingKey.self)
+      let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+      for key in _unmodeledFields.keys.sorted() {
+        guard !knownKeys.contains(key) else { continue }
+        if let val = _unmodeledFields[key] {
+          try dynamicContainer.encode(val, forKey: AnyCodingKey(string: key))
+        }
+      }
+    }
   }
 }
 
@@ -125,20 +174,31 @@ public struct TCPPortHandler: Codable, Sendable, Equatable {
   /// If forwarding, terminate TLS first using the cert for this SNI name.
   public var terminateTLS: String?
 
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var _unmodeledFields: [String: JSONValue]
+
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var unmodeledFields: [String: JSONValue] {
+    get { _unmodeledFields }
+    set { _unmodeledFields = newValue }
+  }
+
   /// Creates an instance for tests, previews, or fixtures.
   public init(
     https: Bool = false,
     http: Bool = false,
     tcpForward: String? = nil,
-    terminateTLS: String? = nil
+    terminateTLS: String? = nil,
+    unmodeledFields: [String: JSONValue] = [:]
   ) {
     self.https = https
     self.http = http
     self.tcpForward = tcpForward
     self.terminateTLS = terminateTLS
+    self._unmodeledFields = unmodeledFields
   }
 
-  private enum CodingKeys: String, CodingKey {
+  private enum CodingKeys: String, CodingKey, CaseIterable {
     case https = "HTTPS"
     case http = "HTTP"
     case tcpForward = "TCPForward"
@@ -151,6 +211,19 @@ public struct TCPPortHandler: Codable, Sendable, Equatable {
     http = try container.decodeIfPresent(Bool.self, forKey: .http) ?? false
     tcpForward = try container.decodeIfPresent(String.self, forKey: .tcpForward)
     terminateTLS = try container.decodeIfPresent(String.self, forKey: .terminateTLS)
+
+    let dynamicContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+    let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+    var unmodeled: [String: JSONValue] = [:]
+    for key in dynamicContainer.allKeys {
+      guard !knownKeys.contains(key.stringValue) else { continue }
+      if (try? dynamicContainer.decodeNil(forKey: key)) == true {
+        unmodeled[key.stringValue] = .null
+      } else {
+        unmodeled[key.stringValue] = try dynamicContainer.decode(JSONValue.self, forKey: key)
+      }
+    }
+    _unmodeledFields = unmodeled
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -159,6 +232,17 @@ public struct TCPPortHandler: Codable, Sendable, Equatable {
     if http { try container.encode(true, forKey: .http) }
     try container.encodeIfPresent(tcpForward, forKey: .tcpForward)
     try container.encodeIfPresent(terminateTLS, forKey: .terminateTLS)
+
+    if !_unmodeledFields.isEmpty {
+      var dynamicContainer = encoder.container(keyedBy: AnyCodingKey.self)
+      let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+      for key in _unmodeledFields.keys.sorted() {
+        guard !knownKeys.contains(key) else { continue }
+        if let val = _unmodeledFields[key] {
+          try dynamicContainer.encode(val, forKey: AnyCodingKey(string: key))
+        }
+      }
+    }
   }
 }
 
@@ -170,18 +254,60 @@ public struct WebServerConfig: Codable, Sendable, Equatable {
   /// Mount point → handler.
   public var handlers: [String: HTTPHandler]
 
-  /// Creates an instance for tests, previews, or fixtures.
-  public init(handlers: [String: HTTPHandler] = [:]) {
-    self.handlers = handlers
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var _unmodeledFields: [String: JSONValue]
+
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var unmodeledFields: [String: JSONValue] {
+    get { _unmodeledFields }
+    set { _unmodeledFields = newValue }
   }
 
-  private enum CodingKeys: String, CodingKey {
+  /// Creates an instance for tests, previews, or fixtures.
+  public init(
+    handlers: [String: HTTPHandler] = [:],
+    unmodeledFields: [String: JSONValue] = [:]
+  ) {
+    self.handlers = handlers
+    self._unmodeledFields = unmodeledFields
+  }
+
+  private enum CodingKeys: String, CodingKey, CaseIterable {
     case handlers = "Handlers"
   }
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     handlers = try container.decodeIfPresent([String: HTTPHandler].self, forKey: .handlers) ?? [:]
+
+    let dynamicContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+    let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+    var unmodeled: [String: JSONValue] = [:]
+    for key in dynamicContainer.allKeys {
+      guard !knownKeys.contains(key.stringValue) else { continue }
+      if (try? dynamicContainer.decodeNil(forKey: key)) == true {
+        unmodeled[key.stringValue] = .null
+      } else {
+        unmodeled[key.stringValue] = try dynamicContainer.decode(JSONValue.self, forKey: key)
+      }
+    }
+    _unmodeledFields = unmodeled
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    if !handlers.isEmpty { try container.encode(handlers, forKey: .handlers) }
+
+    if !_unmodeledFields.isEmpty {
+      var dynamicContainer = encoder.container(keyedBy: AnyCodingKey.self)
+      let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+      for key in _unmodeledFields.keys.sorted() {
+        guard !knownKeys.contains(key) else { continue }
+        if let val = _unmodeledFields[key] {
+          try dynamicContainer.encode(val, forKey: AnyCodingKey(string: key))
+        }
+      }
+    }
   }
 }
 
@@ -202,20 +328,31 @@ public struct HTTPHandler: Codable, Sendable, Equatable {
   /// Redirect (308) to this URL.
   public var redirect: String?
 
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var _unmodeledFields: [String: JSONValue]
+
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var unmodeledFields: [String: JSONValue] {
+    get { _unmodeledFields }
+    set { _unmodeledFields = newValue }
+  }
+
   /// Creates an instance for tests, previews, or fixtures.
   public init(
     path: String? = nil,
     proxy: String? = nil,
     text: String? = nil,
-    redirect: String? = nil
+    redirect: String? = nil,
+    unmodeledFields: [String: JSONValue] = [:]
   ) {
     self.path = path
     self.proxy = proxy
     self.text = text
     self.redirect = redirect
+    self._unmodeledFields = unmodeledFields
   }
 
-  private enum CodingKeys: String, CodingKey {
+  private enum CodingKeys: String, CodingKey, CaseIterable {
     case path = "Path"
     case proxy = "Proxy"
     case text = "Text"
@@ -228,6 +365,19 @@ public struct HTTPHandler: Codable, Sendable, Equatable {
     proxy = try container.decodeIfPresent(String.self, forKey: .proxy)
     text = try container.decodeIfPresent(String.self, forKey: .text)
     redirect = try container.decodeIfPresent(String.self, forKey: .redirect)
+
+    let dynamicContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+    let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+    var unmodeled: [String: JSONValue] = [:]
+    for key in dynamicContainer.allKeys {
+      guard !knownKeys.contains(key.stringValue) else { continue }
+      if (try? dynamicContainer.decodeNil(forKey: key)) == true {
+        unmodeled[key.stringValue] = .null
+      } else {
+        unmodeled[key.stringValue] = try dynamicContainer.decode(JSONValue.self, forKey: key)
+      }
+    }
+    _unmodeledFields = unmodeled
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -236,6 +386,17 @@ public struct HTTPHandler: Codable, Sendable, Equatable {
     try container.encodeIfPresent(proxy, forKey: .proxy)
     try container.encodeIfPresent(text, forKey: .text)
     try container.encodeIfPresent(redirect, forKey: .redirect)
+
+    if !_unmodeledFields.isEmpty {
+      var dynamicContainer = encoder.container(keyedBy: AnyCodingKey.self)
+      let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+      for key in _unmodeledFields.keys.sorted() {
+        guard !knownKeys.contains(key) else { continue }
+        if let val = _unmodeledFields[key] {
+          try dynamicContainer.encode(val, forKey: AnyCodingKey(string: key))
+        }
+      }
+    }
   }
 }
 
@@ -253,18 +414,29 @@ public struct ServiceConfig: Codable, Sendable, Equatable {
   /// `tcp`/`web`.
   public var tun: Bool
 
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var _unmodeledFields: [String: JSONValue]
+
+  /// Unmodeled JSON fields preserved losslessly from daemon responses.
+  public var unmodeledFields: [String: JSONValue] {
+    get { _unmodeledFields }
+    set { _unmodeledFields = newValue }
+  }
+
   /// Creates an instance for tests, previews, or fixtures.
   public init(
     tcp: [UInt16: TCPPortHandler] = [:],
     web: [String: WebServerConfig] = [:],
-    tun: Bool = false
+    tun: Bool = false,
+    unmodeledFields: [String: JSONValue] = [:]
   ) {
     self.tcp = tcp
     self.web = web
     self.tun = tun
+    self._unmodeledFields = unmodeledFields
   }
 
-  private enum CodingKeys: String, CodingKey {
+  private enum CodingKeys: String, CodingKey, CaseIterable {
     case tcp = "TCP"
     case web = "Web"
     case tun = "Tun"
@@ -272,12 +444,38 @@ public struct ServiceConfig: Codable, Sendable, Equatable {
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    let rawTCP = try container.decodeIfPresent([String: TCPPortHandler].self, forKey: .tcp) ?? [:]
-    tcp = rawTCP.reduce(into: [:]) { result, entry in
-      if let port = UInt16(entry.key) { result[port] = entry.value }
+    if let rawTCP = try container.decodeIfPresent([String: TCPPortHandler].self, forKey: .tcp) {
+      var parsed: [UInt16: TCPPortHandler] = [:]
+      for (key, handler) in rawTCP {
+        guard let port = UInt16(key) else {
+          throw DecodingError.dataCorruptedError(
+            forKey: .tcp,
+            in: container,
+            debugDescription:
+              "Invalid TCP port key '\(key)' in ServiceConfig; expected UInt16 (0-65535)"
+          )
+        }
+        parsed[port] = handler
+      }
+      tcp = parsed
+    } else {
+      tcp = [:]
     }
     web = try container.decodeIfPresent([String: WebServerConfig].self, forKey: .web) ?? [:]
     tun = try container.decodeIfPresent(Bool.self, forKey: .tun) ?? false
+
+    let dynamicContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+    let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+    var unmodeled: [String: JSONValue] = [:]
+    for key in dynamicContainer.allKeys {
+      guard !knownKeys.contains(key.stringValue) else { continue }
+      if (try? dynamicContainer.decodeNil(forKey: key)) == true {
+        unmodeled[key.stringValue] = .null
+      } else {
+        unmodeled[key.stringValue] = try dynamicContainer.decode(JSONValue.self, forKey: key)
+      }
+    }
+    _unmodeledFields = unmodeled
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -288,5 +486,16 @@ public struct ServiceConfig: Codable, Sendable, Equatable {
     }
     if !web.isEmpty { try container.encode(web, forKey: .web) }
     if tun { try container.encode(true, forKey: .tun) }
+
+    if !_unmodeledFields.isEmpty {
+      var dynamicContainer = encoder.container(keyedBy: AnyCodingKey.self)
+      let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+      for key in _unmodeledFields.keys.sorted() {
+        guard !knownKeys.contains(key) else { continue }
+        if let val = _unmodeledFields[key] {
+          try dynamicContainer.encode(val, forKey: AnyCodingKey(string: key))
+        }
+      }
+    }
   }
 }

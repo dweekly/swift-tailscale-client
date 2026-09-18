@@ -60,11 +60,16 @@ final class ServeAPITests: XCTestCase {
     XCTAssertEqual(wire, "{}")
   }
 
-  func testServeConfigSkipsNonNumericTCPKeys() throws {
+  func testServeConfigRejectsNonNumericTCPKeys() throws {
     let json = Data(#"{"TCP": {"443": {"HTTPS": true}, "bogus": {"HTTP": true}}}"#.utf8)
-    let config = try JSONDecoder.tailscale().decode(ServeConfig.self, from: json)
-    XCTAssertEqual(config.tcp.count, 1)
-    XCTAssertEqual(config.tcp[443]?.https, true)
+    XCTAssertThrowsError(try JSONDecoder.tailscale().decode(ServeConfig.self, from: json)) {
+      error in
+      guard case DecodingError.dataCorrupted(let context) = error else {
+        XCTFail("Expected DecodingError.dataCorrupted, got \(error)")
+        return
+      }
+      XCTAssertTrue(context.debugDescription.contains("bogus"))
+    }
   }
 
   // MARK: - serveConfig() GET

@@ -17,14 +17,13 @@ import XCTest
 /// 4. Content-Length header is not validated against body byte count in unary responses.
 final class ReadinessRegressionTests: XCTestCase {
 
-  // MARK: - Finding 1: ServeConfig Unknown Fields Loss
+  // MARK: - Finding 1: ServeConfig Unknown Fields Loss (Defended in W1 / PR 02)
 
-  /// Demonstrates that unmodeled JSON fields in ServeConfig at both the root level
+  /// Verifies that unmodeled JSON fields in ServeConfig at both the root level
   /// and inside nested structures (TCPPortHandler, WebServerConfig, HTTPHandler)
-  /// are permanently lost when decoded into `ServeConfig` and re-encoded.
-  ///
-  /// W1 will replace this with recursive lossless preservation.
-  func testServeConfigCurrentlyDropsUnknownRootAndNestedFields() throws {
+  /// are losslessly preserved across the decode -> edit one known field -> re-encode lifecycle,
+  /// with complete 64-bit integer precision.
+  func testServeConfigPreservesUnknownRootAndNestedFields() throws {
     let rawJSON = """
       {
         "TCP": {
@@ -38,14 +37,16 @@ final class ReadinessRegressionTests: XCTestCase {
             "Handlers": {
               "/": {
                 "Proxy": "http://127.0.0.1:3000",
-                "UnknownHandlerField": 99999
+                "UnknownHandlerField": 99999,
+                "Large64BitInt": 18446744073709551615
               }
             },
             "UnknownWebSetting": true
           }
         },
         "UnknownRootField": "preserve-me-root",
-        "ExperimentalDaemonFlags": [1, 2, 3]
+        "ExperimentalDaemonFlags": [1, 2, 3],
+        "ExplicitNullField": null
       }
       """
 
@@ -59,47 +60,64 @@ final class ReadinessRegressionTests: XCTestCase {
       "http://127.0.0.1:3000"
     )
 
+    // Unmodeled fields present on decoded model
+    XCTAssertEqual(decoded._unmodeledFields["UnknownRootField"], .string("preserve-me-root"))
+    XCTAssertEqual(
+      decoded._unmodeledFields["ExperimentalDaemonFlags"],
+      .array([.integer(1), .integer(2), .integer(3)])
+    )
+    XCTAssertEqual(decoded._unmodeledFields["ExplicitNullField"], .null)
+    XCTAssertEqual(
+      decoded.tcp[443]?._unmodeledFields["UnknownTCPSetting"], .string("preserve-me-tcp"))
+    XCTAssertEqual(
+      decoded.web["node.tail1234.ts.net:443"]?._unmodeledFields["UnknownWebSetting"], .bool(true))
+    XCTAssertEqual(
+      decoded.web["node.tail1234.ts.net:443"]?.handlers["/"]?._unmodeledFields[
+        "UnknownHandlerField"],
+      .integer(99999)
+    )
+    XCTAssertEqual(
+      decoded.web["node.tail1234.ts.net:443"]?.handlers["/"]?._unmodeledFields["Large64BitInt"],
+      .unsignedInteger(18_446_744_073_709_551_615)
+    )
+
+    // Edit a known field
+    var modified = decoded
+    modified.web["node.tail1234.ts.net:443"]?.handlers["/"]?.proxy = "http://127.0.0.1:4000"
+
     // Re-encode to JSON
-    let encodedData = try JSONEncoder().encode(decoded)
+    let encodedData = try JSONEncoder().encode(modified)
     let reencodedObject =
       try XCTUnwrap(
         JSONSerialization.jsonObject(with: encodedData) as? [String: Any]
       )
 
-    // REPRODUCED BEHAVIOR:
-    // Root-level unknown fields are completely absent
-    XCTAssertNil(
-      reencodedObject["UnknownRootField"],
-      "Vulnerability reproduction: UnknownRootField is lost on re-encoding"
-    )
-    XCTAssertNil(
-      reencodedObject["ExperimentalDaemonFlags"],
-      "Vulnerability reproduction: ExperimentalDaemonFlags is lost on re-encoding"
-    )
+    // DEFENSE VERIFICATION:
+    // Root-level unknown fields are preserved
+    XCTAssertEqual(reencodedObject["UnknownRootField"] as? String, "preserve-me-root")
+    XCTAssertEqual(reencodedObject["ExperimentalDaemonFlags"] as? [Int], [1, 2, 3])
+    XCTAssertTrue(reencodedObject.keys.contains("ExplicitNullField"))
+    XCTAssertTrue(reencodedObject["ExplicitNullField"] is NSNull)
 
-    // Nested TCP unknown fields are absent
+    // Nested TCP unknown fields are preserved
     let tcpDict = reencodedObject["TCP"] as? [String: Any]
     let port443Dict = tcpDict?["443"] as? [String: Any]
-    XCTAssertNil(
-      port443Dict?["UnknownTCPSetting"],
-      "Vulnerability reproduction: nested TCP unknown fields are lost on re-encoding"
-    )
+    XCTAssertEqual(port443Dict?["UnknownTCPSetting"] as? String, "preserve-me-tcp")
 
-    // Nested Web unknown fields are absent
+    // Nested Web unknown fields are preserved
     let webDict = reencodedObject["Web"] as? [String: Any]
     let siteDict = webDict?["node.tail1234.ts.net:443"] as? [String: Any]
-    XCTAssertNil(
-      siteDict?["UnknownWebSetting"],
-      "Vulnerability reproduction: nested Web unknown fields are lost on re-encoding"
-    )
+    XCTAssertEqual(siteDict?["UnknownWebSetting"] as? Bool, true)
 
-    // Nested Handler unknown fields are absent
+    // Nested Handler unknown fields are preserved
     let handlersDict = siteDict?["Handlers"] as? [String: Any]
     let rootHandlerDict = handlersDict?["/"] as? [String: Any]
-    XCTAssertNil(
-      rootHandlerDict?["UnknownHandlerField"],
-      "Vulnerability reproduction: nested Handler unknown fields are lost on re-encoding"
-    )
+    XCTAssertEqual(rootHandlerDict?["UnknownHandlerField"] as? Int, 99999)
+    XCTAssertEqual(rootHandlerDict?["Proxy"] as? String, "http://127.0.0.1:4000")
+
+    // Re-decode from encoded JSON and assert equality
+    let redecoded = try JSONDecoder.tailscale().decode(ServeConfig.self, from: encodedData)
+    XCTAssertEqual(redecoded, modified)
   }
 
   // MARK: - Finding 2: HTTPHeadBuffer Header Size Limit Bypass
