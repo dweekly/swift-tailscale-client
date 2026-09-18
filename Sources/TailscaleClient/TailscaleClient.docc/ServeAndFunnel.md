@@ -15,9 +15,10 @@ snapshot, mutate it, and write it back:
 ```swift
 let client = TailscaleClient()
 
-var config = try await client.serveConfig()
+let snapshot = try await client.serveConfigSnapshot()
+var config = snapshot.config
 config.tcp[8443] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
-try await client.setServeConfig(config)
+let newSnapshot = try await client.setServeConfig(config, matching: snapshot)
 ```
 
 Building a ``ServeConfig`` from scratch and writing it would silently delete
@@ -26,8 +27,8 @@ plus the ETag check below — is what makes writes safe.
 
 ## Optimistic concurrency with ETags
 
-``TailscaleClient/serveConfig()`` captures the daemon's `Etag` response
-header into ``ServeConfig/etag``, and ``TailscaleClient/setServeConfig(_:)``
+``TailscaleClient/serveConfigSnapshot()`` captures the daemon's `Etag` response
+header into ``ServeConfigSnapshot/etag``, and ``TailscaleClient/setServeConfig(_:matching:)``
 replays it as `If-Match`. If anything else modified the config in between
 (the Tailscale CLI, another app), the daemon answers HTTP 412 and the client
 throws ``TailscaleClientError/preconditionFailed(body:endpoint:)``.
@@ -37,10 +38,11 @@ The recovery is always the same — re-fetch, re-apply, retry:
 ```swift
 func addForward(port: UInt16, to target: String, client: TailscaleClient) async throws {
   for _ in 0..<3 {
-    var config = try await client.serveConfig()
+    let snapshot = try await client.serveConfigSnapshot()
+    var config = snapshot.config
     config.tcp[port] = TCPPortHandler(tcpForward: target)
     do {
-      try await client.setServeConfig(config)
+      _ = try await client.setServeConfig(config, matching: snapshot)
       return
     } catch TailscaleClientError.preconditionFailed {
       continue  // Someone else won the race; rebase on their change.
@@ -50,9 +52,8 @@ func addForward(port: UInt16, to target: String, client: TailscaleClient) async 
 }
 ```
 
-An empty ``ServeConfig/etag`` writes unconditionally (matching Tailscale's
-own client); reserve that for tooling that intentionally owns the whole
-config.
+For explicit unconditional replacement (e.g., initial setup or reset), use
+``TailscaleClient/replaceServeConfigUnconditionally(_:)``.
 
 ## Funnel
 
@@ -92,6 +93,7 @@ issued certificates instead of re-requesting them.
 ## Topics
 
 ### Serve configuration
+- ``ServeConfigSnapshot``
 - ``ServeConfig``
 - ``TCPPortHandler``
 - ``WebServerConfig``

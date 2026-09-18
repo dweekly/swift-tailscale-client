@@ -997,12 +997,15 @@ public enum TailscaleClientError: Error, Sendable {
   /// The daemon answered a peer lookup with 404: the endpoint exists, but no
   /// peer matches the queried address or key (upstream `ErrPeerNotFound`).
   case peerNotFound(endpoint: String)
+  /// A conditional write was attempted, but no valid concurrency token (ETag)
+  /// was available in the snapshot, or the daemon returned no ETag header on read.
+  case missingConcurrencyToken
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
     let data: Data
     switch self {
-    case .transport, .endpointUnavailable, .timeout, .peerNotFound:
+    case .transport, .endpointUnavailable, .timeout, .peerNotFound, .missingConcurrencyToken:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -1045,6 +1048,9 @@ extension TailscaleClientError: CustomStringConvertible {
     case .preconditionFailed(_, let endpoint):
       return
         "LocalAPI rejected the write to \(endpoint): stale ETag (HTTP 412) — re-fetch and retry"
+    case .missingConcurrencyToken:
+      return
+        "Cannot perform conditional write: missing or empty concurrency token (ETag) — fetch a fresh ServeConfigSnapshot"
     case .permissionDenied(_, let endpoint):
       return "LocalAPI denied access to \(endpoint) (HTTP 403)"
     case .rateLimited(let retryAfter, _, let endpoint):
@@ -1126,6 +1132,9 @@ extension TailscaleClientError: LocalizedError {
     case .preconditionFailed:
       return
         "Another client changed this configuration concurrently. Re-fetch it, re-apply your change, and retry the write."
+    case .missingConcurrencyToken:
+      return
+        "Fetch a fresh ServeConfigSnapshot using serveConfigSnapshot() before modifying and writing configuration."
     case .permissionDenied:
       return
         "Check the caller's permissions. If a policy gates this operation, supply a justification via TailscaleClient.withAuditReason(_:operation:) before retrying."

@@ -314,4 +314,244 @@ final class ServeAPITests: XCTestCase {
     XCTAssertTrue(response.shouldWait)
     XCTAssertNil(response.text)
   }
+
+  // MARK: - ServeConfigSnapshot & Safe Concurrency (PR 03)
+
+  func testServeConfigSnapshotCapturesETagAndTimestamp() async throws {
+    let before = Date()
+    let transport = MockTransport { request, _ in
+      XCTAssertEqual(request.method, "GET")
+      XCTAssertEqual(request.path, "/localapi/v0/serve-config")
+      return TailscaleResponse(
+        statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"snap-123\""])
+    }
+    let snapshot = try await makeClient(transport: transport).serveConfigSnapshot()
+    let after = Date()
+
+    XCTAssertEqual(snapshot.etag, "\"snap-123\"")
+    XCTAssertGreaterThanOrEqual(snapshot.fetchedAt, before)
+    XCTAssertLessThanOrEqual(snapshot.fetchedAt, after)
+    XCTAssertTrue(snapshot.config.isEmpty)
+  }
+
+  func testServeConfigSnapshotRejectsMissingETagHeader() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: [:])
+    }
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).serveConfigSnapshot()
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .missingConcurrencyToken = clientError
+      else {
+        XCTFail("Expected .missingConcurrencyToken, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testServeConfigSnapshotRejectsEmptyETagHeader() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "   "])
+    }
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).serveConfigSnapshot()
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .missingConcurrencyToken = clientError
+      else {
+        XCTFail("Expected .missingConcurrencyToken, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testSetServeConfigMatchingSendsIfMatchAndReturnsNewSnapshot() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(
+        statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"updated-etag\""])
+    }
+
+    var config = ServeConfig()
+    config.tcp[8080] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
+    let snapshot = ServeConfigSnapshot(etag: "\"initial-etag\"", config: ServeConfig())
+
+    let newSnapshot = try await makeClient(transport: transport).setServeConfig(
+      config, matching: snapshot)
+
+    let requests = await recorder.requests
+    let request = try XCTUnwrap(requests.first)
+    XCTAssertEqual(request.method, "POST")
+    XCTAssertEqual(request.path, "/localapi/v0/serve-config")
+    XCTAssertEqual(request.additionalHeaders["If-Match"], "\"initial-etag\"")
+    XCTAssertEqual(newSnapshot.etag, "\"updated-etag\"")
+    XCTAssertEqual(newSnapshot.config.tcp[8080]?.tcpForward, "127.0.0.1:3000")
+  }
+
+  func testSetServeConfigMatchingRejectsEmptySnapshotETag() async throws {
+    let transport = MockTransport { _, _ in
+      XCTFail("Network should not be contacted when snapshot ETag is empty")
+      return TailscaleResponse(statusCode: 200, data: Data())
+    }
+    let snapshot = ServeConfigSnapshot(etag: "", config: ServeConfig())
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).setServeConfig(
+        ServeConfig(), matching: snapshot)
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .missingConcurrencyToken = clientError
+      else {
+        XCTFail("Expected .missingConcurrencyToken, got \(error)")
+        return
+      }
+    }
+  }
+
+  func testSetServeConfigMatchingMaps412ToPreconditionFailed() async throws {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 412, data: Data("etag mismatch".utf8))
+    }
+    let snapshot = ServeConfigSnapshot(etag: "\"stale-etag\"", config: ServeConfig())
+    await assertThrowsErrorAsync(
+      try await self.makeClient(transport: transport).setServeConfig(
+        ServeConfig(), matching: snapshot)
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .preconditionFailed(let body, let endpoint) = clientError
+      else {
+        XCTFail("Expected .preconditionFailed, got \(error)")
+        return
+      }
+      XCTAssertEqual(String(decoding: body, as: UTF8.self), "etag mismatch")
+      XCTAssertEqual(endpoint, "/localapi/v0/serve-config")
+    }
+  }
+
+  func testUpdateServeConfigAppliesMutationAndPerformsSafeWrite() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(
+        statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"next-etag\""])
+    }
+    let initial = ServeConfigSnapshot(etag: "\"v1\"", config: ServeConfig())
+    let client = makeClient(transport: transport)
+
+    let updated = try await client.updateServeConfig(initial) { config in
+      config.tcp[443] = TCPPortHandler(https: true)
+    }
+
+    let requests = await recorder.requests
+    let request = try XCTUnwrap(requests.first)
+    XCTAssertEqual(request.additionalHeaders["If-Match"], "\"v1\"")
+    XCTAssertEqual(updated.etag, "\"next-etag\"")
+    XCTAssertEqual(updated.config.tcp[443]?.https, true)
+  }
+
+  func testUpdateServeConfigAbortsWithoutNetworkWhenMutationThrows() async throws {
+    enum CustomMutationError: Error { case failed }
+    let transport = MockTransport { _, _ in
+      XCTFail("Network should not be contacted when mutation throws")
+      return TailscaleResponse(statusCode: 200, data: Data())
+    }
+    let initial = ServeConfigSnapshot(etag: "\"v1\"", config: ServeConfig())
+    let client = makeClient(transport: transport)
+
+    do {
+      _ = try await client.updateServeConfig(initial) { _ in
+        throw CustomMutationError.failed
+      }
+      XCTFail("Expected CustomMutationError.failed")
+    } catch CustomMutationError.failed {
+      // Expected
+    }
+  }
+
+  func testReplaceServeConfigUnconditionallySendsEmptyIfMatch() async throws {
+    let recorder = RequestRecorder()
+    let transport = MockTransport { request, _ in
+      await recorder.record(request: request)
+      return TailscaleResponse(statusCode: 200, data: Data())
+    }
+    var config = ServeConfig()
+    config.tcp[80] = TCPPortHandler(http: true)
+
+    try await makeClient(transport: transport).replaceServeConfigUnconditionally(config)
+
+    let requests = await recorder.requests
+    let request = try XCTUnwrap(requests.first)
+    XCTAssertEqual(request.method, "POST")
+    XCTAssertEqual(request.path, "/localapi/v0/serve-config")
+    XCTAssertEqual(request.additionalHeaders["If-Match"], "")
+  }
+
+  func testTwoConcurrentWritersDetectConflict() async throws {
+    actor ETagState {
+      var currentETag = "\"v1\""
+      func getETag() -> String { currentETag }
+      func updateETag(ifMatch: String?) -> (Bool, String) {
+        if ifMatch == currentETag {
+          currentETag = "\"v2\""
+          return (true, currentETag)
+        }
+        return (false, currentETag)
+      }
+    }
+
+    let state = ETagState()
+    let transport = MockTransport { request, _ in
+      if request.method == "GET" {
+        let tag = await state.getETag()
+        return TailscaleResponse(
+          statusCode: 200, data: Data("{}".utf8), headers: ["ETag": tag])
+      } else if request.method == "POST" {
+        let ifMatch = request.additionalHeaders["If-Match"]
+        let (matched, newTag) = await state.updateETag(ifMatch: ifMatch)
+        if matched {
+          return TailscaleResponse(
+            statusCode: 200, data: Data("{}".utf8), headers: ["ETag": newTag])
+        } else {
+          return TailscaleResponse(
+            statusCode: 412, data: Data("precondition failed".utf8))
+        }
+      }
+      return TailscaleResponse(statusCode: 404, data: Data())
+    }
+
+    let client = makeClient(transport: transport)
+
+    // Writer A and Writer B both fetch initial snapshot (v1)
+    let snapA = try await client.serveConfigSnapshot()
+    let snapB = try await client.serveConfigSnapshot()
+    XCTAssertEqual(snapA.etag, "\"v1\"")
+    XCTAssertEqual(snapB.etag, "\"v1\"")
+
+    // Writer A completes update first -> advances daemon to v2
+    var configA = snapA.config
+    configA.tcp[8080] = TCPPortHandler(http: true)
+    let snapA2 = try await client.setServeConfig(configA, matching: snapA)
+    XCTAssertEqual(snapA2.etag, "\"v2\"")
+
+    // Writer B attempts write with stale snapB (v1) -> fails 412
+    var configB = snapB.config
+    configB.tcp[9090] = TCPPortHandler(http: true)
+    await assertThrowsErrorAsync(
+      try await client.setServeConfig(configB, matching: snapB)
+    ) { error in
+      guard case TailscaleClientError.preconditionFailed = error else {
+        XCTFail("Expected .preconditionFailed for stale writer, got \(error)")
+        return
+      }
+    }
+
+    // Writer B re-fetches fresh snapshot (v2), reapplies mutation, and succeeds
+    let freshSnapB = try await client.serveConfigSnapshot()
+    XCTAssertEqual(freshSnapB.etag, "\"v2\"")
+    var freshConfigB = freshSnapB.config
+    freshConfigB.tcp[9090] = TCPPortHandler(http: true)
+    let snapB2 = try await client.setServeConfig(freshConfigB, matching: freshSnapB)
+    XCTAssertFalse(snapB2.etag.isEmpty)
+  }
 }

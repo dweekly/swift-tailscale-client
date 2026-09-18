@@ -42,6 +42,7 @@ public struct ServeConfig: Codable, Sendable, Equatable {
   /// ``TailscaleClient/serveConfig()`` and sent back as `If-Match` by
   /// ``TailscaleClient/setServeConfig(_:)``. Empty/`nil` writes
   /// unconditionally.
+  @available(*, deprecated, message: "Use ServeConfigSnapshot.etag instead")
   public var etag: String?
 
   /// Unmodeled JSON fields preserved losslessly from daemon responses.

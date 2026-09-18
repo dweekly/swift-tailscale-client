@@ -17,10 +17,11 @@ Every snippet below is compiled by CI from
 public func addTCPForward(port: UInt16, to target: String) async throws {
   let client = TailscaleClient()
   for _ in 0..<3 {
-    var config = try await client.serveConfig()  // snapshot carries the ETag
+    let snapshot = try await client.serveConfigSnapshot()
+    var config = snapshot.config
     config.tcp[port] = TCPPortHandler(tcpForward: target)
     do {
-      try await client.setServeConfig(config)
+      _ = try await client.setServeConfig(config, matching: snapshot)
       return
     } catch TailscaleClientError.preconditionFailed {
       continue  // someone else won the race — rebase on their change and retry
@@ -31,9 +32,9 @@ public func addTCPForward(port: UInt16, to target: String) async throws {
 }
 ```
 
-`setServeConfig(_:)` **replaces** the whole configuration, which is exactly
-why the snapshot must be fresh: building a `ServeConfig` from scratch would
-silently delete every handler somebody else configured.
+`setServeConfig(_:matching:)` **replaces** the whole configuration, which is exactly
+why the snapshot must be fresh: building a `ServeConfig` from scratch without a
+valid snapshot token would fail with ``TailscaleClientError/missingConcurrencyToken``.
 
 ## Fetch the TLS credential
 

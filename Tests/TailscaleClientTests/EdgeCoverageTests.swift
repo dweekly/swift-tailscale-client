@@ -21,6 +21,7 @@ final class EdgeCoverageTests: XCTestCase {
       (.endpointUnavailable(endpoint: "/t", feature: nil), "unavailable"),
       (.timeout(endpoint: "/t"), "timed out"),
       (.preconditionFailed(body: body, endpoint: "/t"), "stale ETag"),
+      (.missingConcurrencyToken, "concurrency token"),
       (.permissionDenied(body: body, endpoint: "/t"), "denied"),
       (.rateLimited(retryAfterSeconds: 30, body: body, endpoint: "/t"), "retry after 30s"),
       (.rateLimited(retryAfterSeconds: nil, body: body, endpoint: "/t"), "HTTP 429"),
@@ -37,6 +38,7 @@ final class EdgeCoverageTests: XCTestCase {
       TailscaleClientError.preconditionFailed(body: body, endpoint: "/t").bodyPreview, "details")
     XCTAssertNil(TailscaleClientError.timeout(endpoint: "/t").bodyPreview)
     XCTAssertNil(TailscaleClientError.peerNotFound(endpoint: "/t").bodyPreview)
+    XCTAssertNil(TailscaleClientError.missingConcurrencyToken.bodyPreview)
     // Long bodies truncate with a marker; binary bodies degrade gracefully.
     let long = TailscaleClientError.unexpectedStatus(
       code: 500, body: Data(String(repeating: "x", count: 600).utf8), endpoint: "/t")
@@ -59,6 +61,7 @@ final class EdgeCoverageTests: XCTestCase {
       (.endpointUnavailable(endpoint: "/t", feature: nil), "daemonFeatures"),
       (.timeout(endpoint: "/t"), "requestTimeout"),
       (.preconditionFailed(body: body, endpoint: "/t"), "Re-fetch"),
+      (.missingConcurrencyToken, "serveConfigSnapshot"),
       (.permissionDenied(body: body, endpoint: "/t"), "withAuditReason"),
       (.rateLimited(retryAfterSeconds: 12, body: body, endpoint: "/t"), "12 seconds"),
       (.rateLimited(retryAfterSeconds: nil, body: body, endpoint: "/t"), "Back off"),
