@@ -4,7 +4,7 @@ This document defines the conformance verification architecture for `swift-tails
 
 ## 1. Upstream Baseline & Provenance
 
-The conformance harness and reference oracle are pinned to the upstream `tailscale/tailscale` repository:
+The conformance harness (`Scripts/conformance-harness.go`) and reference oracle use self-contained Go reference structs matching upstream `tailscale/tailscale` protocol capability level 144 (`tailcfg.CurrentCapabilityVersion`), pinned to upstream commit `4c4d1c35f83a21c6069ae09de69b246ed1993f3e`:
 
 | Metric | Value |
 |---|---|
@@ -64,7 +64,7 @@ Testing is partitioned into three distinct tiers to balance complete isolation, 
 ### Surface 2: Peers (`/localapi/v0/whois` & `/localapi/v0/peer/`)
 - **Query Routing**: Lookups by IP address (`whois(address:)`), node key (`whois(nodeKey:)`), destination IP scope, and service tag.
 - **Node & User Profile**: Complete node metadata, hostinfo, tags, and user identity resolution.
-- **404 Disambiguation**: Peer queries answering HTTP 404 map to typed `TailscaleClientError.peerNotFound(endpoint:)` rather than generic unexpected status.
+- **404 Disambiguation**: `whois` queries answering HTTP 404 map to typed `TailscaleClientError.peerNotFound(endpoint:)`. In contrast, `peer(byID:)` returns `.unexpectedStatus(code: 404, ...)` because an HTTP 404 is indistinguishable between a peer not present in the current netmap and an older daemon lacking the endpoint.
 
 ### Surface 3: Routes (Subnet Routing, Exit Nodes & Split-DNS)
 - **Prefix Notation**: Exact CIDR parsing and round-tripping for IPv4 (`100.64.0.0/10`, `192.168.1.0/24`, `0.0.0.0/0`) and IPv6 (`fd7a:115c:.../128`, `::/0`).
@@ -111,9 +111,9 @@ To ensure exact byte-for-byte differential comparison between Go and Swift decod
 | **400** | Malformed JSON or invalid query parameter | `.unexpectedStatus(code: 400, body: body, endpoint: endpoint)` | All endpoints |
 | **401** | Missing or invalid loopback authentication token | `.unexpectedStatus(code: 401, body: body, endpoint: endpoint)` | Automatically re-probed on auto endpoints |
 | **403** | Unauthorized access, missing operator privileges | `.permissionDenied(body: body, endpoint: endpoint)` | Unprivileged token |
-| **404 (Peer)** | Node key or peer IP not found in netmap | `.peerNotFound(endpoint: endpoint)` | `whois`, `peer(byID:)` |
+| **404 (Peer)** | Node key or peer IP not found in netmap | `.peerNotFound(endpoint: endpoint)` | `whois` |
 | **404 (Feature)**| Optional endpoint omitted from modular build | `.endpointUnavailable(endpoint: endpoint, feature: feature)` | Optional endpoints |
-| **404 (Standard)**| Standard endpoint path not found | `.unexpectedStatus(code: 404, body: body, endpoint: endpoint)` | Standard endpoints |
+| **404 (Standard)**| Standard endpoint path not found | `.unexpectedStatus(code: 404, body: body, endpoint: endpoint)` | Standard endpoints, `peer(byID:)` |
 | **412** | Stale ETag on conditional configuration write | `.preconditionFailed(body: body, endpoint: endpoint)` | `setServeConfig(_:matching:)` |
 | **429** | Daemon rate limiting (e.g. ACME certificates) | `.rateLimited(retryAfterSeconds: Double?, body: body, endpoint: endpoint)` | `cert/`, `setDNS` (RFC 9110 Retry-After) |
 | **500** | Internal daemon failure or unsupported OS stack | `.unexpectedStatus(code: 500, body: body, endpoint: endpoint)` | Diagnostic endpoints |

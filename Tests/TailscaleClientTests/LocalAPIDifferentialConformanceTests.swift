@@ -462,46 +462,130 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
 
   // MARK: - Negative / Fault Injection Testing (Plan Acceptance Gate)
 
-  func testNegativeInjectedFaultDetection() throws {
-    // 1. Fault: Corrupt ETag string
-    let validETag = "\"etag-sanitized-1.96.4-001\""
-    let corruptedETag = "\"etag-corrupted-bad\""
-    let etagDiff = assertDifferentialMatch(lhs: validETag, rhs: corruptedETag)
-    XCTAssertFalse(etagDiff.isEqual)
-    XCTAssertTrue(etagDiff.diff?.contains("mismatch") ?? false)
-
-    // 2. Fault: Dropped AllowedIP
-    let originalIPs = ["100.64.0.1/32", "fd7a:115c:a1e0::1/128"]
-    let droppedIPs = ["100.64.0.1/32"]
-    let ipDiff = assertDifferentialMatch(lhs: originalIPs, rhs: droppedIPs)
-    XCTAssertFalse(ipDiff.isEqual)
-
-    // 3. Fault: Mutated Unmodeled Field in ServeConfig
-    let validServe = try JSONDecoder.tailscale().decode(
-      ServeConfig.self,
-      from: localAPIFixture(version: "1.96.4", endpoint: "serve-config")
+  func testNegativeInjectedFaultDetection() async throws {
+    // 1. Fault: Corrupt ETag string fails conditional write with HTTP 412 (preconditionFailed)
+    let validServeData = try localAPIFixture(version: "1.96.4", endpoint: "serve-config")
+    let validServe = try JSONDecoder.tailscale().decode(ServeConfig.self, from: validServeData)
+    let validSnapshot = ServeConfigSnapshot(
+      etag: "\"etag-sanitized-1.96.4-001\"",
+      fetchedAt: Date(),
+      config: validServe
     )
+    let corruptedSnapshot = ServeConfigSnapshot(
+      etag: "\"etag-corrupted-bad\"",
+      fetchedAt: Date(),
+      config: validServe
+    )
+
+    let serverETag = "\"etag-sanitized-1.96.4-001\""
+    let mockTransport = MockTransport { request, _ in
+      if request.method == "POST" {
+        if request.additionalHeaders["If-Match"] != serverETag {
+          return TailscaleResponse(
+            statusCode: 412,
+            data: Data("etag mismatch\n".utf8),
+            headers: [:]
+          )
+        }
+        return TailscaleResponse(
+          statusCode: 200, data: validServeData, headers: ["ETag": serverETag])
+      }
+      return TailscaleResponse(
+        statusCode: 200, data: validServeData, headers: ["ETag": serverETag])
+    }
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .unixSocket(path: "/mock/tailscaled.sock"),
+        authToken: nil,
+        transport: mockTransport
+      )
+    )
+
+    // Valid snapshot succeeds
+    _ = try await client.setServeConfig(validSnapshot.config, matching: validSnapshot)
+
+    // Corrupted snapshot fails with HTTP 412 -> preconditionFailed
+    await assertThrowsErrorAsync(
+      try await client.setServeConfig(corruptedSnapshot.config, matching: corruptedSnapshot)
+    ) { error in
+      guard case TailscaleClientError.preconditionFailed = error else {
+        XCTFail("Expected preconditionFailed for corrupted ETag, got \(error)")
+        return
+      }
+    }
+
+    // 2. Fault: Dropped AllowedIP in status.json detected via model decoding & comparison
+    let rawStatusData = try localAPIFixture(version: "1.96.4", endpoint: "status")
+    let unmutatedStatus = try JSONDecoder.tailscale().decode(
+      StatusResponse.self, from: rawStatusData)
+    var statusDict = try JSONSerialization.jsonObject(with: rawStatusData) as! [String: Any]
+    var selfNodeDict = statusDict["Self"] as! [String: Any]
+    var allowedIPs = selfNodeDict["AllowedIPs"] as! [String]
+    XCTAssertGreaterThan(allowedIPs.count, 1, "Fixture status must have multiple AllowedIPs")
+    allowedIPs.removeLast()
+    selfNodeDict["AllowedIPs"] = allowedIPs
+    statusDict["Self"] = selfNodeDict
+    let mutatedStatusData = try JSONSerialization.data(withJSONObject: statusDict)
+    let mutatedStatus = try JSONDecoder.tailscale().decode(
+      StatusResponse.self, from: mutatedStatusData)
+
+    XCTAssertNotEqual(unmutatedStatus.selfNode?.allowedIPs, mutatedStatus.selfNode?.allowedIPs)
+    XCTAssertNotEqual(unmutatedStatus, mutatedStatus)
+
+    // 3. Fault: Mutated Unmodeled Field in ServeConfig survives encode/decode and asserts inequality
     var mutatedServe = validServe
     mutatedServe._unmodeledFields["CustomVendorSetting"] = .object([
-      "FeatureActive": .bool(false),  // Deliberate inversion
+      "FeatureActive": .bool(false),  // Deliberate inversion of original true
       "RateLimit": .integer(5_000_000_000),
     ])
-    XCTAssertNotEqual(validServe, mutatedServe)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    let mutatedEncoded = try encoder.encode(mutatedServe)
+    let redecodedMutatedServe = try JSONDecoder.tailscale().decode(
+      ServeConfig.self, from: mutatedEncoded)
+    XCTAssertNotEqual(validServe, redecodedMutatedServe)
+    guard let custom = redecodedMutatedServe._unmodeledFields["CustomVendorSetting"],
+      case .object(let customDict) = custom,
+      case .bool(let featureActive) = customDict["FeatureActive"]
+    else {
+      XCTFail("CustomVendorSetting.FeatureActive missing or wrong type")
+      return
+    }
+    XCTAssertFalse(featureActive)
 
-    // 4. Fault: Toggled Boolean in Prefs
+    // 4. Fault: Toggled Boolean in Prefs detected via model decoding & comparison
     let validPrefsData = try localAPIFixture(version: "1.96.4", endpoint: "prefs")
     let validPrefs = try JSONDecoder.tailscale().decode(Prefs.self, from: validPrefsData)
     var prefsMap = try JSONSerialization.jsonObject(with: validPrefsData) as! [String: Any]
-    prefsMap["WantRunning"] = !(validPrefs.wantRunning ?? false)
+    let originalWantRunning = validPrefs.wantRunning ?? false
+    prefsMap["WantRunning"] = !originalWantRunning
     let mutatedPrefsData = try JSONSerialization.data(withJSONObject: prefsMap)
     let mutatedPrefs = try JSONDecoder.tailscale().decode(Prefs.self, from: mutatedPrefsData)
+    XCTAssertNotEqual(validPrefs.wantRunning, mutatedPrefs.wantRunning)
     XCTAssertNotEqual(validPrefs, mutatedPrefs)
 
-    // 5. Fault: Corrupted 64-bit integer
-    let originalInt: Int64 = 5_000_000_000
-    let corruptedInt: Int64 = 5_000_000_001
-    let intDiff = assertDifferentialMatch(lhs: originalInt, rhs: corruptedInt)
-    XCTAssertFalse(intDiff.isEqual)
+    // 5. Fault: Corrupted 64-bit integer in ServeConfig detected via model decoding
+    let rawServeString = String(decoding: validServeData, as: UTF8.self)
+    XCTAssertTrue(
+      rawServeString.contains("5000000000"),
+      "Fixture must contain 5000000000 RateLimit"
+    )
+    // Mutate to 9_007_199_254_740_993 (2^53 + 1, beyond 53-bit safe float precision)
+    let mutatedIntString = rawServeString.replacingOccurrences(
+      of: "5000000000", with: "9007199254740993"
+    )
+    let mutatedIntData = Data(mutatedIntString.utf8)
+    let mutatedIntServe = try JSONDecoder.tailscale().decode(
+      ServeConfig.self, from: mutatedIntData)
+    XCTAssertNotEqual(validServe, mutatedIntServe)
+    guard let intCustom = mutatedIntServe._unmodeledFields["CustomVendorSetting"],
+      case .object(let intDict) = intCustom,
+      case .integer(let rateLimit) = intDict["RateLimit"]
+    else {
+      XCTFail("CustomVendorSetting.RateLimit missing or wrong type")
+      return
+    }
+    XCTAssertEqual(rateLimit, 9_007_199_254_740_993)
   }
 
   // MARK: - Complete Wire Error Mapping Matrix
@@ -783,51 +867,89 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
   // MARK: - Go vs Swift Differential Parity
 
   func testGoOracleDifferentialParity() throws {
-    // 1. Status Differential Parity against Go Oracle
-    let statusData = try localAPIFixture(version: "1.96.4", endpoint: "status")
-    let swiftStatus = try JSONDecoder.tailscale().decode(StatusResponse.self, from: statusData)
+    for version in supportedVersions {
+      // 1. Status Differential Parity against Go Oracle
+      let statusData = try localAPIFixture(version: version, endpoint: "status")
+      let swiftStatus = try JSONDecoder.tailscale().decode(StatusResponse.self, from: statusData)
 
-    let oracleStatusData = try localAPIFixture(version: "Oracle/1.96.4", endpoint: "status")
-    let oracleStatus = try JSONDecoder.tailscale().decode(
-      StatusResponse.self, from: oracleStatusData)
+      let oracleStatusData = try localAPIFixture(version: "Oracle/\(version)", endpoint: "status")
+      let oracleStatus = try JSONDecoder.tailscale().decode(
+        StatusResponse.self, from: oracleStatusData)
 
-    XCTAssertEqual(swiftStatus.version, oracleStatus.version)
-    XCTAssertEqual(swiftStatus.backendState, oracleStatus.backendState)
-    XCTAssertEqual(swiftStatus.selfNode?.id, oracleStatus.selfNode?.id)
-    XCTAssertEqual(swiftStatus.selfNode?.publicKey, oracleStatus.selfNode?.publicKey)
-    XCTAssertEqual(swiftStatus.magicDNSSuffix, oracleStatus.magicDNSSuffix)
-    XCTAssertEqual(swiftStatus.selfNode?.operatingSystem, oracleStatus.selfNode?.operatingSystem)
+      XCTAssertEqual(
+        swiftStatus.version, oracleStatus.version,
+        "Version mismatch in Status for \(version)")
+      XCTAssertEqual(
+        swiftStatus.backendState, oracleStatus.backendState,
+        "BackendState mismatch for \(version)")
+      XCTAssertEqual(
+        swiftStatus.selfNode?.id, oracleStatus.selfNode?.id,
+        "Self ID mismatch for \(version)")
+      XCTAssertEqual(
+        swiftStatus.selfNode?.publicKey, oracleStatus.selfNode?.publicKey,
+        "PublicKey mismatch for \(version)")
+      XCTAssertEqual(
+        swiftStatus.magicDNSSuffix, oracleStatus.magicDNSSuffix,
+        "MagicDNS mismatch for \(version)")
+      XCTAssertEqual(
+        swiftStatus.selfNode?.operatingSystem, oracleStatus.selfNode?.operatingSystem,
+        "OS mismatch for \(version)")
+      XCTAssertEqual(
+        swiftStatus.selfNode?.tailscaleIPs, oracleStatus.selfNode?.tailscaleIPs,
+        "Self IPs mismatch for \(version)")
 
-    // 2. WhoIs Differential Parity against Go Oracle
-    let whoisData = try localAPIFixture(version: "1.96.4", endpoint: "whois")
-    let swiftWhois = try JSONDecoder.tailscale().decode(WhoIsResponse.self, from: whoisData)
+      // 2. WhoIs Differential Parity against Go Oracle
+      let whoisData = try localAPIFixture(version: version, endpoint: "whois")
+      let swiftWhois = try JSONDecoder.tailscale().decode(WhoIsResponse.self, from: whoisData)
 
-    let oracleWhoisData = try localAPIFixture(version: "Oracle/1.96.4", endpoint: "whois")
-    let oracleWhois = try JSONDecoder.tailscale().decode(WhoIsResponse.self, from: oracleWhoisData)
+      let oracleWhoisData = try localAPIFixture(version: "Oracle/\(version)", endpoint: "whois")
+      let oracleWhois = try JSONDecoder.tailscale().decode(
+        WhoIsResponse.self, from: oracleWhoisData)
 
-    XCTAssertEqual(swiftWhois.node?.stableID, oracleWhois.node?.stableID)
-    XCTAssertEqual(swiftWhois.node?.name, oracleWhois.node?.name)
-    XCTAssertEqual(swiftWhois.userProfile?.loginName, oracleWhois.userProfile?.loginName)
+      XCTAssertEqual(
+        swiftWhois.node?.stableID, oracleWhois.node?.stableID,
+        "Whois Node ID mismatch for \(version)")
+      XCTAssertEqual(
+        swiftWhois.node?.name, oracleWhois.node?.name,
+        "Whois Name mismatch for \(version)")
+      XCTAssertEqual(
+        swiftWhois.userProfile?.loginName, oracleWhois.userProfile?.loginName,
+        "Whois LoginName mismatch for \(version)")
+      XCTAssertEqual(
+        swiftWhois.userProfile?.id, oracleWhois.userProfile?.id,
+        "Whois UserID mismatch for \(version)")
 
-    // 3. Prefs Differential Parity against Go Oracle
-    let prefsData = try localAPIFixture(version: "1.96.4", endpoint: "prefs")
-    let swiftPrefs = try JSONDecoder.tailscale().decode(Prefs.self, from: prefsData)
+      // 3. Prefs Differential Parity against Go Oracle
+      let prefsData = try localAPIFixture(version: version, endpoint: "prefs")
+      let swiftPrefs = try JSONDecoder.tailscale().decode(Prefs.self, from: prefsData)
 
-    let oraclePrefsData = try localAPIFixture(version: "Oracle/1.96.4", endpoint: "prefs")
-    let oraclePrefs = try JSONDecoder.tailscale().decode(Prefs.self, from: oraclePrefsData)
+      let oraclePrefsData = try localAPIFixture(version: "Oracle/\(version)", endpoint: "prefs")
+      let oraclePrefs = try JSONDecoder.tailscale().decode(
+        Prefs.self, from: oraclePrefsData)
 
-    XCTAssertEqual(swiftPrefs.wantRunning, oraclePrefs.wantRunning)
-    XCTAssertEqual(swiftPrefs.corpDNS, oraclePrefs.corpDNS)
-    XCTAssertEqual(swiftPrefs.routeAll, oraclePrefs.routeAll)
+      XCTAssertEqual(
+        swiftPrefs.wantRunning, oraclePrefs.wantRunning,
+        "Prefs wantRunning mismatch for \(version)")
+      XCTAssertEqual(
+        swiftPrefs.corpDNS, oraclePrefs.corpDNS,
+        "Prefs corpDNS mismatch for \(version)")
+      XCTAssertEqual(
+        swiftPrefs.routeAll, oraclePrefs.routeAll,
+        "Prefs routeAll mismatch for \(version)")
 
-    // 4. ServeConfig Differential Parity against Go Oracle
-    let serveData = try localAPIFixture(version: "1.96.4", endpoint: "serve-config")
-    let swiftServe = try JSONDecoder.tailscale().decode(ServeConfig.self, from: serveData)
+      // 4. ServeConfig Differential Parity against Go Oracle (full model equality)
+      let serveData = try localAPIFixture(version: version, endpoint: "serve-config")
+      let swiftServe = try JSONDecoder.tailscale().decode(ServeConfig.self, from: serveData)
 
-    let oracleServeData = try localAPIFixture(version: "Oracle/1.96.4", endpoint: "serve-config")
-    let oracleServe = try JSONDecoder.tailscale().decode(ServeConfig.self, from: oracleServeData)
+      let oracleServeData = try localAPIFixture(
+        version: "Oracle/\(version)", endpoint: "serve-config")
+      let oracleServe = try JSONDecoder.tailscale().decode(
+        ServeConfig.self, from: oracleServeData)
 
-    XCTAssertEqual(swiftServe.allowFunnel, oracleServe.allowFunnel)
+      XCTAssertEqual(
+        swiftServe, oracleServe,
+        "ServeConfig full model equality failed for \(version)")
+    }
 
     // 5. Oracle Manifest provenance
     let oracleManifestData = try localAPIFixture(version: "Oracle", endpoint: "oracle-manifest")
@@ -836,16 +958,5 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
     XCTAssertEqual(
       manifestMap?["upstream_commit"] as? String, "4c4d1c35f83a21c6069ae09de69b246ed1993f3e")
     XCTAssertEqual(manifestMap?["schema_version"] as? String, "1.0.0")
-  }
-
-  // MARK: - Helper Methods
-
-  private func assertDifferentialMatch<T: Equatable>(lhs: T, rhs: T) -> (
-    isEqual: Bool, diff: String?
-  ) {
-    if lhs == rhs {
-      return (true, nil)
-    }
-    return (false, "Differential mismatch: \(lhs) != \(rhs)")
   }
 }

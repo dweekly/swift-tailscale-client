@@ -183,10 +183,14 @@ class SanitizationEngine:
             octets = [int(o) for o in ip.split('.')]
             if octets[0] == 100 and (64 <= octets[1] <= 127):
                 new_ip = self.get_cgnat_ip(ip)
+            elif octets[0] == 10:
+                new_ip = ip  # 10.0.0.0/8
+            elif octets[0] == 172 and (16 <= octets[1] <= 31):
+                new_ip = ip  # 172.16.0.0/12
+            elif octets[0] == 192 and octets[1] == 168:
+                new_ip = ip  # 192.168.0.0/16
             elif octets[0] in (0, 127, 255):
-                new_ip = ip  # keep 0.0.0.0, loopback, broadcast
-            elif octets[0] in (10, 192, 172):
-                new_ip = ip  # keep standard private LAN/doc ranges
+                new_ip = ip  # loopback, wildcard, broadcast
             else:
                 new_ip = self.get_public_ip(ip)
             return f"{new_ip}{prefix}{port}"
@@ -240,7 +244,7 @@ class SanitizationEngine:
             (r"\btskey-api-(?!synthetic)[a-zA-Z0-9_-]{10,}\b", "Unredacted API token"),
             (r"\bsameuserproof-(?!0000-0123456789abcdef)[a-zA-Z0-9_-]+\b", "Unredacted proof token"),
             (r"\bprivkey:(?!00000000)[0-9a-fA-F]{64}\b", "Unredacted private key"),
-            (r"\b-----BEGIN (?:EC |RSA )?PRIVATE KEY-----\b", "Raw PEM private key"),
+            (r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----", "Raw PEM private key"),
         ]
         for pattern, msg in forbidden_regexes:
             match = re.search(pattern, text)
