@@ -27,3 +27,8 @@ swift package diagnose-api-breaking-changes "$BASELINE_TAG" \
   --breakage-allowlist-path "$ALLOWLIST"
 
 echo "API compatibility baseline check passed (against ${BASELINE_TAG})."
+
+echo "Verifying 1.0 public API freeze against baseline symbols..."
+python3 Scripts/verify-api-baseline.py
+
+echo "All API baseline checks passed successfully."

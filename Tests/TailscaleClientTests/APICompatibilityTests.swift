@@ -272,13 +272,84 @@ final class APICompatibilityTests: XCTestCase {
     let err2 = TailscaleClientError.streamOverflow
     let err3 = TailscaleClientError.discovery(LocalAPIDiscoveryError.notInstalled)
     let err4 = TailscaleClientError.preconditionFailed(body: Data(), endpoint: "serve-config")
+    let err5 = TailscaleClientError.targetMismatch(expected: "targetA", actual: "targetB")
 
     XCTAssertNotNil(err1.errorDescription)
     XCTAssertNotNil(err2.errorDescription)
     XCTAssertNotNil(err3.errorDescription)
     XCTAssertNotNil(err4.errorDescription)
+    XCTAssertNotNil(err5.errorDescription)
+    XCTAssertNotNil(err5.recoverySuggestion)
+    XCTAssertTrue(err5.errorDescription?.contains("targetA") == true)
 
-    let sendableError: any Sendable = err1
+    let sendableError: any Sendable = err5
     XCTAssertNotNil(sendableError)
   }
+
+  // MARK: - 7. 1.0 Concurrency & Streaming Public Surfaces
+
+  func testServeConfigSnapshotPublicAPI() {
+    let snapshot = ServeConfigSnapshot(
+      etag: "test-etag-123",
+      targetIdentifier: "http://127.0.0.1:8080",
+      config: ServeConfig()
+    )
+    XCTAssertEqual(snapshot.etag, "test-etag-123")
+    XCTAssertEqual(snapshot.targetIdentifier, "http://127.0.0.1:8080")
+    XCTAssertNotNil(snapshot.fetchedAt)
+    XCTAssertEqual(snapshot.config, ServeConfig())
+
+    let copy = snapshot
+    XCTAssertEqual(snapshot, copy)
+  }
+
+  func testTargetIdentifierPublicSurface() {
+    let config = TailscaleClientConfiguration(
+      endpoint: .url(URL(string: "http://127.0.0.1:8080")!),
+      authToken: "secret"
+    )
+    XCTAssertEqual(config.targetIdentifier, "url(http://127.0.0.1:8080)")
+
+    let client = TailscaleClient(configuration: config)
+    XCTAssertEqual(client.targetIdentifier, "url(http://127.0.0.1:8080)")
+  }
+
+  func testStreamingBoundsAndPoliciesPublicAPI() {
+    let bounds = StreamBufferBounds(
+      maxEventCount: 512,
+      maxByteCount: 8 * 1024 * 1024,
+      overflowStrategy: .reportGap
+    )
+    XCTAssertEqual(bounds.maxEventCount, 512)
+    XCTAssertEqual(bounds.maxByteCount, 8 * 1024 * 1024)
+    XCTAssertEqual(bounds.overflowStrategy, .reportGap)
+
+    XCTAssertEqual(StreamBufferBounds.default.maxEventCount, 256)
+    XCTAssertEqual(StreamBufferBounds.throwing.overflowStrategy, .fail)
+
+    let policy = StreamRetryPolicy(
+      maxAttempts: 5,
+      initialDelay: .milliseconds(100),
+      maxDelay: .seconds(30),
+      jitter: 0.2
+    )
+    XCTAssertEqual(policy.maxAttempts, 5)
+    XCTAssertEqual(StreamRetryPolicy.none.maxAttempts, 0)
+  }
+
+  func testIPNBusEventAndLifecyclePublicAPI() {
+    let connected = IPNBusEvent.lifecycle(.connected)
+    let disconnected = IPNBusEvent.lifecycle(.disconnected(underlying: "peer reset"))
+    let retrying = IPNBusEvent.lifecycle(.retrying(attempt: 2, delay: .seconds(1)))
+    let gap = IPNBusEvent.lifecycle(.stateGap(reason: "buffer_overflow"))
+
+    XCTAssertEqual(connected.lifecycle, .connected)
+    XCTAssertEqual(disconnected.lifecycle, .disconnected(underlying: "peer reset"))
+    XCTAssertEqual(retrying.lifecycle, .retrying(attempt: 2, delay: .seconds(1)))
+    XCTAssertEqual(gap.lifecycle, .stateGap(reason: "buffer_overflow"))
+    XCTAssertNil(connected.notification)
+
+    XCTAssertEqual(connected.description, "IPNBusEvent.lifecycle(connected)")
+  }
 }
+

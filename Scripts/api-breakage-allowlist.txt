@@ -3,6 +3,7 @@ API breakage: enumelement JSONValue.unsignedInteger has been added as a new enum
 API breakage: enumelement TailscaleClientError.missingConcurrencyToken has been added as a new enum case
 API breakage: enumelement TailscaleClientError.streamOverflow has been added as a new enum case
 API breakage: enumelement TailscaleClientError.discovery has been added as a new enum case
+API breakage: enumelement TailscaleClientError.targetMismatch has been added as a new enum case
 API breakage: func TailscaleTransport.sendStreaming(_:configuration:) has return type change from _Concurrency.AsyncThrowingStream<Foundation.Data, any Swift.Error> to TailscaleClient.StreamingResponse
 API breakage: func URLSessionTailscaleTransport.sendStreaming(_:configuration:) has return type change from _Concurrency.AsyncThrowingStream<Foundation.Data, any Swift.Error> to TailscaleClient.StreamingResponse
 API breakage: constructor TailscaleClientConfiguration.init(endpoint:authToken:capabilityVersion:requestTimeout:transport:) has been removed
