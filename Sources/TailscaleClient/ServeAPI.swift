@@ -60,7 +60,12 @@ extension TailscaleClient {
     else {
       throw TailscaleClientError.missingConcurrencyToken
     }
-    return ServeConfigSnapshot(etag: etag, fetchedAt: Date(), config: config)
+    return ServeConfigSnapshot(
+      etag: etag,
+      targetIdentifier: self.targetIdentifier,
+      fetchedAt: Date(),
+      config: config
+    )
   }
 
   /// Safely replaces the daemon's serve/Funnel configuration, matching the provided snapshot's ETag.
@@ -76,6 +81,7 @@ extension TailscaleClient {
   /// - Returns: A fresh ``ServeConfigSnapshot`` representing the updated state and new ETag.
   /// - Throws:
   ///   - ``TailscaleClientError/missingConcurrencyToken`` if `snapshot.etag` is empty.
+  ///   - ``TailscaleClientError/targetMismatch(expected:actual:)`` if `snapshot.targetIdentifier` does not match this client.
   ///   - ``TailscaleClientError/preconditionFailed(body:endpoint:)`` if a concurrent edit occurred (HTTP 412).
   ///   - ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` on unexpected HTTP statuses.
   public func setServeConfig(
@@ -84,6 +90,12 @@ extension TailscaleClient {
   ) async throws -> ServeConfigSnapshot {
     guard !snapshot.etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw TailscaleClientError.missingConcurrencyToken
+    }
+    guard snapshot.targetIdentifier == self.targetIdentifier else {
+      throw TailscaleClientError.targetMismatch(
+        expected: self.targetIdentifier,
+        actual: snapshot.targetIdentifier
+      )
     }
 
     let endpoint = "/localapi/v0/serve-config"
@@ -108,7 +120,12 @@ extension TailscaleClient {
     if let newEtag = etagHeader?.value,
       !newEtag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     {
-      return ServeConfigSnapshot(etag: newEtag, fetchedAt: Date(), config: newConfig)
+      return ServeConfigSnapshot(
+        etag: newEtag,
+        targetIdentifier: self.targetIdentifier,
+        fetchedAt: Date(),
+        config: newConfig
+      )
     } else {
       return try await serveConfigSnapshot()
     }
@@ -129,12 +146,22 @@ extension TailscaleClient {
   ///   - snapshot: The snapshot to base the update upon.
   ///   - mutate: A closure mutating the working copy of `ServeConfig`.
   /// - Returns: A fresh ``ServeConfigSnapshot`` with the new configuration and new ETag.
-  /// - Throws: Any error thrown by `mutate`, or ``TailscaleClientError/preconditionFailed(body:endpoint:)``
-  ///   if the daemon configuration was changed concurrently.
+  /// - Throws: Any error thrown by `mutate`, ``TailscaleClientError/targetMismatch(expected:actual:)``
+  ///   if the snapshot was obtained from a different target daemon, or
+  ///   ``TailscaleClientError/preconditionFailed(body:endpoint:)`` if the daemon configuration was changed concurrently.
   public func updateServeConfig(
     _ snapshot: ServeConfigSnapshot,
     mutate: (inout ServeConfig) throws -> Void
   ) async throws -> ServeConfigSnapshot {
+    guard !snapshot.etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw TailscaleClientError.missingConcurrencyToken
+    }
+    guard snapshot.targetIdentifier == self.targetIdentifier else {
+      throw TailscaleClientError.targetMismatch(
+        expected: self.targetIdentifier,
+        actual: snapshot.targetIdentifier
+      )
+    }
     var config = snapshot.config
     try mutate(&config)
     return try await setServeConfig(config, matching: snapshot)

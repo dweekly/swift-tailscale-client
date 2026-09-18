@@ -27,6 +27,12 @@ public struct TailscaleClientConfiguration: Sendable {
   /// Captures how the LocalAPI endpoint was resolved, governing recovery and re-discovery behavior.
   public var endpointSource: EndpointSource
 
+  /// An opaque identifier representing the target endpoint of this configuration,
+  /// used for target-binding validation across snapshots.
+  public var targetIdentifier: String {
+    endpoint.description
+  }
+
   /// The default for ``capabilityVersion``, pinned to a tested upstream
   /// revision — never bumped to "latest" without compatibility evidence.
   ///

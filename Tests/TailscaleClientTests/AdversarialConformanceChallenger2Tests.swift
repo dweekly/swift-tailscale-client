@@ -334,7 +334,11 @@ final class AdversarialConformanceChallenger2Tests: XCTestCase {
       )
     )
     let fakeSnapshot = ServeConfigSnapshot(
-      etag: "\"test\"", fetchedAt: Date(), config: ServeConfig())
+      etag: "\"test\"",
+      targetIdentifier: client4.targetIdentifier,
+      fetchedAt: Date(),
+      config: ServeConfig()
+    )
     await assertThrowsErrorAsync(
       try await client4.setServeConfig(ServeConfig(), matching: fakeSnapshot)
     ) { err in

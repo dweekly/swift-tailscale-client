@@ -15,6 +15,10 @@ public struct ServeConfigSnapshot: Sendable, Equatable {
   /// Used in the `If-Match` request header on subsequent conditional updates.
   public let etag: String
 
+  /// An opaque identifier representing the target daemon/endpoint from which
+  /// this snapshot was obtained, preventing cross-target replay.
+  public let targetIdentifier: String
+
   /// The local timestamp when this snapshot was captured.
   public let fetchedAt: Date
 
@@ -25,14 +29,17 @@ public struct ServeConfigSnapshot: Sendable, Equatable {
   ///
   /// - Parameters:
   ///   - etag: The opaque concurrency token. Must not be empty.
+  ///   - targetIdentifier: The target identifier of the daemon endpoint (defaults to empty).
   ///   - fetchedAt: The timestamp when this snapshot was captured (defaults to current date).
   ///   - config: The serve configuration.
   public init(
     etag: String,
+    targetIdentifier: String = "",
     fetchedAt: Date = Date(),
     config: ServeConfig
   ) {
     self.etag = etag
+    self.targetIdentifier = targetIdentifier
     self.fetchedAt = fetchedAt
     self.config = config
   }

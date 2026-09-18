@@ -376,9 +376,14 @@ final class ServeAPITests: XCTestCase {
 
     var config = ServeConfig()
     config.tcp[8080] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
-    let snapshot = ServeConfigSnapshot(etag: "\"initial-etag\"", config: ServeConfig())
+    let client = makeClient(transport: transport)
+    let snapshot = ServeConfigSnapshot(
+      etag: "\"initial-etag\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
 
-    let newSnapshot = try await makeClient(transport: transport).setServeConfig(
+    let newSnapshot = try await client.setServeConfig(
       config, matching: snapshot)
 
     let requests = await recorder.requests
@@ -395,9 +400,14 @@ final class ServeAPITests: XCTestCase {
       XCTFail("Network should not be contacted when snapshot ETag is empty")
       return TailscaleResponse(statusCode: 200, data: Data())
     }
-    let snapshot = ServeConfigSnapshot(etag: "", config: ServeConfig())
+    let client = makeClient(transport: transport)
+    let snapshot = ServeConfigSnapshot(
+      etag: "",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
     await assertThrowsErrorAsync(
-      try await self.makeClient(transport: transport).setServeConfig(
+      try await client.setServeConfig(
         ServeConfig(), matching: snapshot)
     ) { error in
       guard let clientError = error as? TailscaleClientError,
@@ -409,13 +419,94 @@ final class ServeAPITests: XCTestCase {
     }
   }
 
+  func testSetServeConfigMatchingRejectsCrossTargetSnapshot() async throws {
+    let transportA = MockTransport { _, _ in
+      TailscaleResponse(
+        statusCode: 200,
+        data: Data("{}".utf8),
+        headers: ["ETag": "\"etag-1\""]
+      )
+    }
+    let transportB = MockTransport { _, _ in
+      XCTFail("Network must not be called when target mismatch occurs")
+      return TailscaleResponse(statusCode: 200, data: Data())
+    }
+    let clientA = TailscaleClient(configuration: TailscaleClientConfiguration(
+      endpoint: .loopback(port: 10001),
+      authToken: nil,
+      transport: transportA
+    ))
+    let clientB = TailscaleClient(configuration: TailscaleClientConfiguration(
+      endpoint: .loopback(port: 10002),
+      authToken: nil,
+      transport: transportB
+    ))
+
+    let snapshotA = try await clientA.serveConfigSnapshot()
+    XCTAssertEqual(snapshotA.targetIdentifier, clientA.targetIdentifier)
+    XCTAssertNotEqual(clientA.targetIdentifier, clientB.targetIdentifier)
+
+    await assertThrowsErrorAsync(
+      try await clientB.setServeConfig(ServeConfig(), matching: snapshotA)
+    ) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .targetMismatch(let expected, let actual) = clientError
+      else {
+        XCTFail("Expected .targetMismatch, got \(error)")
+        return
+      }
+      XCTAssertEqual(expected, clientB.targetIdentifier)
+      XCTAssertEqual(actual, clientA.targetIdentifier)
+    }
+  }
+
+  func testUpdateServeConfigRejectsCrossTargetSnapshotBeforeMutation() async throws {
+    let clientA = TailscaleClient(configuration: TailscaleClientConfiguration(
+      endpoint: .unixSocket(path: "/var/run/tailscale/tailscaled.sock"),
+      authToken: nil,
+      transport: MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: Data()) }
+    ))
+    let clientB = TailscaleClient(configuration: TailscaleClientConfiguration(
+      endpoint: .unixSocket(path: "/var/run/tailscale/other.sock"),
+      authToken: nil,
+      transport: MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: Data()) }
+    ))
+
+    let snapshotA = ServeConfigSnapshot(
+      etag: "\"valid\"",
+      targetIdentifier: clientA.targetIdentifier,
+      config: ServeConfig()
+    )
+
+    var mutationInvoked = false
+    do {
+      _ = try await clientB.updateServeConfig(snapshotA) { _ in
+        mutationInvoked = true
+      }
+      XCTFail("Expected .targetMismatch")
+    } catch let error as TailscaleClientError {
+      guard case .targetMismatch(let expected, let actual) = error else {
+        XCTFail("Expected .targetMismatch, got \(error)")
+        return
+      }
+      XCTAssertEqual(expected, clientB.targetIdentifier)
+      XCTAssertEqual(actual, clientA.targetIdentifier)
+      XCTAssertFalse(mutationInvoked, "Mutation closure must not be invoked on target mismatch")
+    }
+  }
+
   func testSetServeConfigMatchingMaps412ToPreconditionFailed() async throws {
     let transport = MockTransport { _, _ in
       TailscaleResponse(statusCode: 412, data: Data("etag mismatch".utf8))
     }
-    let snapshot = ServeConfigSnapshot(etag: "\"stale-etag\"", config: ServeConfig())
+    let client = makeClient(transport: transport)
+    let snapshot = ServeConfigSnapshot(
+      etag: "\"stale-etag\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
     await assertThrowsErrorAsync(
-      try await self.makeClient(transport: transport).setServeConfig(
+      try await client.setServeConfig(
         ServeConfig(), matching: snapshot)
     ) { error in
       guard let clientError = error as? TailscaleClientError,
@@ -436,8 +527,12 @@ final class ServeAPITests: XCTestCase {
       return TailscaleResponse(
         statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"next-etag\""])
     }
-    let initial = ServeConfigSnapshot(etag: "\"v1\"", config: ServeConfig())
     let client = makeClient(transport: transport)
+    let initial = ServeConfigSnapshot(
+      etag: "\"v1\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
 
     let updated = try await client.updateServeConfig(initial) { config in
       config.tcp[443] = TCPPortHandler(https: true)
@@ -456,8 +551,12 @@ final class ServeAPITests: XCTestCase {
       XCTFail("Network should not be contacted when mutation throws")
       return TailscaleResponse(statusCode: 200, data: Data())
     }
-    let initial = ServeConfigSnapshot(etag: "\"v1\"", config: ServeConfig())
     let client = makeClient(transport: transport)
+    let initial = ServeConfigSnapshot(
+      etag: "\"v1\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
 
     do {
       _ = try await client.updateServeConfig(initial) { _ in

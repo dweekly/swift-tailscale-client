@@ -181,8 +181,11 @@ final class ServeConfigConcurrencyChallengerTests: XCTestCase {
       TailscaleResponse(statusCode: 412, data: customBody)
     }
     let client = makeClient(transport: transport)
-
-    let snapshot = ServeConfigSnapshot(etag: "\"old\"", config: ServeConfig())
+    let snapshot = ServeConfigSnapshot(
+      etag: "\"old\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
 
     do {
       _ = try await client.setServeConfig(ServeConfig(), matching: snapshot)
@@ -241,7 +244,11 @@ final class ServeConfigConcurrencyChallengerTests: XCTestCase {
       }
       let client = makeClient(transport: transport)
 
-      let snapshot = ServeConfigSnapshot(etag: whitespaceETag, config: ServeConfig())
+      let snapshot = ServeConfigSnapshot(
+        etag: whitespaceETag,
+        targetIdentifier: client.targetIdentifier,
+        config: ServeConfig()
+      )
       do {
         _ = try await client.setServeConfig(ServeConfig(), matching: snapshot)
         XCTFail("Expected .missingConcurrencyToken for ETag: '\(whitespaceETag)'")
@@ -384,7 +391,11 @@ final class ServeConfigConcurrencyChallengerTests: XCTestCase {
 
     let client = makeClient(transport: transport)
 
-    let snapshot = ServeConfigSnapshot(etag: "\"initial-etag\"", config: ServeConfig())
+    let snapshot = ServeConfigSnapshot(
+      etag: "\"initial-etag\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig()
+    )
     var newConfig = ServeConfig()
     newConfig.tcp[22] = TCPPortHandler(tcpForward: "127.0.0.1:22")
 

@@ -462,15 +462,16 @@ final class AdversarialChallengerTests: XCTestCase {
 
   func testUpdateServeConfigClosureThrowDoesNotCorruptOriginalSnapshot() async throws {
     struct TestFailure: Error {}
-    let original = ServeConfigSnapshot(
-      etag: "\"original\"",
-      config: ServeConfig(tcp: [80: TCPPortHandler(http: true)])
-    )
     let transport = MockTransport { _, _ in
       XCTFail("Must not contact transport on closure throw")
       return TailscaleResponse(statusCode: 200, data: Data())
     }
     let client = makeClient(transport: transport)
+    let original = ServeConfigSnapshot(
+      etag: "\"original\"",
+      targetIdentifier: client.targetIdentifier,
+      config: ServeConfig(tcp: [80: TCPPortHandler(http: true)])
+    )
 
     do {
       _ = try await client.updateServeConfig(original) { cfg in

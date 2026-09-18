@@ -53,6 +53,12 @@ public actor TailscaleClient {
     configurationBox.value
   }
 
+  /// An opaque identifier representing the target endpoint of this client,
+  /// used for target-binding validation across snapshots.
+  public nonisolated var targetIdentifier: String {
+    configuration.targetIdentifier
+  }
+
   /// The daemon version most recently observed in a `Tailscale-Version`
   /// response header, if any request has completed yet.
   private(set) var observedDaemonVersion: String?
@@ -1334,6 +1340,9 @@ public enum TailscaleClientError: Error, Sendable {
   /// A conditional write was attempted, but no valid concurrency token (ETag)
   /// was available in the snapshot, or the daemon returned no ETag header on read.
   case missingConcurrencyToken
+  /// A conditional write was attempted with a snapshot that was obtained from a different
+  /// daemon target or endpoint than the client performing the update.
+  case targetMismatch(expected: String, actual: String)
   /// The streaming event queue exceeded its configured event or memory bounds
   /// and the overflow strategy was configured to fail.
   case streamOverflow
@@ -1345,7 +1354,7 @@ public enum TailscaleClientError: Error, Sendable {
     let data: Data
     switch self {
     case .transport, .endpointUnavailable, .timeout, .peerNotFound, .missingConcurrencyToken,
-      .streamOverflow, .discovery:
+      .targetMismatch, .streamOverflow, .discovery:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -1394,6 +1403,9 @@ extension TailscaleClientError: CustomStringConvertible {
     case .missingConcurrencyToken:
       return
         "Cannot perform conditional write: missing or empty concurrency token (ETag) — fetch a fresh ServeConfigSnapshot"
+    case .targetMismatch(let expected, let actual):
+      return
+        "Cannot perform conditional write: snapshot target '\(actual)' does not match client target '\(expected)'"
     case .permissionDenied(_, let endpoint):
       return "LocalAPI denied access to \(endpoint) (HTTP 403)"
     case .rateLimited(let retryAfter, _, let endpoint):
@@ -1482,6 +1494,9 @@ extension TailscaleClientError: LocalizedError {
     case .missingConcurrencyToken:
       return
         "Fetch a fresh ServeConfigSnapshot using serveConfigSnapshot() before modifying and writing configuration."
+    case .targetMismatch:
+      return
+        "Ensure the ServeConfigSnapshot was fetched from the same Tailscale client and target daemon performing the update."
     case .permissionDenied:
       return
         "Check the caller's permissions. If a policy gates this operation, supply a justification via TailscaleClient.withAuditReason(_:operation:) before retrying."

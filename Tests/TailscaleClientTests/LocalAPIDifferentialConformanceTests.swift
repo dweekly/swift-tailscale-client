@@ -382,7 +382,11 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
 
     // 4. Missing Concurrency Token: empty ETag throws missingConcurrencyToken
     let emptyETagSnapshot = ServeConfigSnapshot(
-      etag: "", fetchedAt: Date(), config: snapshot.config)
+      etag: "",
+      targetIdentifier: client.targetIdentifier,
+      fetchedAt: Date(),
+      config: snapshot.config
+    )
     await assertThrowsErrorAsync(
       try await client.setServeConfig(snapshot.config, matching: emptyETagSnapshot)
     ) { error in
@@ -466,16 +470,6 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
     // 1. Fault: Corrupt ETag string fails conditional write with HTTP 412 (preconditionFailed)
     let validServeData = try localAPIFixture(version: "1.96.4", endpoint: "serve-config")
     let validServe = try JSONDecoder.tailscale().decode(ServeConfig.self, from: validServeData)
-    let validSnapshot = ServeConfigSnapshot(
-      etag: "\"etag-sanitized-1.96.4-001\"",
-      fetchedAt: Date(),
-      config: validServe
-    )
-    let corruptedSnapshot = ServeConfigSnapshot(
-      etag: "\"etag-corrupted-bad\"",
-      fetchedAt: Date(),
-      config: validServe
-    )
 
     let serverETag = "\"etag-sanitized-1.96.4-001\""
     let mockTransport = MockTransport { request, _ in
@@ -499,6 +493,19 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
         authToken: nil,
         transport: mockTransport
       )
+    )
+
+    let validSnapshot = ServeConfigSnapshot(
+      etag: "\"etag-sanitized-1.96.4-001\"",
+      targetIdentifier: client.targetIdentifier,
+      fetchedAt: Date(),
+      config: validServe
+    )
+    let corruptedSnapshot = ServeConfigSnapshot(
+      etag: "\"etag-corrupted-bad\"",
+      targetIdentifier: client.targetIdentifier,
+      fetchedAt: Date(),
+      config: validServe
     )
 
     // Valid snapshot succeeds
@@ -846,7 +853,11 @@ final class LocalAPIDifferentialConformanceTests: XCTestCase {
         }
       } else if tc.endpoint == "/localapi/v0/serve-config" && tc.statusCode == 412 {
         let fakeSnapshot = ServeConfigSnapshot(
-          etag: "\"stale\"", fetchedAt: Date(), config: ServeConfig())
+          etag: "\"stale\"",
+          targetIdentifier: client.targetIdentifier,
+          fetchedAt: Date(),
+          config: ServeConfig()
+        )
         await assertThrowsErrorAsync(
           try await client.setServeConfig(ServeConfig(), matching: fakeSnapshot)
         ) { err in
