@@ -64,6 +64,6 @@ let client = TailscaleClient(configuration: config)
 
 The repository ships `Examples/StatusDemo`, a standalone package that
 connects, prints status, probes daemon features, and runs a netcheck — CI
-builds it on macOS and Linux and runs it against a real daemon, so it is
+builds it on macOS, so it is
 always current. Copy it as a starting point and swap the path dependency for
 the released URL.

@@ -53,22 +53,30 @@ def extract_symbols_and_relationships(path):
 
 def dump_fresh_symbol_graphs():
     """Always wipes existing symbol graph output and dumps fresh graphs from reviewed source."""
-    if os.path.exists(SYMBOL_GRAPH_DIR):
-        shutil.rmtree(SYMBOL_GRAPH_DIR)
+    # Some SwiftPM versions enumerate the generated test runner when dumping
+    # graphs; a fresh checkout must build it before the extractor can load it.
+    subprocess.run(["swift", "build", "--build-tests"], cwd=ROOT_DIR, check=True)
+    bin_dir = subprocess.check_output(
+        ["swift", "build", "--show-bin-path"], cwd=ROOT_DIR, text=True).strip()
+    graph_dirs = [SYMBOL_GRAPH_DIR, os.path.join(os.path.dirname(bin_dir), "symbolgraph")]
+    for directory in graph_dirs:
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
 
     print("Dumping fresh symbol graph from current source...")
-    cmd = ["swift", "package", "dump-symbol-graph"]
-    res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True)
+    res = subprocess.run(["swift", "package", "dump-symbol-graph"],
+                         cwd=ROOT_DIR, capture_output=True, text=True)
     if res.returncode != 0:
         print(f"Error dumping symbol graph:\n{res.stderr}", file=sys.stderr)
         sys.exit(1)
 
-    tc_path = os.path.join(SYMBOL_GRAPH_DIR, "TailscaleClient.symbols.json")
-    tcm_path = os.path.join(SYMBOL_GRAPH_DIR, "TailscaleClientMocks.symbols.json")
-    if not (os.path.exists(tc_path) and os.path.exists(tcm_path)):
-        print(f"Expected symbol graph outputs not found in {SYMBOL_GRAPH_DIR}", file=sys.stderr)
-        sys.exit(1)
-    return tc_path, tcm_path
+    for directory in graph_dirs:
+        tc_path = os.path.join(directory, "TailscaleClient.symbols.json")
+        tcm_path = os.path.join(directory, "TailscaleClientMocks.symbols.json")
+        if os.path.exists(tc_path) and os.path.exists(tcm_path):
+            return tc_path, tcm_path
+    print(f"Fresh symbol graph outputs not found in {graph_dirs}", file=sys.stderr)
+    sys.exit(1)
 
 
 def main():

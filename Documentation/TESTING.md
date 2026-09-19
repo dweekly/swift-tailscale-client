@@ -2,6 +2,13 @@
 
 How this package earns trust in an API surface that upstream labels unstable: spike against real daemons, capture real fixtures, unit-test the parsers to death, and run hermetic integration tests in CI against multiple tailscaled versions.
 
+## Current release scope (2026-09-19)
+
+Required CI is Apple-only: macOS tests and Thread Sanitizer, strict DocC, API
+baselines, and iOS/tvOS/watchOS builds. The Linux/Headscale workflow below is
+retained for manual experiments only; it is not scheduled or required for 1.0.
+Linux compilation and runtime support are not qualified by this release.
+
 ## The spike-first rule
 
 No endpoint is implemented from documentation alone. The sequence for every new surface:

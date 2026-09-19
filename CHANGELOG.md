@@ -33,7 +33,7 @@ This release candidate establishes an enterprise-grade, memory-safe, and concurr
 
 - **Runtime (Full LocalAPI Operations)**:
   - macOS 13.0+ (Ventura, Sonoma, Sequoia) on `arm64` and `x86_64`
-  - Linux (kernel 5.4+, glibc 2.31+ / musl) on `x86_64` and `aarch64`
+- **Outside 1.0 release qualification**: Linux; no Linux binary or required build lane.
 - **Build-Only (Models, Types & Mocks)**: iOS 16.0+, tvOS 16.0+, watchOS 9.0+, visionOS 1.0+
 - **Swift Toolchain Baseline**: Swift 6.1 and 6.2 (Strict Concurrency `Complete`, matching `swift-tools-version: 6.1`)
 - **Tailscale Daemon Compatibility**: 1.76.0 (floor) through 1.98.0+ (latest stable)

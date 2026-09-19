@@ -18,8 +18,7 @@ import sys
 
 TRACKS = ("supported-floor", "intermediate-lts", "previous-stable", "stable")
 MEMBERS = {
-    "test_macos": ("unit",), "test_linux": ("unit",), "test_tsan": ("unit",),
-    "integration_linux_headscale": tuple(f"{track}-{suite}" for track in TRACKS for suite in ("api", "login")),
+    "test_macos": ("unit",), "test_tsan": ("unit",),
 }
 CRITICAL = ("ReadinessRegressionTests", "UnixSocketFaultTests", "StreamingFramingTests",
             "ServeConfigLosslessTests", "IPNBusStreamingTests", "ConformanceTests")
@@ -100,7 +99,7 @@ def parse_output(output, lane, member):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--lane", choices=MEMBERS, required=True)
+    parser.add_argument("--lane", choices=(*MEMBERS, "test_linux", "integration_linux_headscale"), required=True)
     parser.add_argument("--member", required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("command", nargs=argparse.REMAINDER)

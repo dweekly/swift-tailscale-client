@@ -61,7 +61,7 @@ Before cutting a release candidate or final release, execute the 1.0 verificatio
    - verifies tag ↔ CHANGELOG entry match and that the tag is annotated
    - runs the full test suite
    - creates the GitHub Release with notes extracted from the CHANGELOG section
-   - builds and attaches CLI binaries: macOS universal (arm64 + x86_64) and Linux x86_64
+   - builds and attaches CLI binaries: macOS universal (arm64 + x86_64)
    - generates and attaches `SHA256SUMS.txt` manifest
 4. Bump the Homebrew formula (`dweekly/homebrew-tap`) manually — update tag URL + tarball sha256 per [`HOMEBREW.md`](HOMEBREW.md).
 5. Verify Swift Package Index picked up the release and built docs (`.spi.yml` controls platforms).
@@ -92,12 +92,12 @@ If a release is found to contain a critical security vulnerability or regression
 
 ## CI test evidence
 
-The macOS, Linux, TSan, and hermetic Headscale jobs invoke
+The macOS unit and macOS TSan jobs invoke
 `Scripts/ci-test-report.py` and upload `test-report-*` artifacts. Each artifact
 contains the original test log and a JSON report with its SHA-256 digest,
 source commit, CI run ID, toolchain, executed/failed/skipped counts, and named
-skip reasons. Both the API suite and login lifecycle suite are required for
-each of the four supported daemon tracks. Unstable remains advisory.
+skip reasons. The 1.0 release is qualified on Apple platforms. Linux builds, Linux binaries,
+and the manual Headscale workflow are outside its release gates.
 
 Release publication downloads these artifacts from a successful `ci.yml` run
 on the exact tagged commit. It passes that run's job results through `--ci-data`

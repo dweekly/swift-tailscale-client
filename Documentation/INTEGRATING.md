@@ -31,9 +31,9 @@ anything — it has no embedded node.
 .product(name: "TailscaleClient", package: "swift-tailscale-client")
 ```
 
-Platforms: macOS 13+ and Linux connect to real daemons (both CI-verified against
-live tailscaled); iOS 16+/tvOS 16+/watchOS 9+ are build-verified only — there is
-no reachable daemon on those devices. Swift 6 strict concurrency throughout.
+Release platforms: macOS 13+ connects to installed daemons; iOS 16+/tvOS 16+/watchOS 9+
+are build-verified only — there is no reachable daemon on those devices. Linux
+is outside 1.0 release qualification. Swift 6 strict concurrency throughout.
 
 ## Core usage patterns
 

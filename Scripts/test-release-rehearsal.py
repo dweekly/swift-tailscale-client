@@ -277,13 +277,13 @@ class TestRunner:
     def test_negative_gate_1_missing_lanes(self):
         print("\n--- Gate 1: Missing / Non-Passing Required CI Lanes ---")
 
-        # 1a. Missing test_linux lane
+        # 1a. Missing test_tsan lane
         ev = make_valid_1_0_evidence()
-        del ev["required_lanes"]["test_linux"]
+        del ev["required_lanes"]["test_tsan"]
         v = GateValidator.check_gate_1_required_lanes(ev)
         self.log_result(
-            "Rejects evidence when 'test_linux' lane is missing",
-            any(x.code == "GATE_FAILURE_MISSING_LANE" and "test_linux" in x.message for x in v),
+            "Rejects evidence when 'test_tsan' lane is missing",
+            any(x.code == "GATE_FAILURE_MISSING_LANE" and "test_tsan" in x.message for x in v),
             f"Violations: {[x.code for x in v]}"
         )
 
@@ -430,15 +430,15 @@ class TestRunner:
     def test_negative_gate_5_binary_assets_and_checksums(self):
         print("\n--- Gate 5: Binary Builds & Asset Checksums ---")
 
-        # 5a. Missing Linux binary asset
+        # 5a. Missing macOS binary asset
         ev = make_valid_1_0_evidence()
         ev["release_assets"]["artifacts"] = [
-            a for a in ev["release_assets"]["artifacts"] if "macos" in a["name"]
+            a for a in ev["release_assets"]["artifacts"] if "macos" not in a["name"]
         ]
         v = GateValidator.check_gate_5_binary_assets(ev)
         self.log_result(
-            "Rejects release when Linux CLI binary archive is missing",
-            any(x.code == "GATE_FAILURE_BINARY_BUILD" and "linux" in x.message for x in v),
+            "Rejects release when macOS CLI binary archive is missing",
+            any(x.code == "GATE_FAILURE_BINARY_BUILD" and "macos" in x.message for x in v),
             f"Violations: {[x.code for x in v]}"
         )
 
@@ -565,7 +565,7 @@ class TestRunner:
 
             # Test --validate failure on injected negative gate
             invalid_evidence = make_valid_1_0_evidence()
-            del invalid_evidence["required_lanes"]["test_linux"]
+            del invalid_evidence["required_lanes"]["test_tsan"]
             ev_file.write_text(json.dumps(invalid_evidence, indent=2))
             proc_fail = subprocess.run(
                 [sys.executable, str(script_path), "--validate", str(ev_file)],

@@ -1,4 +1,4 @@
-name: Integration (Linux, headscale)
+name: Optional Linux integration (manual only)
 
 # Hermetic integration testing: a throwaway headscale control plane plus a
 # real tailscaled (userspace networking, no TUN) inside the job container.
@@ -18,8 +18,6 @@ on:
         type: boolean
         default: true
         required: false
-  schedule:
-    - cron: "17 9 * * *"
   workflow_dispatch:
     inputs:
       include-unstable:

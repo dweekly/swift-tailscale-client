@@ -13,7 +13,7 @@ Quick orientation:
   api.tailscale.com admin API.
 - Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`,
   product `TailscaleClient`. Test with the `TailscaleClientMocks` product.
-- macOS 13+/Linux connect to real daemons; iOS/tvOS/watchOS build only.
+- Release scope: macOS 13+ runtime; iOS/tvOS/watchOS build only. Linux is unqualified and not part of required CI.
 
 Working **on** this repository (not just consuming it): build/test commands and
 architecture conventions are in [`CLAUDE.md`](CLAUDE.md); endpoint coverage

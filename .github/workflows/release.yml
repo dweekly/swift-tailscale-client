@@ -5,7 +5,6 @@ name: Release
 # 1. Validates annotated tag and exact commit SHA match.
 # 2. Creates a staged draft release with release notes.
 # 3. Compiles and smoke-tests macOS universal binary.
-# 4. Compiles and smoke-tests Linux x86_64 binary in swift:6.1 container.
 # 5. Generates and verifies canonical SHA256SUMS.txt manifest.
 # 6. Uploads all assets to draft and promotes to public release.
 
@@ -163,55 +162,11 @@ jobs:
           name: macos-universal
           path: tailscale-swift-*-macos-universal.tar.gz
 
-  build-linux-x86_64:
-    name: Build & Smoke-Test Linux Binary
-    needs: validate-and-stage
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    container: swift:6.1
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build Linux CLI binary
-        run: |
-          swift build -c release --product tailscale-swift
-          BIN_DIR=$(swift build -c release --show-bin-path)
-          BIN="$BIN_DIR/tailscale-swift"
-
-          test -x "$BIN"
-
-          # CLI smoke tests
-          "$BIN" --help | grep -q "OVERVIEW:"
-          "$BIN" --help | grep -q "SUBCOMMANDS:"
-          VERSION_OUT=$("$BIN" --version)
-          echo "CLI version: $VERSION_OUT"
-          test "$VERSION_OUT" = "${GITHUB_REF_NAME#v}"
-          "$BIN" help status >/dev/null
-          "$BIN" help serve >/dev/null
-
-          # Graceful LocalAPI error handling
-          TAILSCALE_LOCALAPI_SOCKET=/tmp/nonexistent-daemon.sock "$BIN" status 2>/dev/null || ERR=$?
-          if [ "${ERR:-0}" -gt 128 ]; then
-            echo "::error::Binary crashed with exit code $ERR"
-            exit 1
-          fi
-
-          ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
-          tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
-          sha256sum "$ARCHIVE"
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-x86_64
-          path: tailscale-swift-*-linux-x86_64.tar.gz
-
   publish-release:
     name: Verify Checksums & Publish Release
     needs:
       - validate-and-stage
       - build-macos-universal
-      - build-linux-x86_64
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

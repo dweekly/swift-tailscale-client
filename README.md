@@ -8,7 +8,7 @@
 
 > Swift SDK for the Tailscale LocalAPI — control an existing tailscaled daemon with async/await
 
-`swift-tailscale-client` is a personal, MIT-licensed project by David E. Weekly. It is **not** an official Tailscale product and is not endorsed by Tailscale Inc. The goal is to provide an idiomatic async/await Swift interface to the LocalAPI so Apple-platform and Linux apps can query and control Tailscale state without shelling out to the `tailscale` CLI.
+`swift-tailscale-client` is a personal, MIT-licensed project by David E. Weekly. It is **not** an official Tailscale product and is not endorsed by Tailscale Inc. The goal is to provide an idiomatic async/await Swift interface to the LocalAPI so Apple-platform apps can query and control Tailscale state without shelling out to the `tailscale` CLI.
 
 API documentation is published to [GitHub Pages](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/) on every push to `main`, and the [Swift Package Index](https://swiftpackageindex.com/dweekly/swift-tailscale-client) builds a versioned mirror from `.spi.yml` — see [its documentation tab](https://swiftpackageindex.com/dweekly/swift-tailscale-client/documentation) for per-release docs.
 
@@ -99,7 +99,7 @@ See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.
 | Platform | Builds (CI-verified) | Connects to a local tailscaled |
 |---|---|---|
 | macOS 13+ | ✅ hosted CI | ✅ unix socket + opt-in App Store loopback — integration-tested against a real daemon in CI |
-| Linux | ✅ hosted CI | ✅ unix socket — hermetically integration-tested against headscale + real tailscaled (stable / previous-stable / unstable) in CI |
+| Linux | Outside the 1.0 release scope | Existing portability code is unqualified; no Linux CI or binary is required for this release |
 | iOS 16+, tvOS 16+, watchOS 9+ | ✅ build-only CI | ❌ no reachable daemon on-device — Tailscale's iOS app runs as a network extension whose LocalAPI third-party apps cannot reach. Declared so shared/multi-platform targets compile; useful for model code, not live connections. |
 
 ## Status
@@ -127,7 +127,7 @@ Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetri
 
 > **Using an AI coding agent?** [`Documentation/INTEGRATING.md`](Documentation/INTEGRATING.md) is the canonical integration guide for humans and agents alike; this repo also ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md), a root [`AGENTS.md`](AGENTS.md), and Copilot instructions that all point there.
 
-Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS and Linux and runs it against a real daemon.
+Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS; real-daemon checks are separate.
 
 ## API Reference
 
@@ -218,7 +218,7 @@ When enabled, the library scans Group Containers to find `sameuserproof-<port>-<
   TAILSCALE_INTEGRATION=1 swift test --filter TailscaleClientIntegrationTests
   ```
   You can also override socket or loopback settings using the environment variables above.
-- CI runs the mock-backed suites on hosted macOS and Linux runners (plus a Thread Sanitizer lane), the real-daemon integration suite on a self-hosted Mac, and a nightly hermetic integration matrix against headscale + real tailscaled. See [`Documentation/TESTING.md`](Documentation/TESTING.md).
+- Required CI runs macOS unit tests, macOS Thread Sanitizer, strict DocC/API checks, and iOS/tvOS/watchOS builds. Real-daemon integration runs separately on a self-hosted Mac; the Linux workflow is manual-only and outside release qualification. See [`Documentation/TESTING.md`](Documentation/TESTING.md).
 
 ## Contributing
 

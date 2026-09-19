@@ -1,3 +1,10 @@
+# 1.0 release scope update — 2026-09-19
+
+The maintainer narrowed release qualification to Apple platforms: macOS runtime
+and iOS/tvOS/watchOS build checks. Linux build, daemon-matrix, binary, and parity
+requirements in the original plan below are deferred. NWX is the initial real
+consumer; additional consumers and independent review are adoption goals.
+
 # 1.0 implementation and release plan
 
 Status: proposed implementation sequence, 2026-09-17. No implementation work is marked complete by this plan.

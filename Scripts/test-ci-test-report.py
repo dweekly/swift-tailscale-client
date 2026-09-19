@@ -91,21 +91,21 @@ class ReportTests(unittest.TestCase):
             ci_path.write_text(json.dumps({"check_runs": checks}))
             collector = aggregator.EvidenceAggregator("v1.0.0", commit=SHA, ci_data_path=ci_path, test_reports_dir=root)
             lanes = collector._collect_lanes(False)
-            self.assertTrue(all(lane["status"] == "passed" for lane in lanes.values()), lanes)
+            self.assertTrue(all(lanes[name]["status"] == "passed" for name in aggregator.REQUIRED_LANES), lanes)
 
     def test_release_rejects_missing_stale_failed_duplicate_or_tampered_reports(self):
         for defect in ("missing", "sha", "exit", "duplicate", "log", "count", "run", "zero", "skip", "check"):
             with self.subTest(defect=defect), tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 self.make_reports(root)
-                path = root / "integration_linux_headscale-stable-login.json"
+                path = root / "test_tsan-unit.json"
                 value = json.loads(path.read_text())
                 lanes = self.lanes()
                 if defect == "sha": value["source_sha"] = "b" * 40
                 if defect == "exit": value["exit_code"] = 1
                 if defect == "run": value["run_id"] = "456"
                 if defect == "count": value["test_summary"]["executed"] = 99
-                if defect == "check": lanes["integration_linux_headscale"]["checks_passed"] = False
+                if defect == "check": lanes["test_tsan"]["checks_passed"] = False
                 if defect in ("zero", "skip"):
                     log = "Executed 0 tests, with 0 failures\n" if defect == "zero" else skipped_log("LoginLifecycleIntegrationTests.testLogin", "Login disabled")
                     path.with_suffix(".log").write_text(log)
@@ -116,7 +116,7 @@ class ReportTests(unittest.TestCase):
                 if defect == "duplicate": (root / "copy.json").write_text(json.dumps(value))
                 if defect == "log": path.with_suffix(".log").write_text(PASS + "tampered")
                 result = reporter.attach_reports(lanes, root, SHA)
-                self.assertNotEqual(result["integration_linux_headscale"]["status"], "passed")
+                self.assertNotEqual(result["test_tsan"]["status"], "passed")
 
     def test_api_baseline_requires_a_successful_check(self):
         collector = aggregator.EvidenceAggregator("v1.0.0", commit=SHA)

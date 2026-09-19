@@ -44,12 +44,10 @@ if not ROOT.name:
 # Required CI Lanes for 1.0 Release Gate
 REQUIRED_LANES = [
     "test_macos",
-    "test_linux",
     "docs_consistency",
     "docs_build_strict",
     "test_tsan",
     "build_platforms",
-    "integration_linux_headscale",
 ]
 
 # Critical test suites that must never be skipped
@@ -64,7 +62,6 @@ CRITICAL_TEST_SUITES = [
 # Required binary artifacts
 REQUIRED_ARTIFACT_PATTERNS = [
     r"tailscale-swift-.*-macos-universal\.tar\.gz$",
-    r"tailscale-swift-.*-linux-x86_64\.tar\.gz$",
 ]
 
 
@@ -429,7 +426,7 @@ class GateValidator:
                 gate=5,
                 code="GATE_FAILURE_BINARY_BUILD",
                 message="No release artifacts recorded in release evidence.",
-                remediation="Build and stage universal macOS and Linux CLI binaries before release.",
+                remediation="Build and stage the universal macOS CLI binary before release.",
             ))
             return violations
 
@@ -605,7 +602,10 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
     """Parse list of GitHub check-runs into normalized required_lanes dict."""
     lanes: Dict[str, Any] = {}
 
-    for lane_id in REQUIRED_LANES:
+    optional_lanes = [lane for lane in ("test_linux", "integration_linux_headscale")
+                      if any(re.search(pattern, run.get("name", ""), re.IGNORECASE)
+                             for run in check_runs for pattern in LANE_PATTERNS[lane])]
+    for lane_id in REQUIRED_LANES + optional_lanes:
         patterns = LANE_PATTERNS.get(lane_id, [])
         matching_runs = []
         for cr in check_runs:

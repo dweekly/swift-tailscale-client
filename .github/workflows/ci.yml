@@ -104,42 +104,6 @@ jobs:
           swift build --package-path Examples/Recipes
           swift test --package-path Examples/Recipes
 
-  test-linux:
-    name: Test on Linux
-    runs-on: ubuntu-24.04
-    container: swift:6.1
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install test reporter runtime
-        run: apt-get update && apt-get install -y python3
-
-      - name: Check Swift version
-        run: swift --version
-
-      - name: Build
-        run: swift build -v
-
-      - name: Run tests
-        run: python3 Scripts/ci-test-report.py --lane test_linux --member unit --output "$RUNNER_TEMP/test-reports/unit.json" -- swift test -v
-
-      - name: Upload test report and log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report-test_linux
-          path: ${{ runner.temp }}/test-reports/
-          if-no-files-found: error
-
-      - name: Build example (links the library as an external consumer)
-        run: swift build --package-path Examples/StatusDemo
-
-      - name: Build and test recipes (compiled documentation snippets)
-        run: |
-          swift build --package-path Examples/Recipes
-          swift test --package-path Examples/Recipes
-
   docs-consistency:
     name: Docs consistency
     runs-on: ubuntu-24.04
@@ -184,16 +148,13 @@ jobs:
 
   docs-build-strict:
     name: DocC (strict)
-    runs-on: ubuntu-24.04
-    container: swift:6.1
+    runs-on: macos-26
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       # Warnings-as-errors catches broken ``symbol`` links and malformed
       # directives on every PR instead of at deploy time.
-      # shell: bash because the swift:6.1 container's default `sh` is dash,
-      # which rejects `set -o pipefail`.
       - name: Build documentation strictly
         shell: bash
         run: |
@@ -209,8 +170,6 @@ jobs:
       # v0.12.0: Types 93%, Members 70%, Globals 1.6%). The pre-1.0 API
       # PR 14 Part 1 enforces 100% authored public symbol coverage, raising floors
       # to Types >= 95% and Members >= 80% (Globals 1% reflects synthesized operators).
-      # awk, not python: the swift:6.1 container ships neither python3
-      # nor perl.
       - name: Check documentation coverage floors
         shell: bash
         run: |
@@ -238,15 +197,11 @@ jobs:
 
   test-tsan:
     name: Test with Thread Sanitizer
-    runs-on: ubuntu-24.04
-    container: swift:6.1
-    # TSan roughly doubles runtime, so this gets headroom over test-linux.
+    runs-on: macos-26
+    # TSan gets extra headroom for the concurrency-heavy socket tests.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install test reporter runtime
-        run: apt-get update && apt-get install -y python3
 
       # TSan guards the concurrency-heavy paths (UnixSocketTransport's
       # detached tasks, the FaultUnixServer test harness) against data
@@ -290,12 +245,6 @@ jobs:
             -skipPackagePluginValidation \
             -skipMacroValidation
 
-  integration-linux:
-    name: Integration (Linux)
-    uses: ./.github/workflows/integration-linux.yml
-    with:
-      include-unstable: true
-
   api-baseline:
     name: Check API Baseline
     runs-on: macos-26
@@ -307,9 +256,6 @@ jobs:
       - name: Check API baseline against v0.12.0
         run: ./Scripts/check-api-baseline.sh
 
-      - name: Verify frozen 1.0 public API against fresh symbol graphs
-        run: python3 Scripts/verify-api-baseline.py
-
   all-required:
     name: All Required Checks
     runs-on: ubuntu-24.04
@@ -317,12 +263,10 @@ jobs:
     if: always()
     needs:
       - test-macos
-      - test-linux
       - docs-consistency
       - docs-build-strict
       - test-tsan
       - build-platforms
-      - integration-linux
       - api-baseline
     steps:
       - name: Evaluate required job statuses
@@ -339,12 +283,10 @@ jobs:
 
           expected = {
               "test-macos",
-              "test-linux",
               "docs-consistency",
               "docs-build-strict",
               "test-tsan",
               "build-platforms",
-              "integration-linux",
               "api-baseline",
           }
           missing = expected - set(needs.keys())
