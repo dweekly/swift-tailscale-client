@@ -200,8 +200,8 @@ jobs:
           fi
           gh run download "$CI_RUN" --pattern 'test-report-*' --dir "$RUNNER_TEMP/test-reports"
           # Scope every lane verdict to this run, including reusable workflow jobs.
-          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN}/jobs?filter=latest&per_page=100" \
-            --jq '{check_runs: [.[].jobs[]]}' > "$RUNNER_TEMP/ci-checks.json"
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN}/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/ci-job-pages.json"
+          jq '{check_runs: [.[].jobs[]]}' "$RUNNER_TEMP/ci-job-pages.json" > "$RUNNER_TEMP/ci-checks.json"
 
       - name: Aggregate and validate release evidence
         env:
