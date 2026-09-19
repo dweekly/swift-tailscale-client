@@ -5,13 +5,13 @@
 **Last Updated:** 2026-09-18  
 **Scope:** Milestone 1–3 Architecture, Correctness, Framing, Resource Bounds, Concurrency, and Discovery  
 **Authoritative Plan:** `Documentation/PLAN-1.0.md § W8` (Milestone 3, PR 14)  
-**Gating Status:** **Gate G8 OPEN (Internal Adversarial Review Complete; External Human Review Pending)**
+**Gating Status:** **External review pending (adoption goal; not an independent 1.0 release blocker as of 2026-09-19)**
 
 ---
 
 ## 1. Review Overview & Objectives
 
-In accordance with `Documentation/PLAN-1.0.md § W8`, technical review is required prior to freezing the 1.0 release. The review evaluates the core guarantees and invariants of `swift-tailscale-client`:
+In accordance with `Documentation/PLAN-1.0.md § W8`, blocking technical findings must be resolved before 1.0; independent external review remains a separate adoption goal. The review evaluates the core guarantees and invariants of `swift-tailscale-client`:
 
 1. **Transport Framing & Socket Resource Bounds (W2: PR 04, PR 05)**
 2. **Safe Configuration Writes & Concurrency Snapshot Control (W1: PR 02, PR 03)**
@@ -32,7 +32,7 @@ In accordance with `Documentation/PLAN-1.0.md § W8`, technical review is requir
    - `TransportCancellationChallengerTests.swift`: Non-blocking socket polling and cooperative cancellation.
    - `ServeConfigLosslessTests.swift`: 64-bit integer preservation and unmodeled field round-trips.
    - `DiscoveryRecoveryTests.swift`: Single-flight rediscovery under concurrent caller stampedes.
-2. **Independent External Review**: **OPEN / PENDING**. Gate G8 requires review by a qualified engineer independent of this implementation. An external technical review from a community maintainer or independent Swift/systems engineer has not yet been conducted and remains an open release gate.
+2. **Independent External Review**: **OPEN / PENDING**. Review by a qualified engineer independent of this implementation has not yet been conducted. It remains an upstream-adoption goal, rather than a blocker for the independent release; the release consumer check is the actual NWX integration.
 
 ---
 

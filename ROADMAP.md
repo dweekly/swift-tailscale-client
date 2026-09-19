@@ -81,7 +81,7 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 - [ ] **G5 Compatibility:** Go differential oracle harness and synthetic fixtures implemented; live daemon multi-version capture matrix and official upstream package imports pending.
 - [ ] **G6 Release gates:** required check aggregator and rehearsal scripts implemented; strict matrix member requirements and non-zero telemetry validation in progress.
 - [ ] **G7 API and docs:** removed `addProfile()`, 100% authored DocC coverage; immutable 1.0 baseline comparison gate and Swift 6.1 toolchain alignment in progress.
-- [ ] **G8 Consumers and maintenance:** in-tree NWX and Fleet agent simulation suites verified; independent external production trial and human technical review pending.
+- [ ] **G8 Consumers and maintenance:** in-tree simulations verified; real NWX compatibility smoke test and recorded maintenance ownership required. Additional consumers and external review are adoption goals, not release blockers.
 - [ ] **G9 Release candidate:** Swift-driven soak harness and 1.0 candidate evaluation in progress.
 
 Retain the unofficial-status disclaimer and explain the deferred stable-gap ledger in 1.0 release notes. Keep the public full-preferences replacement carrier internal unless lossless replacement semantics are established.

@@ -50,8 +50,8 @@ Before cutting a release candidate or final release, execute the 1.0 verificatio
 8. **Exact-SHA Release Evidence Aggregation & Simulated Rehearsal**:
    `python3 Scripts/aggregate-release-evidence.py --tag vX.Y.Z --simulate-tag`
    Verify that all 6 release evidence gates pass without unexpected skips.
-9. **External Technical Review Sign-Off**:
-   Verify that `Documentation/EXTERNAL-REVIEW.md` is signed off and all blocking findings are closed.
+9. **NWX Compatibility and Review Findings**:
+   Record a smoke test of the real NWX integration and resolve blocking technical findings. Independent external review and additional consumers are upstream-adoption goals, not prerequisites for the independent 1.0 release. Keep `Documentation/EXTERNAL-REVIEW.md` honest about review status.
 
 ## Tagging and Publication Flow
 

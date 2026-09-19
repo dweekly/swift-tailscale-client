@@ -246,9 +246,9 @@ Start this work during M0; don't wait until the API has frozen to discover consu
 
 Project-owned deliverables:
 
-- Migrate NWX and recruit a second real consumer maintained independently of this library. The second consumer should exercise a different workflow where feasible, such as configuration/lifecycle management rather than another status demo.
+- Validate NWX, the current real consumer, against the release candidate. A second independent consumer is an adoption goal, not a prerequisite for this release.
 - Record integration friction, missing abstractions, and required internal workarounds. Feed API-breaking needs back before W7. Repository examples alone do not count as independent adoption evidence.
-- Obtain external review of the transport, safe writes, discovery, and streaming design. A qualified reviewer need not be a Tailscale employee for the technical release gate.
+- Resolve blocking findings from the internal transport, safe-write, discovery, and streaming reviews. Seek independent external review as an upstream-adoption goal; do not claim it has occurred.
 - Record contribution/provenance policy, whether to use DCO, license/attribution inventory, release ownership, and security triage responsibility. Identify a backup maintainer and rehearse the release checklist with someone other than the primary author.
 - Prepare a concise adoption brief: intended use cases, architectural boundary, guarantees, compatibility evidence, known limitations, maintenance burden, and a concrete sample integration.
 
@@ -259,14 +259,14 @@ Tailscale-specific collaboration goals:
 - Discuss package ownership/naming, support responsibilities, upstream change notification, and licensing requirements only against an actual integration proposal.
 - Prepare a Community Projects submission as an intermediate discovery channel. Community listing, code review, production use, and repository transfer are distinct outcomes.
 
-**Acceptance for the independent 1.0 release:** two real consumer integrations, one external technical review with blocking findings resolved, and a recorded maintenance/security/release ownership plan. An unanswered request to Tailscale does not hold the release indefinitely or justify claiming endorsement. This plan authorizes preparation, not sending outreach messages or transferring ownership.
+**Acceptance for the independent 1.0 release (scope clarified by the maintainer on 2026-09-19):** a recorded NWX compatibility smoke test, resolved blocking technical findings, and a recorded maintenance/security/release ownership plan. Additional consumers and independent external review remain adoption goals, not release blockers. An unanswered request to Tailscale does not hold the release indefinitely or justify claiming endorsement. This plan authorizes preparation, not sending outreach messages or transferring ownership.
 
 ### W9 — Release candidate, soak, and publication
 
 Release-candidate scope is fixes and evidence collection. New features requiring API redesign return the candidate to M3.
 
 - Publish an RC after W1–W8 project-owned gates pass. Record the exact SHA and dependency lock state.
-- Run a proposed minimum 14-day consumer evaluation period across NWX and the independent consumer, including daemon upgrades/restarts, sleep/wake, network transitions, logout/login in disposable environments, and slow/cancelled watchers.
+- Record a focused NWX evaluation covering its actual usage, including connection/discovery, status refresh, and watcher cancellation where used. Longer production evaluation remains useful follow-up; a second consumer and a fixed 14-day waiting period are not required.
 - Complete the one-hour synthetic stream test plus at least one 24-hour monitoring run. Record environment, event volume, memory/resource behavior, reconnects, and any gaps; don't claim universal performance from a single run.
 - Triage defects explicitly: crashes, secret exposure, unintended configuration loss, silent event loss, cancellation hangs, supported-environment failures, and missing required release evidence block 1.0. Cosmetic/nonbreaking follow-ups may be tracked with rationale.
 - Re-run affected tests after fixes. Restart the relevant soak after changes to transport/stream/discovery ownership or semantics; editorial-only changes need not restart the consumer clock, but the final commit still needs its required automated checks.
@@ -309,7 +309,7 @@ Maintain a release record under `Documentation/releases/` when implementation be
 - [ ] **G5 Compatibility:** exact supported versions/toolchains, endpoint evidence inventory, versioned fixtures, conformance results, controlled skips.
 - [ ] **G6 Release gates:** required checks/rulesets, exact-SHA evidence, annotated-tag check, staged artifacts, negative gate rehearsal.
 - [ ] **G7 API and docs:** approved compatibility baseline, experimental policy, complete authored API docs, compiled examples, migration guide.
-- [ ] **G8 Consumers and maintenance:** two real integrations, external review, backup release owner, security and contribution policy.
+- [ ] **G8 Consumers and maintenance:** real NWX compatibility smoke test, resolved blocking review findings, recorded release/security ownership and contribution policy. Additional consumers and independent review are adoption goals.
 - [ ] **G9 RC:** evaluation/soak reports, no open blocking defects, complete tested release commit and distribution rehearsal.
 
 Endpoint inventory and aggregate coverage remain useful guardrails, but cannot substitute for these gates. Keep the existing 85% line-coverage floor and improve meaningful coverage while implementing the failure scenarios above.
