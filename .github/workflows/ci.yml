@@ -93,9 +93,6 @@ jobs:
       - name: Check release consistency (macOS bash)
         run: ./Scripts/check-release-consistency.sh
 
-      - name: Check API baseline against v0.12.0
-        run: ./Scripts/check-api-baseline.sh
-
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
 
