@@ -58,6 +58,7 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
     private(set) var requestsByPort: [UInt16: Int] = [:]
     private(set) var requestsByToken: [String: Int] = [:]
     private(set) var requestsByMethod: [String: Int] = [:]
+    private(set) var peerlessRequestsByPort: [UInt16: Int] = [:]
 
     private var sendHandler:
       (
@@ -82,6 +83,9 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
       }
       if case .loopback(_, let port) = configuration.endpoint {
         requestsByPort[port, default: 0] += 1
+        if request.queryItems.contains(URLQueryItem(name: "peers", value: "false")) {
+          peerlessRequestsByPort[port, default: 0] += 1
+        }
       }
 
       if let handler = sendHandler {
@@ -104,6 +108,7 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
     func countForPort(_ port: UInt16) -> Int { requestsByPort[port, default: 0] }
     func countForMethod(_ method: String) -> Int { requestsByMethod[method, default: 0] }
     func countForToken(_ token: String) -> Int { requestsByToken[token, default: 0] }
+    func peerlessCountForPort(_ port: UInt16) -> Int { peerlessRequestsByPort[port, default: 0] }
   }
 
   private static func setupStandaloneDirectory(in dir: URL, port: UInt16, token: String) throws {
@@ -128,6 +133,9 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
     let newPort: UInt16 = 41021
     let initialToken = "token-early"
     let newToken = "token-recovered-150"
+    let probeStarted = expectation(description: "Rediscovery probe started")
+    let releaseProbe = DispatchSemaphore(value: 0)
+    defer { releaseProbe.signal() }
 
     try Self.setupStandaloneDirectory(in: tempDir, port: newPort, token: newToken)
 
@@ -138,8 +146,10 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
       probeOverride: { port, token in
         Task {
           await tracker.recordProbe(port: port, token: token)
+          probeStarted.fulfill()
         }
-        usleep(80_000)  // 80ms probe delay to ensure all 150 late arrivals enter in-flight await
+        // Bound the wait so a regression cannot strand the discovery worker.
+        _ = releaseProbe.wait(timeout: .now() + 10)
         return true
       }
     )
@@ -180,13 +190,16 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
         }
       }
 
-      // Group 2: 150 requests launch after 15ms (while rediscovery is firmly in-flight)
+      await fulfillment(of: [probeStarted], timeout: 5)
+
+      // Launch the late group only after rediscovery starts. A distinct query lets
+      // us detect their stale attempts independently of the initial callers.
       for _ in 0..<group2Count {
         group.addTask {
-          try await Task.sleep(nanoseconds: 15_000_000)  // 15ms
-          return try await client.status()
+          try await client.status(query: StatusQuery(includePeers: false))
         }
       }
+      releaseProbe.signal()
 
       for try await response in group {
         responses.append(response)
@@ -206,13 +219,18 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
       "Burst of \(totalCount) requests (50 early + 150 in-flight) must coalesce into exactly 1 rediscovery probe"
     )
 
-    // 3. Stale port was only attempted by the initial 50 callers; all 150 late arrivals waited and sent directly to newPort
+    // Some initial callers may also join recovery before attempting the stale port.
     let callsOnOldPort = await transport.countForPort(initialPort)
     let callsOnNewPort = await transport.countForPort(newPort)
+    let lateCallsOnOldPort = await transport.peerlessCountForPort(initialPort)
+    let lateCallsOnNewPort = await transport.peerlessCountForPort(newPort)
+    XCTAssertGreaterThan(callsOnOldPort, 0)
+    XCTAssertLessThanOrEqual(callsOnOldPort, group1Count)
     XCTAssertEqual(
-      callsOnOldPort, group1Count,
+      lateCallsOnOldPort, 0,
       "Late-arriving requests must not attempt the stale port"
     )
+    XCTAssertEqual(lateCallsOnNewPort, group2Count)
     XCTAssertEqual(
       callsOnNewPort, totalCount,
       "All \(totalCount) requests must complete successfully on the recovered port"
