@@ -35,6 +35,16 @@ class BaselineNormalizationTests(unittest.TestCase):
         self.assertEqual(api.synthesized_aliases({old: symbol}, {new: changed}), {})
         self.assertEqual(api.synthesized_aliases({'authored-old': symbol}, {'authored-new': symbol}), {})
 
+    def test_only_inherited_equatable_default_normalizes_borrowing(self):
+        old = {'title': '!=(_:_:)', 'kind': 'swift.func.op',
+               'declaration': 'static func != (lhs: Self, rhs: Self) -> Bool'}
+        new = dict(old, declaration='static func != (lhs: borrowing Self, rhs: borrowing Self) -> Bool')
+        self.assertEqual(api.synthesized_aliases({'new::SYNTHESIZED::Type': new},
+                                               {'old::SYNTHESIZED::Type': old}),
+                         {'new::SYNTHESIZED::Type': 'old::SYNTHESIZED::Type'})
+        self.assertNotEqual(api.comparable_declaration('authored', old),
+                            api.comparable_declaration('authored', new))
+
     def test_conformance_relationships_are_not_discarded(self):
         relationship = {'kind': 'conformsTo', 'source': 'MyType', 'target': 'Equatable'}
         self.assertEqual(api.relationship_key(relationship, {}), 'conformsTo::MyType::Equatable')

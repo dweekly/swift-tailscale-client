@@ -63,6 +63,16 @@ def normalize_declaration(declaration):
     return declaration
 
 
+def comparable_declaration(precise, symbol):
+    declaration = normalize_declaration(symbol["declaration"])
+    if "::SYNTHESIZED::" in precise and symbol["title"] == "!=(_:_:)":
+        # Swift 6.4 generalized the standard-library Equatable default to
+        # borrowing Self. These package types are Copyable; this is SDK-owned
+        # implementation spelling, not an authored parameter ownership change.
+        declaration = declaration.replace("borrowing Self", "Self")
+    return declaration
+
+
 def synthesized_aliases(expected, current):
     """Match inherited members by recipient and full signature across SDK USRs.
 
@@ -78,7 +88,7 @@ def synthesized_aliases(expected, current):
                       if key.endswith("::SYNTHESIZED::" + recipient)
                       and actual["title"] == symbol["title"]
                       and actual["kind"] == symbol["kind"]
-                      and normalize_declaration(actual["declaration"]) == normalize_declaration(symbol["declaration"])]
+                      and comparable_declaration(key, actual) == comparable_declaration(precise, symbol)]
         if len(candidates) == 1:
             aliases[precise] = candidates[0]
     return aliases
@@ -164,7 +174,7 @@ def main():
             else:
                 actual = curr_symbols[resolved]
                 if expected.get("declaration") and actual.get("declaration"):
-                    if normalize_declaration(expected["declaration"]) != normalize_declaration(actual["declaration"]):
+                    if comparable_declaration(precise, expected) != comparable_declaration(resolved, actual):
                         errors.append(
                             f"CHANGED 1.0 API declaration in {mod_name} for '{expected.get('title')}':\n"
                             f"  Expected: {expected['declaration']}\n"
