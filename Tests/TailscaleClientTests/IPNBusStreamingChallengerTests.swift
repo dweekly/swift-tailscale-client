@@ -251,7 +251,8 @@ final class IPNBusStreamingChallengerTests: XCTestCase {
     // If an incoming event is 50 bytes:
     // With 64 + 50 = 114 > 100, the 50 byte event MUST NOT be appended along with gapEvent,
     // so total buffered bytes NEVER exceeds 100 bytes.
-    let bounds = StreamBufferBounds(maxEventCount: 10, maxByteCount: 100, overflowStrategy: .reportGap)
+    let bounds = StreamBufferBounds(
+      maxEventCount: 10, maxByteCount: 100, overflowStrategy: .reportGap)
     let queue = IPNBusBoundedQueue(bounds: bounds)
 
     // Pre-fill queue to 80 bytes

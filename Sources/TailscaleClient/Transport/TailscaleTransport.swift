@@ -102,7 +102,9 @@ public struct TailscaleResponse: Sendable {
   ///   - data: Response body data.
   ///   - headers: HTTP response headers.
   ///   - targetIdentifier: The target identifier of the responding daemon.
-  public init(statusCode: Int, data: Data, headers: [String: String] = [:], targetIdentifier: String?) {
+  public init(
+    statusCode: Int, data: Data, headers: [String: String] = [:], targetIdentifier: String?
+  ) {
     self.statusCode = statusCode
     self.data = data
     self.headers = headers

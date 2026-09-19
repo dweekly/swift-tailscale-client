@@ -23,7 +23,9 @@ struct WatchCommand: AsyncParsableCommand {
   @Flag(name: .long, help: "Enable automatic reconnection on connection drop")
   var reconnect = false
 
-  @Flag(name: .long, help: "Stream full IPNBusEvent lifecycle events (connected, disconnected, stateGap, etc.)")
+  @Flag(
+    name: .long,
+    help: "Stream full IPNBusEvent lifecycle events (connected, disconnected, stateGap, etc.)")
   var events = false
 
   @MainActor

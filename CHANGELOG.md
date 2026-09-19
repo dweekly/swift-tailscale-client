@@ -20,6 +20,15 @@ This release candidate establishes an enterprise-grade, memory-safe, and concurr
 - **In-Tree Consumer Simulation**: Validated across simulated Network Weather (NWX) and TailscaleFleetAgent test suites using public APIs with zero `@testable` imports.
 - **Zero Third-Party Dependencies**: Core library relies strictly on Foundation and POSIX APIs with zero external package dependencies.
 
+### Release-candidate fixes
+
+- Reject incomplete chunked streaming responses at EOF; verify lossless slow
+  consumption beyond the transport queue's high-water mark.
+- Collect exact-commit CI test reports and original logs for release validation,
+  including named skip reasons and every required daemon matrix member.
+- Fail soak verification when required measurements are unavailable, and test
+  failure verdicts through the actual harness.
+
 ### Supported Platform & Daemon Matrix
 
 - **Runtime (Full LocalAPI Operations)**:

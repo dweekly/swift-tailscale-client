@@ -431,16 +431,18 @@ final class ServeAPITests: XCTestCase {
       XCTFail("Network must not be called when target mismatch occurs")
       return TailscaleResponse(statusCode: 200, data: Data())
     }
-    let clientA = TailscaleClient(configuration: TailscaleClientConfiguration(
-      endpoint: .loopback(port: 10001),
-      authToken: nil,
-      transport: transportA
-    ))
-    let clientB = TailscaleClient(configuration: TailscaleClientConfiguration(
-      endpoint: .loopback(port: 10002),
-      authToken: nil,
-      transport: transportB
-    ))
+    let clientA = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .loopback(port: 10001),
+        authToken: nil,
+        transport: transportA
+      ))
+    let clientB = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .loopback(port: 10002),
+        authToken: nil,
+        transport: transportB
+      ))
 
     let snapshotA = try await clientA.serveConfigSnapshot()
     XCTAssertEqual(snapshotA.targetIdentifier, clientA.targetIdentifier)
@@ -461,16 +463,18 @@ final class ServeAPITests: XCTestCase {
   }
 
   func testUpdateServeConfigRejectsCrossTargetSnapshotBeforeMutation() async throws {
-    let clientA = TailscaleClient(configuration: TailscaleClientConfiguration(
-      endpoint: .unixSocket(path: "/var/run/tailscale/tailscaled.sock"),
-      authToken: nil,
-      transport: MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: Data()) }
-    ))
-    let clientB = TailscaleClient(configuration: TailscaleClientConfiguration(
-      endpoint: .unixSocket(path: "/var/run/tailscale/other.sock"),
-      authToken: nil,
-      transport: MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: Data()) }
-    ))
+    let clientA = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .unixSocket(path: "/var/run/tailscale/tailscaled.sock"),
+        authToken: nil,
+        transport: MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: Data()) }
+      ))
+    let clientB = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .unixSocket(path: "/var/run/tailscale/other.sock"),
+        authToken: nil,
+        transport: MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: Data()) }
+      ))
 
     let snapshotA = ServeConfigSnapshot(
       etag: "\"valid\"",

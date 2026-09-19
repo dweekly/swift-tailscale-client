@@ -247,7 +247,8 @@ import XCTest
           var one: Int32 = 1
           setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         #endif
-        let head = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"
+        let head =
+          "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"
         _ = head.withCString { write(clientFD, $0, strlen($0)) }
         let chunk = [UInt8](repeating: 0x41, count: 64 * 1024)
         while true {
@@ -441,48 +442,6 @@ import XCTest
       )
     }
 
-    // MARK: - Slow Consumer Backpressure & No Silent Loss (Issue 1)
-
-    func testSlowConsumerNeverSilentlyDropsUpdates() async throws {
-      let totalLines = 150
-      var lines = ""
-      for i in 0..<totalLines {
-        lines += "{\"Version\":\"v\(i)\"}\n"
-      }
-      let server = try FaultUnixServer(behaviors: [
-        .respond(
-          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + lines,
-          closeAfterWrite: true
-        )
-      ])
-      defer { server.stop() }
-
-      let client = makeClient(path: server.path, timeout: .seconds(5))
-      let stream = try await client.watchIPNBus()
-
-      var receivedVersions: [String] = []
-      do {
-        for try await notify in stream {
-          if let v = notify.version {
-            receivedVersions.append(v)
-          }
-          // Slow consumer simulation: brief sleep
-          try await Task.sleep(for: .microseconds(500))
-        }
-      } catch let clientError as TailscaleClientError {
-        // If stream overflows, it must be an explicit streamOverflow error, never silent drops
-        guard case .streamOverflow = clientError else {
-          XCTFail("Expected .streamOverflow, got \(clientError)")
-          return
-        }
-      }
-
-      // Assert that all received versions are strictly contiguous (no silent drops)
-      XCTAssertFalse(receivedVersions.isEmpty, "Should have received at least some initial notifications")
-      for (idx, v) in receivedVersions.enumerated() {
-        XCTAssertEqual(v, "v\(idx)", "Silent drop detected! Expected v\(idx) but received \(v)")
-      }
-    }
   }
 
   // MARK: - Multi-Platform File Descriptor Inspection Helper

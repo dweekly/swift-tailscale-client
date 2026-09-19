@@ -19,6 +19,7 @@ Zero external dependencies: uses only Python 3 standard library.
 """
 
 import argparse
+import importlib
 import hashlib
 import json
 import os
@@ -287,18 +288,18 @@ class GateValidator:
             if not summary:
                 continue
 
-            skipped = summary.get("skipped", 0)
+            skipped = summary.get("unexpected_skips", summary.get("skipped", 0))
             failures = summary.get("failures", 0)
             unexpected_failures = summary.get("unexpected_failures", 0)
             critical_skips = summary.get("critical_skips", [])
 
-            # Core unit / test lanes require 0 skips
+            # Only explicitly classified environment skips are permitted
             if skipped > 0:
                 violations.append(GateViolation(
                     gate=2,
                     code="GATE_FAILURE_UNEXPECTED_SKIP",
-                    message=f"Lane '{lane_name}' reported {skipped} skipped tests (allowed: 0).",
-                    remediation=f"Examine skipped tests in '{lane_name}'. Unit tests and integration tests cannot be skipped.",
+                    message=f"Lane '{lane_name}' reported {skipped} unexpected skipped tests (allowed: 0).",
+                    remediation=f"Examine skipped tests in '{lane_name}'. Every expected skip must have a named test and allowlisted reason.",
                 ))
 
             if critical_skips:
@@ -614,6 +615,11 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
                     matching_runs.append(cr)
                     break
 
+        if lane_id == "integration_linux_headscale":
+            # Unstable is an advisory drift probe, not a required release track.
+            matching_runs = [run for run in matching_runs if not re.search(
+                r"(?<![a-zA-Z0-9_-])unstable(?![a-zA-Z0-9_-])", run.get("name", ""), re.IGNORECASE)]
+
         if not matching_runs:
             lanes[lane_id] = {
                 "name": lane_id.replace("_", " ").title(),
@@ -652,6 +658,8 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
                 status = "missing"
                 error_msg = f"Incomplete platform matrix: missing platform build(s) {sorted(missing_platforms)}."
 
+        checks_passed = status == "passed"
+
         # Explicit track validation for hermetic integration matrix
         if lane_id == "integration_linux_headscale":
             found_tracks = set()
@@ -675,6 +683,7 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
             required_tracks = {"supported-floor", "intermediate-lts", "previous-stable", "stable"}
             missing_tracks = required_tracks - found_tracks
             if not found_tracks or missing_tracks:
+                checks_passed = False
                 status = "missing"
                 error_msg = f"Incomplete integration matrix: missing required daemon track(s) {sorted(missing_tracks)}."
             else:
@@ -717,6 +726,7 @@ def parse_check_runs_to_lanes(check_runs: List[Dict[str, Any]]) -> Dict[str, Any
         lane_dict: Dict[str, Any] = {
             "name": matching_runs[0].get("name", lane_id.replace("_", " ").title()),
             "status": status,
+            "checks_passed": checks_passed,
         }
         if error_msg:
             lane_dict["error"] = error_msg
@@ -765,11 +775,14 @@ class EvidenceAggregator:
         commit: Optional[str] = None,
         artifacts_dir: Optional[pathlib.Path] = None,
         ci_data_path: Optional[pathlib.Path] = None,
+        test_reports_dir: Optional[pathlib.Path] = None,
     ):
         self.tag = tag
         self.commit = commit
         self.artifacts_dir = artifacts_dir
         self.ci_data_path = ci_data_path
+        self.test_reports_dir = test_reports_dir
+        self.api_baseline_status = "unverified"
 
     def aggregate(self, skip_local_checks: bool = False, allow_dirty: bool = False, simulate_tag: bool = False) -> Dict[str, Any]:
         """Aggregate all evidence into normalized dictionary."""
@@ -809,9 +822,9 @@ class EvidenceAggregator:
             "required_lanes": lanes,
             "docs_and_api": docs_api,
             "fixtures_and_conformance": {
-                "fixture_manifest_integrity": "passed",
-                "fixture_purity_audit": "passed",
-                "conformance_harness_status": "passed",
+                "fixture_manifest_integrity": "unverified",
+                "fixture_purity_audit": "unverified",
+                "conformance_harness_status": "unverified",
             },
             "release_assets": assets,
         }
@@ -836,15 +849,26 @@ class EvidenceAggregator:
     def _collect_lanes(self, skip_local_checks: bool) -> Dict[str, Any]:
         """Collect required CI lanes from --ci-data file, GitHub API, or mark unverified."""
         if self.ci_data_path and self.ci_data_path.exists():
+            try:
+                self._record_api_baseline(json.loads(self.ci_data_path.read_text()).get("check_runs", []))
+            except (ValueError, AttributeError):
+                pass
             ci_lanes = load_ci_data(self.ci_data_path)
             if ci_lanes:
+                if self.test_reports_dir:
+                    ci_lanes = importlib.import_module("ci-test-report").attach_reports(
+                        ci_lanes, self.test_reports_dir, self.commit)
                 return ci_lanes
 
         target_commit = self.commit or "HEAD"
         check_runs = query_github_check_runs(target_commit)
         if check_runs:
+            self._record_api_baseline(check_runs)
             ci_lanes = parse_check_runs_to_lanes(check_runs)
             if ci_lanes:
+                if self.test_reports_dir:
+                    ci_lanes = importlib.import_module("ci-test-report").attach_reports(
+                        ci_lanes, self.test_reports_dir, self.commit)
                 return ci_lanes
 
         lanes: Dict[str, Any] = {}
@@ -855,6 +879,12 @@ class EvidenceAggregator:
                 "error": "No CI check run data found for target commit (offline, unauthenticated, or commit not in remote CI)",
             }
         return lanes
+
+    def _record_api_baseline(self, check_runs):
+        checks = [check for check in check_runs if check.get("name") == "Check API Baseline"]
+        self.api_baseline_status = "passed" if checks and all(
+            check.get("status") == "completed" and check.get("conclusion") == "success"
+            for check in checks) else "unverified"
 
     def _collect_docs_and_api(self, skip_local_checks: bool) -> Dict[str, Any]:
         """Collect and execute docs/API verification checks."""
@@ -920,7 +950,7 @@ class EvidenceAggregator:
         else:
             model_conformance_status = "missing_script"
 
-        api_baseline_status = "passed"
+        api_baseline_status = self.api_baseline_status
 
         return {
             "release_consistency": {
@@ -1229,7 +1259,7 @@ def print_rehearsal_report(evidence: Dict[str, Any]) -> None:
     total_tests = sum(l.get("test_summary", {}).get("executed", 0) for l in evidence.get("required_lanes", {}).values())
     total_skips = sum(l.get("test_summary", {}).get("skipped", 0) for l in evidence.get("required_lanes", {}).values())
     print(f"       - Total tests executed across lanes: {total_tests}")
-    print(f"       - Total skipped tests: {total_skips} (allowed threshold: 0)")
+    print(f"       - Total skipped tests: {total_skips} (only classified environment skips permitted)")
     for v in g2_violations:
         print(f"       >>> VIOLATION [{v.get('code')}]: {v.get('message')}")
 
@@ -1299,6 +1329,7 @@ def main() -> None:
     parser.add_argument("--simulate-tag", action="store_true", help="Simulate annotated tag during dry-run rehearsal before tag is created in git")
     parser.add_argument("--rehearse", action="store_true", help="Execute complete release rehearsal flow without publishing")
     parser.add_argument("--artifacts-dir", type=str, help="Directory containing staged release artifacts")
+    parser.add_argument("--test-reports", type=pathlib.Path, help="Directory of CI JSON reports and matching logs")
     parser.add_argument("--ci-data", type=str, help="Path to JSON file containing CI check runs or lane evidence")
     parser.add_argument("--skip-local-checks", action="store_true", help="Skip running local sub-checks during aggregation")
     parser.add_argument("--allow-dirty", action="store_true", help="Allow uncommitted changes (testing only)")
@@ -1363,7 +1394,7 @@ def main() -> None:
         else:
             tag_name = "v1.0.0"  # Default rehearsal tag
 
-    aggregator = EvidenceAggregator(tag=tag_name, commit=args.commit, artifacts_dir=artifacts_path, ci_data_path=ci_data_path)
+    aggregator = EvidenceAggregator(tag=tag_name, commit=args.commit, artifacts_dir=artifacts_path, ci_data_path=ci_data_path, test_reports_dir=args.test_reports)
     evidence = aggregator.aggregate(
         skip_local_checks=args.skip_local_checks,
         allow_dirty=args.allow_dirty,

@@ -34,7 +34,15 @@ jobs:
         run: swift build -v
 
       - name: Run tests
-        run: swift test -v --enable-code-coverage
+        run: python3 Scripts/ci-test-report.py --lane test_macos --member unit --output "$RUNNER_TEMP/test-reports/unit.json" -- swift test -v --enable-code-coverage
+
+      - name: Upload test report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-test_macos
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
 
       - name: Check code coverage
         run: |
@@ -104,6 +112,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install test reporter runtime
+        run: apt-get update && apt-get install -y python3
+
       - name: Check Swift version
         run: swift --version
 
@@ -111,7 +122,15 @@ jobs:
         run: swift build -v
 
       - name: Run tests
-        run: swift test -v
+        run: python3 Scripts/ci-test-report.py --lane test_linux --member unit --output "$RUNNER_TEMP/test-reports/unit.json" -- swift test -v
+
+      - name: Upload test report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-test_linux
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
 
       - name: Build example (links the library as an external consumer)
         run: swift build --package-path Examples/StatusDemo
@@ -131,6 +150,12 @@ jobs:
       # Version drift across README/DocC/SKILL/coverage/CHANGELOG has
       # slipped through review three separate times; a 5-second grep gate
       # is cheaper than another review round.
+      - name: Test release evidence and soak tooling
+        run: |
+          python3 Scripts/test-ci-test-report.py
+          python3 Scripts/test-release-rehearsal.py
+          python3 Scripts/test-soak-verification.py
+
       - name: Check advertised versions agree
         run: ./Scripts/check-release-consistency.sh
 
@@ -220,6 +245,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install test reporter runtime
+        run: apt-get update && apt-get install -y python3
+
       # TSan guards the concurrency-heavy paths (UnixSocketTransport's
       # detached tasks, the FaultUnixServer test harness) against data
       # races that functional tests would only catch by flaking.
@@ -227,7 +255,15 @@ jobs:
         run: swift build --sanitize=thread
 
       - name: Run tests (thread sanitizer)
-        run: swift test --sanitize=thread
+        run: python3 Scripts/ci-test-report.py --lane test_tsan --member unit --output "$RUNNER_TEMP/test-reports/unit.json" -- swift test --sanitize=thread
+
+      - name: Upload test report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-test_tsan
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
 
   build-platforms:
     name: Build (${{ matrix.platform }})
@@ -270,6 +306,9 @@ jobs:
           fetch-depth: 0
       - name: Check API baseline against v0.12.0
         run: ./Scripts/check-api-baseline.sh
+
+      - name: Verify frozen 1.0 public API against fresh symbol graphs
+        run: python3 Scripts/verify-api-baseline.py
 
   all-required:
     name: All Required Checks

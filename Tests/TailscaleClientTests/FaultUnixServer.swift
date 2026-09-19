@@ -102,8 +102,26 @@ import XCTest
         case .acceptThenSilence:
           break  // Hold the fd open; the client must time out on its own.
         case .respond(let text, let closeAfterWrite):
+          #if canImport(Darwin)
+            var noSigPipe: Int32 = 1
+            _ = setsockopt(
+              fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+          #endif
           text.utf8CString.withUnsafeBufferPointer { pointer in
-            _ = write(fd, pointer.baseAddress, pointer.count - 1)  // omit NUL
+            var offset = 0
+            while offset < pointer.count - 1, !isStopped {
+              #if canImport(Glibc)
+                let count = send(
+                  fd, pointer.baseAddress!.advanced(by: offset), pointer.count - 1 - offset,
+                  Int32(MSG_NOSIGNAL))
+              #else
+                let count = write(
+                  fd, pointer.baseAddress!.advanced(by: offset), pointer.count - 1 - offset)
+              #endif
+              if count < 0, errno == EINTR { continue }
+              guard count > 0 else { break }
+              offset += count
+            }
           }
           if closeAfterWrite {
             // Take ownership under the lock so a concurrent stop() cannot

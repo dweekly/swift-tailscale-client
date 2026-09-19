@@ -89,3 +89,38 @@ If a release is found to contain a critical security vulnerability or regression
 
 - **v1.0.0**: Show HN, Tailscale community forum, Swift Forums "Related Projects"
 - Every release: GitHub Release notes are the record; no separate blog required
+
+## CI test evidence
+
+The macOS, Linux, TSan, and hermetic Headscale jobs invoke
+`Scripts/ci-test-report.py` and upload `test-report-*` artifacts. Each artifact
+contains the original test log and a JSON report with its SHA-256 digest,
+source commit, CI run ID, toolchain, executed/failed/skipped counts, and named
+skip reasons. Both the API suite and login lifecycle suite are required for
+each of the four supported daemon tracks. Unstable remains advisory.
+
+Release publication downloads these artifacts from a successful `ci.yml` run
+on the exact tagged commit. It passes that run's job results through `--ci-data`
+and the downloaded directory through `--test-reports` to the evidence aggregator.
+The aggregator checks each report against its log and rejects missing members,
+wrong commits, mixed runs, duplicate reports, test failures, and unexplained
+skips. Required API-baseline job success is also recorded; unexecuted conformance
+checks are labeled unverified. Artifacts stay outside the checkout so they do
+not invalidate the clean-tree check.
+
+Expected skips are narrowly allowlisted in `Scripts/ci-test-report.py`: disabled
+live suites in unit jobs, older-version endpoint gaps, and named limitations of
+the disposable Headscale environment. Missing write/login permission, missing
+ETags, and skipped critical regression suites remain failures. Add an exception
+only after reviewing the exact test, reason, and environment; do not relax the
+policy merely to make a release pass.
+
+To exercise the collector locally (this is local evidence, not a CI release pass):
+
+```sh
+python3 Scripts/ci-test-report.py --lane test_macos --member unit \
+  --output /tmp/tailscale-tests/unit.json -- swift test
+python3 Scripts/test-ci-test-report.py
+python3 Scripts/test-release-rehearsal.py
+python3 Scripts/test-soak-verification.py
+```

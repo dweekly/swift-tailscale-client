@@ -69,7 +69,7 @@ jobs:
         if: steps.check-skip.outputs.skip != 'true'
         run: |
           apt-get update
-          apt-get install -y curl ca-certificates
+          apt-get install -y curl ca-certificates python3
           HEADSCALE_VERSION=0.26.1
           curl -fsSL --retry 3 -o /tmp/headscale.deb \
             "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_amd64.deb"
@@ -119,7 +119,7 @@ jobs:
               global: ["1.1.1.1"]
           EOF
           headscale serve > /tmp/headscale.log 2>&1 &
-          for i in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             headscale users list >/dev/null 2>&1 && break
             sleep 1
           done
@@ -151,7 +151,7 @@ jobs:
           TAILSCALE_INTEGRATION_WRITE: "1"
           TAILSCALE_LOCALAPI_SOCKET: /var/run/tailscale/tailscaled.sock
           TAILSCALE_DISCOVERY_DEBUG: "1"
-        run: swift test --filter TailscaleClientIntegrationTests
+        run: python3 Scripts/ci-test-report.py --lane integration_linux_headscale --member "${{ matrix.track }}-api" --output "$RUNNER_TEMP/test-reports/api.json" -- swift test --filter TailscaleClientIntegrationTests
 
       # A separate invocation, after the main suite: this test logs the node
       # out and re-registers it interactively (BrowseToURL → headscale CLI),
@@ -169,7 +169,15 @@ jobs:
           # logout() deletes the profile (control URL included); the test
           # re-seeds prefs with this before loginInteractive().
           TAILSCALE_LOGIN_SERVER: http://127.0.0.1:8080
-        run: swift test --filter LoginLifecycleIntegrationTests
+        run: python3 Scripts/ci-test-report.py --lane integration_linux_headscale --member "${{ matrix.track }}-login" --output "$RUNNER_TEMP/test-reports/login.json" -- swift test --filter LoginLifecycleIntegrationTests
+
+      - name: Upload test reports and logs
+        if: always() && steps.check-skip.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-headscale-${{ matrix.track }}
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
 
       - name: Record and emit drift warning on advisory lane
         if: matrix.allow-failure && (steps.run-suite.outcome == 'failure' || steps.run-login.outcome == 'failure')

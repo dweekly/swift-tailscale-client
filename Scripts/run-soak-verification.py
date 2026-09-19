@@ -5,9 +5,9 @@ Scripts/run-soak-verification.py - Automated Soak & Stream Stability Verificatio
 Executes accelerated (5-10m for CI / rehearsal) or extended (1h/24h) stream soak
 verification tests for swift-tailscale-client, tracking:
 1. Event volume, notification/lifecycle distribution, and throughput (events/sec)
-2. Process RSS memory plateau and queue memory bounds (< 16 MB ceiling)
-3. Reconnect backoff progression, jitter, and classification
-4. .stateGap recovery integrity and baseline re-synchronization
+2. Process RSS plateau (internal queue high-water marks remain unmeasured)
+3. Emitted reconnect and retry lifecycle events
+4. Emitted state-gap events (baseline recovery and cache integrity remain unmeasured)
 5. File and socket descriptor leaks via kernel introspection (libproc / /proc/<pid>/fd)
 
 Emits structured JSON telemetry conforming to schema 1.0.0.
@@ -37,74 +37,59 @@ from typing import Any, Dict, List, Optional, Tuple
 # Kernel Introspection: File & Socket Descriptors
 # ============================================================================
 
-def get_darwin_fd_counts(pid: int) -> Tuple[int, int]:
-    """Uses Darwin libproc (proc_pidinfo) to count open FDs and socket descriptors."""
+def get_darwin_fd_counts(pid: int) -> Tuple[Optional[int], Optional[int]]:
+    """Return kernel counts, or unavailable; lsof rows are not descriptor counts."""
     try:
         libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
-        PROC_PIDLISTFDS = 1
-        PROX_FDTYPE_SOCKET = 2
 
         class ProcFDInfo(ctypes.Structure):
             _fields_ = [("proc_fd", ctypes.c_int32), ("proc_type", ctypes.c_uint32)]
 
-        buf_size = libproc.proc_pidinfo(pid, PROC_PIDLISTFDS, 0, None, 0)
+        buf_size = libproc.proc_pidinfo(pid, 1, 0, None, 0)
         if buf_size <= 0:
-            return 0, 0
-        count = buf_size // ctypes.sizeof(ProcFDInfo)
+            return None, None
+        # Allow room for descriptors opened between the sizing and read calls.
+        count = buf_size // ctypes.sizeof(ProcFDInfo) + 64
         fds = (ProcFDInfo * count)()
-        actual_bytes = libproc.proc_pidinfo(pid, PROC_PIDLISTFDS, 0, ctypes.byref(fds), buf_size)
+        actual_bytes = libproc.proc_pidinfo(pid, 1, 0, ctypes.byref(fds), ctypes.sizeof(fds))
+        if actual_bytes <= 0 or actual_bytes >= ctypes.sizeof(fds):
+            return None, None
         actual_count = actual_bytes // ctypes.sizeof(ProcFDInfo)
-
-        total_fds = actual_count
-        sockets = sum(1 for i in range(actual_count) if fds[i].proc_type == PROX_FDTYPE_SOCKET)
-        return total_fds, sockets
-    except Exception:
-        try:
-            out = subprocess.check_output(["lsof", "-p", str(pid)], text=True, stderr=subprocess.DEVNULL)
-            lines = out.strip().splitlines()
-            total_fds = max(0, len(lines) - 1)
-            sockets = sum(1 for l in lines if "IPv" in l or "unix" in l or "sock" in l.lower())
-            return total_fds, sockets
-        except Exception:
-            return 0, 0
+        return actual_count, sum(fds[i].proc_type == 2 for i in range(actual_count))
+    except (OSError, AttributeError):
+        return None, None
 
 
-def get_linux_fd_counts(pid: int) -> Tuple[int, int]:
-    """Inspects Linux /proc/<pid>/fd to count open descriptors and sockets."""
-    fd_dir = pathlib.Path(f"/proc/{pid}/fd")
-    if not fd_dir.exists():
-        return 0, 0
-    total_fds = 0
-    sockets = 0
+def get_linux_fd_counts(pid: int) -> Tuple[Optional[int], Optional[int]]:
+    """A failed or racing /proc snapshot is unavailable, never a zero count."""
     try:
-        for entry in fd_dir.iterdir():
-            total_fds += 1
-            try:
-                target = os.readlink(str(entry))
-                if target.startswith("socket:"):
-                    sockets += 1
-            except OSError:
-                pass
-    except Exception:
-        pass
-    return total_fds, sockets
+        targets = [os.readlink(entry) for entry in pathlib.Path(f"/proc/{pid}/fd").iterdir()]
+        return len(targets), sum(target.startswith("socket:") for target in targets)
+    except OSError:
+        return None, None
 
 
-def get_process_descriptors(pid: int) -> Tuple[int, int]:
+def get_process_descriptors(pid: int) -> Tuple[Optional[int], Optional[int]]:
     if platform.system() == "Darwin":
         return get_darwin_fd_counts(pid)
-    elif platform.system() == "Linux":
+    if platform.system() == "Linux":
         return get_linux_fd_counts(pid)
-    return 0, 0
+    return None, None
 
 
-def get_process_rss_kb(pid: int) -> int:
-    """Returns resident set size (RSS) in KiB."""
+def get_process_rss_kb(pid: int) -> Optional[int]:
+    """Return resident set size in KiB, or None when measurement is unavailable."""
     try:
         out = subprocess.check_output(["ps", "-o", "rss=", "-p", str(pid)], text=True).strip()
-        return int(out)
-    except Exception:
-        return 0
+        value = int(out)
+        return value if value > 0 else None
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return None
+
+
+def measured_peak(previous: Optional[int], current: Optional[int]) -> Optional[int]:
+    values = [value for value in (previous, current) if value is not None]
+    return max(values) if values else None
 
 
 # ============================================================================
@@ -404,7 +389,8 @@ def run_soak_test(
     peak_rss_kb = baseline_rss_kb
     peak_fds = baseline_fds
     peak_sockets = baseline_sockets
-    rss_samples = [baseline_rss_kb]
+    rss_samples = [] if baseline_rss_kb is None else [baseline_rss_kb]
+    measurement_unavailable = None in (baseline_rss_kb, baseline_fds, baseline_sockets)
 
     premature_exit = False
     exit_code = None
@@ -420,14 +406,12 @@ def run_soak_test(
         if now - last_sample_time >= sample_interval_seconds:
             cur_rss = get_process_rss_kb(child_pid)
             cur_fds, cur_socks = get_process_descriptors(child_pid)
-            if cur_rss > 0:
+            measurement_unavailable |= None in (cur_rss, cur_fds, cur_socks)
+            if cur_rss is not None:
                 rss_samples.append(cur_rss)
-                if cur_rss > peak_rss_kb:
-                    peak_rss_kb = cur_rss
-            if cur_fds > peak_fds:
-                peak_fds = cur_fds
-            if cur_socks > peak_sockets:
-                peak_sockets = cur_socks
+            peak_rss_kb = measured_peak(peak_rss_kb, cur_rss)
+            peak_fds = measured_peak(peak_fds, cur_fds)
+            peak_sockets = measured_peak(peak_sockets, cur_socks)
             elapsed = int(now - start_time)
             print(f"[{elapsed:3d}s/{duration_seconds}s] PID {child_pid} | RSS: {cur_rss} KB | FDs: {cur_fds} | Sockets: {cur_socks} | Events: {total_events}")
             last_sample_time = now
@@ -446,8 +430,15 @@ def run_soak_test(
         time.sleep(0.05)
 
     # Sample right before teardown
-    final_rss_kb = get_process_rss_kb(child_pid) or peak_rss_kb
+    final_rss_kb = get_process_rss_kb(child_pid)
     final_fds, final_sockets = get_process_descriptors(child_pid)
+
+    measurement_unavailable |= None in (final_rss_kb, final_fds, final_sockets)
+    if final_rss_kb is not None:
+        rss_samples.append(final_rss_kb)
+    peak_rss_kb = measured_peak(peak_rss_kb, final_rss_kb)
+    peak_fds = measured_peak(peak_fds, final_fds)
+    peak_sockets = measured_peak(peak_sockets, final_sockets)
 
     # Teardown
     reader_running = False
@@ -463,8 +454,8 @@ def run_soak_test(
     if temp_dir:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    net_fd_leak = max(0, final_fds - baseline_fds)
-    net_socket_leak = max(0, final_sockets - baseline_sockets)
+    net_fd_leak = None if None in (final_fds, baseline_fds) else max(0, final_fds - baseline_fds)
+    net_socket_leak = None if None in (final_sockets, baseline_sockets) else max(0, final_sockets - baseline_sockets)
 
     elapsed_total = max(1.0, time.time() - start_time)
     events_per_sec = round(total_events / elapsed_total, 2)
@@ -472,20 +463,23 @@ def run_soak_test(
     total_state_gaps = sum(state_gaps_by_reason.values())
 
     # Check memory plateau (slope of last 3 samples vs peak)
-    plateau_reached = True
+    plateau_reached = None
     if len(rss_samples) >= 3:
         drift = rss_samples[-1] - rss_samples[-3]
-        if drift > 32768:  # > 32MB drift in last samples
-            plateau_reached = False
+        plateau_reached = drift <= 32768  # <= 32 MiB drift in the last samples
 
     violations: List[str] = []
     if premature_exit:
         violations.append(f"Child process exited prematurely after {int(elapsed_total)}s with exit code {exit_code}")
-    if not plateau_reached:
+    if measurement_unavailable:
+        violations.append("Required RSS or descriptor measurement unavailable")
+    if plateau_reached is None:
+        violations.append("Insufficient RSS samples to assess memory plateau")
+    if plateau_reached is False:
         violations.append("Memory failed to reach stable plateau (RSS drift exceeded threshold)")
-    if net_fd_leak > 1:
+    if net_fd_leak is not None and net_fd_leak > 1:
         violations.append(f"Detected {net_fd_leak} leaked file descriptors")
-    if net_socket_leak > 1:
+    if net_socket_leak is not None and net_socket_leak > 1:
         violations.append(f"Detected {net_socket_leak} leaked socket descriptors")
     if total_events == 0:
         violations.append("Zero events processed during soak run")
@@ -507,7 +501,7 @@ def run_soak_test(
             "target": target,
             "duration_seconds": int(elapsed_total),
             "sample_interval_seconds": sample_interval_seconds,
-            "toolchain": f"Python {platform.python_version()} / Swift 6.1",
+            "toolchain": f"Python {platform.python_version()} / {subprocess.check_output(['swift', '--version'], text=True).strip()}",
             "platform": f"{platform.system()} {platform.release()} ({platform.machine()})",
         },
         "event_volume": {
@@ -535,7 +529,7 @@ def run_soak_test(
             "reconnect_count": reconnect_count,
             "retry_attempts": retry_attempts,
             "max_delay_observed_ms": round(max_delay_observed_ms, 2),
-            "tight_loop_detected": False,
+            "tight_loop_detected": None,
         },
         "state_gap_recovery": {
             "total_state_gaps": total_state_gaps,

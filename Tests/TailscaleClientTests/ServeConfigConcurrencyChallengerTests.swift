@@ -529,9 +529,10 @@ final class ServeConfigConcurrencyChallengerTests: XCTestCase {
   }
 
   func testSetServeConfigRejectsReplayWhenExpectedTargetMismatches() async throws {
-    let clientA = makeClient(transport: MockTransport { _, _ in
-      TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"v1\""])
-    })
+    let clientA = makeClient(
+      transport: MockTransport { _, _ in
+        TailscaleResponse(statusCode: 200, data: Data("{}".utf8), headers: ["ETag": "\"v1\""])
+      })
     let snapshotFromA = try await clientA.serveConfigSnapshot()
 
     let configB = TailscaleClientConfiguration(

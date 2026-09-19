@@ -964,27 +964,27 @@ public actor TailscaleClient {
     })
   }
 
-private final class IPNNotifyUnfolder: @unchecked Sendable {
-  private var iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator
+  private final class IPNNotifyUnfolder: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator
 
-  init(iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator) {
-    self.iterator = iterator
-  }
-
-  func next() async throws -> IPNNotify? {
-    while let event = try await iterator.next() {
-      switch event {
-      case .notification(let notify):
-        return notify
-      case .lifecycle(.stateGap):
-        throw TailscaleClientError.streamOverflow
-      case .lifecycle:
-        continue
-      }
+    init(iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator) {
+      self.iterator = iterator
     }
-    return nil
+
+    func next() async throws -> IPNNotify? {
+      while let event = try await iterator.next() {
+        switch event {
+        case .notification(let notify):
+          return notify
+        case .lifecycle(.stateGap):
+          throw TailscaleClientError.streamOverflow
+        case .lifecycle:
+          continue
+        }
+      }
+      return nil
+    }
   }
-}
 
   // MARK: - Private Helpers
 

@@ -92,7 +92,8 @@ public struct StreamRetryPolicy: Sendable, Equatable {
     }
     if let clientError = error as? TailscaleClientError {
       switch clientError {
-      case .permissionDenied, .missingConcurrencyToken, .targetMismatch, .preconditionFailed, .endpointUnavailable,
+      case .permissionDenied, .missingConcurrencyToken, .targetMismatch, .preconditionFailed,
+        .endpointUnavailable,
         .peerNotFound, .streamOverflow, .decoding:
         return .fatal
       case .discovery(let discoveryError):

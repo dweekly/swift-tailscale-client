@@ -216,6 +216,10 @@ struct UnixSocketTransport {
       pending = Data(bytes: buffer, count: readCount)
     }
 
+    try Task.checkCancellation()
+    if let chunkDecoder, !chunkDecoder.isComplete {
+      throw TailscaleTransportError.malformedResponse(detail: "Incomplete chunked transfer")
+    }
     if let remainder = try framer.flushRemainder() {
       try await queue.enqueue(remainder)
     }
@@ -245,7 +249,8 @@ struct UnixSocketTransport {
       guard readCount > 0 else { break }
       guard responseData.count + readCount <= Self.maxUnaryResponseBytes else {
         throw TailscaleTransportError.malformedResponse(
-          detail: "Unary response exceeded maximum allowed limit of \(Self.maxUnaryResponseBytes) bytes")
+          detail:
+            "Unary response exceeded maximum allowed limit of \(Self.maxUnaryResponseBytes) bytes")
       }
       responseData.append(buffer, count: readCount)
     }

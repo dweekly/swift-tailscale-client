@@ -163,7 +163,8 @@ struct NewlineFramer {
       buffer.removeSubrange(buffer.startIndex...newline)
       guard line.count <= maxLineBytes else {
         throw TailscaleTransportError.malformedResponse(
-          detail: "Line length (\(line.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes")
+          detail: "Line length (\(line.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes"
+        )
       }
       if !line.isEmpty {
         lines.append(line)
@@ -171,7 +172,9 @@ struct NewlineFramer {
     }
     guard buffer.count <= maxLineBytes else {
       throw TailscaleTransportError.malformedResponse(
-        detail: "Unterminated line buffer (\(buffer.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes")
+        detail:
+          "Unterminated line buffer (\(buffer.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes"
+      )
     }
     return lines
   }
@@ -181,7 +184,9 @@ struct NewlineFramer {
     guard !buffer.isEmpty else { return nil }
     guard buffer.count <= maxLineBytes else {
       throw TailscaleTransportError.malformedResponse(
-        detail: "Trailing line length (\(buffer.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes")
+        detail:
+          "Trailing line length (\(buffer.count) bytes) exceeds maximum limit of \(maxLineBytes) bytes"
+      )
     }
     let remainder = buffer
     buffer.removeAll()

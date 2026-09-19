@@ -352,4 +352,3 @@ final class APICompatibilityTests: XCTestCase {
     XCTAssertEqual(connected.description, "IPNBusEvent.lifecycle(connected)")
   }
 }
-
