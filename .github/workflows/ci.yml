@@ -117,6 +117,7 @@ jobs:
       - name: Test release evidence and soak tooling
         run: |
           python3 Scripts/test-ci-test-report.py
+          python3 Scripts/test-api-baseline.py
           python3 Scripts/test-release-rehearsal.py
           python3 Scripts/test-soak-verification.py
 

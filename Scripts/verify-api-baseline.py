@@ -9,6 +9,7 @@ recorded in Scripts/api-baseline-1.0.json, ensuring the 1.0 public API freeze is
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -49,6 +50,44 @@ def extract_symbols_and_relationships(path):
             "targetFallback": r.get("targetFallback", ""),
         }
     return symbols, relationships
+
+
+def normalize_declaration(declaration):
+    """Normalize known Swift 6.3/6.4 graph spelling differences, not API changes."""
+    declaration = declaration.replace("any Error & Sendable", "any Error")
+    declaration = re.sub(r"\bany (Error|Decoder|Encoder)\b", r"\1", declaration)
+    for qualified in ("LocalAPIDiscovery.Result", "StreamingResponse.AsyncIterator",
+                      "NetworkInterfaceDiscovery.InterfaceInfo", "Netcheck.Options",
+                      "MockTransport.Handler", "MockTransport.StreamHandler"):
+        declaration = declaration.replace(qualified, qualified.rsplit(".", 1)[1])
+    return declaration
+
+
+def synthesized_aliases(expected, current):
+    """Match inherited members by recipient and full signature across SDK USRs.
+
+    Authored symbols and protocol conformance targets still require exact IDs.
+    In particular, newer standard libraries change Equatable's != mangling.
+    """
+    aliases = {}
+    for precise, symbol in expected.items():
+        if precise in current or "::SYNTHESIZED::" not in precise:
+            continue
+        recipient = precise.split("::SYNTHESIZED::", 1)[1]
+        candidates = [key for key, actual in current.items()
+                      if key.endswith("::SYNTHESIZED::" + recipient)
+                      and actual["title"] == symbol["title"]
+                      and actual["kind"] == symbol["kind"]
+                      and normalize_declaration(actual["declaration"]) == normalize_declaration(symbol["declaration"])]
+        if len(candidates) == 1:
+            aliases[precise] = candidates[0]
+    return aliases
+
+
+def relationship_key(relationship, aliases):
+    source = aliases.get(relationship["source"], relationship["source"])
+    target = aliases.get(relationship["target"], relationship["target"])
+    return f"{relationship['kind']}::{source}::{target}"
 
 
 def dump_fresh_symbol_graphs():
@@ -101,6 +140,8 @@ def main():
         "TailscaleClientMocks": tcm_rels,
     }
 
+    aliases = {module: synthesized_aliases(symbols, current_modules.get(module) or {})
+               for module, symbols in baseline.get("modules", {}).items()}
     errors = []
     total_symbols_verified = 0
     total_relationships_verified = 0
@@ -114,15 +155,16 @@ def main():
 
         for precise, expected in base_symbols.items():
             total_symbols_verified += 1
-            if precise not in curr_symbols:
+            resolved = aliases[mod_name].get(precise, precise)
+            if resolved not in curr_symbols:
                 errors.append(
                     f"MISSING 1.0 API symbol in {mod_name}: '{expected.get('title')}' "
                     f"[{expected.get('kind')}] ({precise})"
                 )
             else:
-                actual = curr_symbols[precise]
+                actual = curr_symbols[resolved]
                 if expected.get("declaration") and actual.get("declaration"):
-                    if expected["declaration"] != actual["declaration"]:
+                    if normalize_declaration(expected["declaration"]) != normalize_declaration(actual["declaration"]):
                         errors.append(
                             f"CHANGED 1.0 API declaration in {mod_name} for '{expected.get('title')}':\n"
                             f"  Expected: {expected['declaration']}\n"
@@ -138,7 +180,7 @@ def main():
 
         for rel_key, expected in base_rels.items():
             total_relationships_verified += 1
-            if rel_key not in curr_rels:
+            if relationship_key(expected, aliases.get(mod_name, {})) not in curr_rels:
                 kind = expected.get("kind", "relationship")
                 target = expected.get("targetFallback") or expected.get("target")
                 errors.append(
