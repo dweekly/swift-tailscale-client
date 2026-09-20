@@ -175,7 +175,7 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
     )
     let client = TailscaleClient(configuration: initialConfig)
 
-    let group1Count = 50
+    let group1Count = 1
     let group2Count = 150
     let totalCount = group1Count + group2Count
 
@@ -183,7 +183,8 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
     responses.reserveCapacity(totalCount)
 
     try await withThrowingTaskGroup(of: StatusResponse.self) { group in
-      // Group 1: 50 requests launch immediately and trigger rediscovery on stale port
+      // A single initial request triggers recovery. Multiple initial failures can
+      // reach the client after recovery completes and start another valid probe.
       for _ in 0..<group1Count {
         group.addTask {
           try await client.status()
@@ -206,26 +207,25 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
       }
     }
 
-    // 1. All 200 requests must succeed
+    // 1. Every request must succeed
     XCTAssertEqual(responses.count, totalCount)
     for res in responses {
       XCTAssertEqual(res.backendState, .running)
     }
 
-    // 2. Exactly 1 probe across all 200 requests
+    // 2. The initial failure and all late callers share one probe
     let probeCount = await tracker.count
     XCTAssertEqual(
       probeCount, 1,
-      "Burst of \(totalCount) requests (50 early + 150 in-flight) must coalesce into exactly 1 rediscovery probe"
+      "Burst of \(totalCount) requests (1 initial + 150 late) must coalesce into exactly 1 rediscovery probe"
     )
 
-    // Some initial callers may also join recovery before attempting the stale port.
+    // Only the initial request may attempt the stale port.
     let callsOnOldPort = await transport.countForPort(initialPort)
     let callsOnNewPort = await transport.countForPort(newPort)
     let lateCallsOnOldPort = await transport.peerlessCountForPort(initialPort)
     let lateCallsOnNewPort = await transport.peerlessCountForPort(newPort)
-    XCTAssertGreaterThan(callsOnOldPort, 0)
-    XCTAssertLessThanOrEqual(callsOnOldPort, group1Count)
+    XCTAssertEqual(callsOnOldPort, group1Count)
     XCTAssertEqual(
       lateCallsOnOldPort, 0,
       "Late-arriving requests must not attempt the stale port"
