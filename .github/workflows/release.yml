@@ -220,6 +220,7 @@ jobs:
       - name: Attach assets and publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           cd "$RUNNER_TEMP/release-artifacts"
           gh release upload "$GITHUB_REF_NAME" \
