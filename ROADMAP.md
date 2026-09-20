@@ -2,6 +2,8 @@
 
 This roadmap describes what remains between the current release and a complete, rigorously tested, well-documented 1.0 — and what "complete" means for a client of an API that Tailscale itself labels unstable. Shipped work lives in [`CHANGELOG.md`](CHANGELOG.md); this document tracks only what is yet to be done.
 
+**Detailed 1.0 execution plan:** [`Documentation/PLAN-1.0.md`](Documentation/PLAN-1.0.md) defines the implementation sequence, design decisions, acceptance tests, consumer validation, and release evidence required by the checklist below. It is a plan, not a claim that those guarantees already ship.
+
 `swift-tailscale-client` is an unofficial, MIT-licensed project with no affiliation to Tailscale Inc.
 
 ## Philosophy & Positioning
@@ -22,6 +24,8 @@ Upstream's own source says LocalAPI paths are namespaced under `/localapi/v0/` "
 | **Experimental** | `client.experimental` namespace | Compiles and works, but exempt from SemVer; tracks upstream churn (debug endpoints, log streaming, GUI push contract, self-update). May change or vanish in a minor release. |
 | **Unsupported** | Documented only | Deliberately not wrapped, with the reason recorded in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md). |
 
+In accordance with DEC-5 (resolved in W7), strict source compatibility is enforced across all stable public symbols in `TailscaleClient` against baseline v0.12.0 via `Scripts/check-api-baseline.sh` and `APICompatibilityTests`. Upstream availability and Swift source compatibility remain separate promises.
+
 "Complete coverage" means **every LocalAPI endpoint has a documented status** — implemented, planned, experimental, or unsupported-with-reason — not that every endpoint has a wrapper. Connection-hijacking endpoints (`dial`), alpha endpoints, and Tailscale-internal plumbing stay unsupported until there is a real use case.
 
 The policy is mechanically enforced today: `Documentation/endpoints.json` records two independent stability axes per endpoint (Tailscale's own "API maturity" annotation and this package's Swift-support promise) plus the upstream feature gate, all pinned to an immutable `tailscale/tailscale` commit and re-verified against that commit's source in CI (`Scripts/verify-upstream-maturity.py`); generated tables and a contradiction check keep the human docs honest.
@@ -35,8 +39,8 @@ Standing policy for all code:
 - **`Sendable` everywhere, `Equatable` on models**; `Encodable` where round-tripping matters.
 - **Typed errors** with actionable `recoverySuggestion`s; every request gets a configurable deadline. Typed status mapping, `Tailscale-Version` observation, and audit-reason injection apply to unary requests (streaming is documented as `.transport`-only).
 - **Streaming resilience**: an undecodable line in a stream is skipped and surfaced through a reporting hook, never fatal to the stream. Reconnection with exponential backoff is an explicit opt-in.
-- **Concurrency encoded in types**: `serve-config` reads return a snapshot carrying its ETag; writes require the snapshot, so a stale write surfaces as a typed conflict error rather than silent clobbering.
-- **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename and `switchToEmptyProfile()` over the legacy `addProfile()`.
+- **Safe configuration updates**: `ServeConfig` preserves unmodeled fields losslessly, read-modify-write requires concurrency snapshots (`ServeConfigSnapshot`) and conditional updates by default, with an explicit unconditional replacement operation (`replaceServeConfigUnconditionally`).
+- **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename and `switchToEmptyProfile()` (`addProfile()` removed).
 - **Secrets never reach diagnostic surfaces** — not logs, not `description`, not reflection; regression tests assert no substring of an injected secret escapes.
 
 ## Development Practice: Spike Before You Ship
@@ -48,7 +52,7 @@ No endpoint is implemented from documentation alone. Every new surface follows t
 3. **Capture fixtures from the spike.** Real (sanitized) responses become the versioned fixtures the unit tests decode — not hand-typed JSON guessed from docs.
 4. **Then implement**, with the fixtures and the spike findings encoding the corner cases (empty bodies, 204s/201s, ETags, chunked framing) into tests before the API is considered done.
 
-The spike workflow and fixture-capture script are documented in [`Documentation/TESTING.md`](Documentation/TESTING.md).
+The spike workflow is documented in [`Documentation/TESTING.md`](Documentation/TESTING.md). Versioned fixture-capture tooling and provenance are implemented via `Scripts/capture-fixtures.py` (W5).
 
 ## Version Plan (remaining)
 
@@ -56,7 +60,8 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 
 | Version | Theme | New endpoints | Key non-feature work |
 |---------|-------|---------------|----------------------|
-| **v1.0.0** | API freeze | — | Pre-freeze naming audit; drop deprecated `addProfile()`; 1.0 criteria below; SemVer commitment |
+| **Pre-1.0 / RC** | Reliability and compatibility | — | Safe writes; transport/streaming guarantees; native discovery; exact-commit evidence; consumer evaluation |
+| **v1.0.0** | API freeze | — | All release gates below; approved API baseline, support policy, and consumer migrations |
 | **v1.1** | Taildrop | `file-put/`, `files/` (incl. long-poll), `file-targets` | Upload/download progress via IPN bus |
 | **v1.2** | Taildrive | `drive/fileserver-address`, `drive/shares` CRUD | |
 | **v1.3** | Tailnet Lock | 13 `tka/*` endpoints (`TailnetLock` naming) | |
@@ -65,18 +70,21 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 
 ## v1.0.0 — API Freeze
 
-**Criteria (checklist, not a feature list):**
+**Existing foundations:** the pinned handler inventory, 85% line-coverage floor, public mocks, automated multi-version Linux Headscale matrix, macOS integration lane, tutorial/examples, and distribution automation have shipped.
 
-- [x] Every always-on LocalAPI handler is wrapped or explicitly tiered Experimental/Unsupported in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md) — done at v0.12.0: `services`/`shutdown` wrapped, and every one of the 62 handlers derivable from the pinned upstream source is either a manifest endpoint or an inventoried unwrapped handler with a reason (CI-enforced)
-- [x] Test coverage ≥ 85% (floor enforced in CI since v0.12.0; 85.9% measured); streaming path and transport parsers fully unit-tested
-- [x] Integration matrix green against at least two tailscaled versions (three hermetic headscale lanes — stable / previous-stable / unstable — plus a live self-hosted macOS lane, on every PR)
-- [ ] Complete DocC Topics tree (docs CI fails on undocumented public symbols — the abstract-coverage regression floors from v0.12.0 raised to 100%, which means writing the ~200 missing member abstracts in the pre-freeze audit), one tutorial (shipped in v0.12.0), at least two buildable examples in `Examples/` (StatusDemo and Recipes exist)
-- [x] Homebrew formula, Swift Package Index docs, and release automation all live
-- [ ] Unofficial-status disclaimer and the stability policy present in README, DocC landing page, and error output (README/DocC done; audit error/CLI output)
-- [ ] **Pre-freeze API audit**: naming pass against `client/local` conventions; remove deprecated `addProfile()`; decide whether the transport-neutral core and safesocket parity work (issue drafts 05/06) changes any public API — if it does, it lands before the freeze or is redesigned to be additive; decide whether `Prefs` becomes lossless (unknown-field preservation) — required before `StartOptions`' internal `UpdatePrefs` carrier could ever go public, since today re-encoding a fetched snapshot would zero unmodeled `ipn.Prefs` fields
-- [ ] Declare the stable-gap ledger items (`BugReportWithOpts`, `DialTCP`/`UserDial`) explicitly post-1.0 in the release notes
-- [ ] Governance decisions recorded (issue draft 08): contribution policy/DCO, naming/disclaimer posture for the announcement
-- [ ] From here: strict SemVer for Stable tier; Experimental tier explicitly exempt
+**Release gates:** tracked via `aggregate-release-evidence.py` and `Documentation/PLAN-1.0.md`:
+
+- [ ] **G1 Safe writes:** lossless Serve updates, conditional snapshots, explicit unconditional replacement implemented; target-binding verification for ServeConfigSnapshot in progress.
+- [ ] **G2 Transport:** correct framing, head limits, chunked completion, cooperative cancellation implemented; lower-layer NewlineFramer line bounds and unary accumulation caps in progress.
+- [ ] **G3 Monitoring:** bounded queues, observable gaps/overflow, streaming metadata, and backoff implemented; transport stream buffer limits, queue overflow arithmetic, and Swift-driven soak harness in progress.
+- [x] **G4 Discovery:** native library discovery for supported macOS installation flavors and Linux, permission failures, stale candidates, restart/credential refresh verified.
+- [ ] **G5 Compatibility:** Go differential oracle harness and synthetic fixtures implemented; live daemon multi-version capture matrix and official upstream package imports pending.
+- [ ] **G6 Release gates:** required check aggregator and rehearsal scripts implemented; strict matrix member requirements and non-zero telemetry validation in progress.
+- [ ] **G7 API and docs:** removed `addProfile()`, 100% authored DocC coverage; immutable 1.0 baseline comparison gate and Swift 6.1 toolchain alignment in progress.
+- [ ] **G8 Consumers and maintenance:** in-tree simulations and focused real NWX adapter smoke verified; recorded maintenance ownership required. Additional consumers and external review are adoption goals, not release blockers.
+- [ ] **G9 Release candidate:** Swift-driven soak harness and 1.0 candidate evaluation in progress.
+
+Retain the unofficial-status disclaimer and explain the deferred stable-gap ledger in 1.0 release notes. Keep the public full-preferences replacement carrier internal unless lossless replacement semantics are established.
 
 ## Post-1.0
 
@@ -86,7 +94,7 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 - **Stable-gap ledger** (additive, tracked in `endpoints.json` and CI-verified as upstream-stable):
   - `BugReportWithOpts` — a recording handle that keeps the POST body open until the caller ends the recording (upstream's contract); the experimental `record:` knob documents today's limitation
   - `DialTCP` / `UserDial` — raw duplex streams over HTTP upgrade; needs a Swift connection abstraction design spike first (issue draft 04)
-- **Transport-neutral core & safesocket parity** (issue drafts 05/06) — architecture tracks; timing depends on the pre-freeze audit above
+- **Additional transport architectures** — additive after 1.0 where possible; the public transport contract and native safesocket discovery required by G2–G4 must settle before the freeze
 - **Ongoing Experimental** — `debug` (`?action=` multiplexer), `pprof`, `update/install` + `update/progress` (`update/check` shipped supported in v0.11.0), `appc-route-info`, `policy/<scope>` (MDM/syspolicy), `debug-bus-graph|queues|events`, `prefs/service-clients`, and whatever upstream adds next; wrapped on demand, never SemVer-bound
 
 ---
@@ -96,16 +104,17 @@ v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.
 The operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTING.md) and [`Documentation/RELEASING.md`](Documentation/RELEASING.md). Most of what these tracks originally listed has shipped; what's left:
 
 ### Testing
-- Coverage gate: 85 since v0.12.0; the pre-1.0 audit may ratchet further as gaps close
-- Mutation/property tests: randomized truncation and field-deletion of fixtures must throw typed errors, never crash (nice-to-have before 1.0)
-- Scripted headscale login lifecycle (v0.12.0)
+- Retain the 85% coverage floor; use W1–W5's failure scenarios to drive meaningful new coverage
+- Required before 1.0: framing/truncation, mutation/property, resource/cancellation, versioned-fixture, and streaming-soak evidence
+- Extend the shipped Headscale login lifecycle with native discovery and restart recovery cases
 
 ### CI/CD
-- Upstream drift automation: scheduled re-pin job for `endpoints.json` provenance (decide cadence in v0.12.0)
-- CodeQL analysis; Dependabot for github-actions and swift ecosystems (not yet enabled)
+- Weekly upstream drift detection and Dependabot configuration already exist; retain and review them
+- W6: supported-version PR/release gates, exact-SHA evidence, controlled skips, staged asset publication, and release rehearsal
+- Evaluate additional static analysis where it covers real supported-language risks; do not use its presence as a substitute for transport/runtime evidence
 
 ### Documentation
-- The menu-bar tutorial (v0.12.0); everything else in the article set has shipped
+- W7: complete authored API abstracts/topic curation, migration guide, and updated menu-bar/write/monitoring recipes
 - Keep the AI-agent adapters (`.claude/skills/…`, `AGENTS.md`, `llms.txt`, copilot instructions) in sync with each release — INTEGRATING.md is the single source
 
 ### Distribution & Discoverability
@@ -113,7 +122,7 @@ The operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTI
 - Tailscale Community Projects submission — maintainer-approval gated; unblocked now that SPI shows current releases
 - Announcement wave: awesome-tailscale PR, r/Tailscale, Swift Forums; Show HN + Tailscale forum at 1.0
 - homebrew-core as a post-1.0 aspiration once the notability bar is met
-- v0.11.0 release mechanics: maintainer tag push after the release PR merges (single tag — >3 tags in one push suppresses GitHub push events), then the Homebrew tap bump
+- Release mechanics: maintainer tag push on the tested release commit (single tag — >3 tags in one push suppresses GitHub push events), then the verified Homebrew tap bump
 - Homebrew formula smoke test as part of release verification: `brew install` (or `brew audit` + install from the tap) against the freshly tagged release assets before announcing
 
 ---

@@ -1,18 +1,33 @@
-name: Integration (Linux, headscale)
+name: Optional Linux integration (manual only)
 
 # Hermetic integration testing: a throwaway headscale control plane plus a
 # real tailscaled (userspace networking, no TUN) inside the job container.
 # No secrets, no real tailnet — this is the environment where write-API
 # mutation tests will run (Documentation/TESTING.md).
 #
-# Nightly signal, not a merge gate: a failure here usually means upstream
-# drift (new tailscaled or headscale behavior), which is exactly what it
-# exists to detect.
+# Multi-version matrix:
+# - Required blocking lanes: 1.76.0 (supported floor), 1.84.0 (intermediate LTS),
+#   1.96.4 (previous stable), 1.98.2 (current stable).
+# - Advisory lane: unstable (upstream main drift signal with continue-on-error).
 
 on:
-  schedule:
-    - cron: "17 9 * * *"
+  workflow_call:
+    inputs:
+      include-unstable:
+        description: 'Run the non-blocking unstable drift lane'
+        type: boolean
+        default: true
+        required: false
   workflow_dispatch:
+    inputs:
+      include-unstable:
+        description: 'Run the non-blocking unstable drift lane'
+        type: boolean
+        default: true
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
   headscale:
@@ -24,29 +39,42 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - track: stable
-            pin: ""
-          - track: unstable
-            pin: ""
-          # Previous stable, pinned: drift on this lane is a signal that a
-          # newly-wrapped endpoint needs optional-endpoint gating (as
-          # dns-config demonstrated before this lane existed).
+          - track: supported-floor
+            pin: "1.76.0"
+            allow-failure: false
+          - track: intermediate-lts
+            pin: "1.84.0"
+            allow-failure: false
           - track: previous-stable
             pin: "1.96.4"
+            allow-failure: false
+          - track: stable
+            pin: "1.98.2"
+            allow-failure: false
+          - track: unstable
+            pin: ""
+            allow-failure: true
     steps:
+      - name: Check whether to skip unstable lane
+        id: check-skip
+        if: matrix.allow-failure && inputs.include-unstable == false
+        run: echo "skip=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7
+        if: steps.check-skip.outputs.skip != 'true'
 
       - name: Install headscale and tailscale
+        if: steps.check-skip.outputs.skip != 'true'
         run: |
           apt-get update
-          apt-get install -y curl ca-certificates
+          apt-get install -y curl ca-certificates python3
           HEADSCALE_VERSION=0.26.1
-          curl -fsSL -o /tmp/headscale.deb \
+          curl -fsSL --retry 3 -o /tmp/headscale.deb \
             "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_amd64.deb"
           apt-get install -y /tmp/headscale.deb
           if [ -n "${{ matrix.pin }}" ]; then
             # Pinned versions install from the static tarball archive.
-            curl -fsSL -o /tmp/tailscale.tgz \
+            curl -fsSL --retry 3 -o /tmp/tailscale.tgz \
               "https://pkgs.tailscale.com/stable/tailscale_${{ matrix.pin }}_amd64.tgz"
             tar -xzf /tmp/tailscale.tgz -C /tmp
             install -m755 /tmp/tailscale_${{ matrix.pin }}_amd64/tailscaled /usr/sbin/tailscaled
@@ -59,6 +87,7 @@ jobs:
           tailscale version
 
       - name: Start headscale control plane
+        if: steps.check-skip.outputs.skip != 'true'
         run: |
           mkdir -p /etc/headscale /var/lib/headscale
           cat > /etc/headscale/config.yaml <<'EOF'
@@ -88,13 +117,14 @@ jobs:
               global: ["1.1.1.1"]
           EOF
           headscale serve > /tmp/headscale.log 2>&1 &
-          for i in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             headscale users list >/dev/null 2>&1 && break
             sleep 1
           done
           headscale users create ci
 
       - name: Start tailscaled and join the throwaway tailnet
+        if: steps.check-skip.outputs.skip != 'true'
         run: |
           mkdir -p /var/run/tailscale
           tailscaled --tun=userspace-networking \
@@ -109,6 +139,9 @@ jobs:
           tailscale --socket=/var/run/tailscale/tailscaled.sock status || true
 
       - name: Run integration suite over the unix socket
+        id: run-suite
+        if: steps.check-skip.outputs.skip != 'true'
+        continue-on-error: ${{ matrix.allow-failure == true }}
         env:
           TAILSCALE_INTEGRATION: "1"
           # Write-API tests are allowed here and ONLY here: this tailnet is a
@@ -116,12 +149,15 @@ jobs:
           TAILSCALE_INTEGRATION_WRITE: "1"
           TAILSCALE_LOCALAPI_SOCKET: /var/run/tailscale/tailscaled.sock
           TAILSCALE_DISCOVERY_DEBUG: "1"
-        run: swift test --filter TailscaleClientIntegrationTests
+        run: python3 Scripts/ci-test-report.py --lane integration_linux_headscale --member "${{ matrix.track }}-api" --output "$RUNNER_TEMP/test-reports/api.json" -- swift test --filter TailscaleClientIntegrationTests
 
       # A separate invocation, after the main suite: this test logs the node
       # out and re-registers it interactively (BrowseToURL → headscale CLI),
       # so nothing else may share its process or run after it in-suite.
       - name: Run login-lifecycle test (logout → login-interactive → register)
+        id: run-login
+        if: steps.check-skip.outputs.skip != 'true'
+        continue-on-error: ${{ matrix.allow-failure == true }}
         env:
           TAILSCALE_INTEGRATION: "1"
           TAILSCALE_INTEGRATION_WRITE: "1"
@@ -131,10 +167,23 @@ jobs:
           # logout() deletes the profile (control URL included); the test
           # re-seeds prefs with this before loginInteractive().
           TAILSCALE_LOGIN_SERVER: http://127.0.0.1:8080
-        run: swift test --filter LoginLifecycleIntegrationTests
+        run: python3 Scripts/ci-test-report.py --lane integration_linux_headscale --member "${{ matrix.track }}-login" --output "$RUNNER_TEMP/test-reports/login.json" -- swift test --filter LoginLifecycleIntegrationTests
+
+      - name: Upload test reports and logs
+        if: always() && steps.check-skip.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-headscale-${{ matrix.track }}
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
+
+      - name: Record and emit drift warning on advisory lane
+        if: matrix.allow-failure && (steps.run-suite.outcome == 'failure' || steps.run-login.outcome == 'failure')
+        run: |
+          echo "::warning title=Upstream Drift::Unstable lane failed tests against upstream main. This is an advisory drift signal and does not block merge."
 
       - name: Dump daemon logs on failure
-        if: failure()
+        if: failure() || (steps.run-suite.outcome == 'failure' || steps.run-login.outcome == 'failure')
         run: |
           echo "--- headscale ---"; tail -50 /tmp/headscale.log || true
           echo "--- tailscaled ---"; tail -50 /tmp/tailscaled.log || true

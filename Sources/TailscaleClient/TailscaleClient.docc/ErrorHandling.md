@@ -2,50 +2,86 @@
 
 What each error case means and how to respond to it.
 
-## The error taxonomy
+## Overview
 
-Every method throws ``TailscaleClientError``. The cases carry enough context
-to act on — and `recoverySuggestion` turns most of them into a user-facing
-sentence:
+All operations in `swift-tailscale-client` throw strongly typed errors providing diagnostic context and actionable recovery suggestions. Understanding the error taxonomy allows applications to gracefully handle daemon restarts, concurrency conflicts, and permission constraints.
 
-- ``TailscaleClientError/transport(_:)`` — couldn't reach the daemon at all:
-  socket missing (`socketNotFound`), nothing listening
-  (`connectionRefused`), or a lower-level network failure. Usually means
-  Tailscale isn't running or discovery picked the wrong endpoint (see
-  <doc:DiscoveryAndPermissions>).
-- ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` — the daemon
-  answered with a non-200. The body is preserved because the daemon's error
-  strings ("no suggested exit node available") are often the real message.
-- ``TailscaleClientError/decoding(_:body:endpoint:)`` — the response didn't
-  match this package's models. The raw body is attached; please file an
-  issue with it, since this usually signals an upstream schema change.
-- ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` — the
-  endpoint isn't in this daemon *build* (404 on an optional path, or 501
-  when the feature was compiled out). `feature` names the build feature to
-  check.
-- ``TailscaleClientError/timeout(endpoint:)`` — the configured
-  `requestTimeout` (default 30 s, `nil` disables) elapsed.
+### The Error Taxonomy: All 12 Error Cases
 
-## The two meanings of 404
+`TailscaleClient` methods throw ``TailscaleClientError``, which enumerates 12 distinct failure modes:
 
-LocalAPI routing returns 404 both for *unknown paths* and for *known paths
-with missing resources*, so this package splits them by endpoint class:
+1. ``TailscaleClientError/transport(_:)``: Communication failure at the socket or HTTP layer (socket file missing, connection refused, or broken pipe). Usually indicates the Tailscale daemon is stopped or uninstalled.
+2. ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)``: The daemon returned an unmapped HTTP status code. The raw response body is attached for diagnosis.
+3. ``TailscaleClientError/decoding(_:body:endpoint:)``: The response payload could not be decoded into Swift models. The raw body is preserved to help isolate schema changes.
+4. ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``: The endpoint is not implemented or was compiled out of this daemon build.
+5. ``TailscaleClientError/timeout(endpoint:)``: The configured `requestTimeout` elapsed before the daemon responded.
+6. ``TailscaleClientError/preconditionFailed(body:endpoint:)``: The daemon rejected a conditional write (HTTP 412) because another client updated the configuration concurrently and the provided ETag was stale.
+7. ``TailscaleClientError/permissionDenied(body:endpoint:)``: Access denied by tailnet policy or operating system permissions (HTTP 403). Some policies allow operations when supplied with an audit justification via ``TailscaleClient/withAuditReason(_:operation:)``.
+8. ``TailscaleClientError/rateLimited(retryAfterSeconds:body:endpoint:)``: The daemon throttled the request (HTTP 429). `retryAfterSeconds` contains the duration specified in the `Retry-After` header when available.
+9. ``TailscaleClientError/peerNotFound(endpoint:)``: The daemon answered a peer lookup with HTTP 404 because no peer matches the queried IP address or key.
+10. ``TailscaleClientError/missingConcurrencyToken``: A conditional configuration update was attempted on a snapshot that had an empty or missing ETag.
+11. ``TailscaleClientError/streamOverflow``: An IPN bus event stream queue exceeded its configured ``StreamBufferBounds`` and the overflow policy was set to ``StreamOverflowStrategy/fail``.
+12. ``TailscaleClientError/discovery(_:)``: Automatic discovery failed to locate an accessible LocalAPI endpoint. Wraps a ``LocalAPIDiscoveryError``.
 
-- On **optional endpoints** (`usermetrics`, `suggest-exit-node`,
-  `dns-osconfig`, …) a 404/501 becomes `endpointUnavailable` — the daemon
-  build simply lacks the surface.
-- On **core lookups** (``TailscaleClient/peer(byID:)``,
-  ``TailscaleClient/userProfile(byID:)``) a 404 stays
-  `unexpectedStatus(404, …)` — it means "not in the netmap". (One wrinkle:
-  `user-profile` is a 2026 addition, so on older daemons a 404 can also mean
-  the path itself is unknown.)
+### Handling Concurrency Conflicts (preconditionFailed)
 
-## Probe, don't guess
+When modifying shared configuration such as Serve or Funnel, concurrent clients could overwrite each other's changes. `TailscaleClient` enforces optimistic concurrency control using ``ServeConfigSnapshot``:
 
-Endpoint availability is build-dependent, not just version-dependent. When
-your feature depends on an optional surface, probe once with
-``TailscaleClient/daemonFeatures()`` and branch, rather than catching
-failures on every call:
+```swift
+do {
+  let snapshot = try await client.serveConfigSnapshot()
+  var config = snapshot.config
+  config.allowFunnel = [8443: true]
+  _ = try await client.setServeConfig(config, matching: snapshot)
+} catch TailscaleClientError.preconditionFailed {
+  // Another process changed config in the meantime; re-fetch and re-apply
+}
+```
+
+### Handling Permission Restrictions (permissionDenied)
+
+Certain operations (such as reconfiguring routing or clearing network preferences) require administrative privileges or security justifications. If an operation fails with `.permissionDenied`, use ``TailscaleClient/withAuditReason(_:operation:)`` to attach an audit log reason:
+
+```swift
+try await client.withAuditReason("Automated failover by orchestration agent") {
+  try await client.setPrefs(maskedPrefs)
+}
+```
+
+### Rate Limiting and Retry-After (rateLimited)
+
+Endpoints that interact with the Tailscale control plane or issue TLS certificates (e.g., `certPair`) may be rate-limited by the daemon:
+
+```swift
+do {
+  let certs = try await client.certPair(domain: "my-node.example.ts.net")
+} catch let TailscaleClientError.rateLimited(retryAfter, _, _) {
+  if let delay = retryAfter {
+    print("Rate limited; retry after \(delay) seconds")
+  }
+}
+```
+
+### LocalAPI Discovery Errors
+
+When using automatic discovery, failures surface as ``TailscaleClientError/discovery(_:)`` wrapping a ``LocalAPIDiscoveryError``:
+
+- ``LocalAPIDiscoveryError/notInstalled``: No Tailscale installation found on the machine.
+- ``LocalAPIDiscoveryError/stopped(candidate:)``: The daemon was found but is not listening on its socket or port.
+- ``LocalAPIDiscoveryError/inaccessible(path:reason:)``: The socket or proof file exists but cannot be read due to file permissions or sandbox restrictions.
+- ``LocalAPIDiscoveryError/invalidCredentials(endpoint:)``: The loopback API rejected credentials (HTTP 401/403).
+
+Every discovery error provides a detailed `recoverySuggestion` explaining how to resolve the issue (e.g., starting the daemon or granting group permissions).
+
+### The Two Meanings of 404 and peerNotFound
+
+LocalAPI uses HTTP 404 both for non-existent endpoints and missing entities:
+- For optional endpoints not built into the daemon, the client translates 404 to ``TailscaleClientError/endpointUnavailable(endpoint:feature:)``.
+- For whois and peer lookups, a missing node translates to ``TailscaleClientError/peerNotFound(endpoint:)``.
+
+### Probing Feature Availability
+
+Rather than catching errors when invoking optional endpoints, probe feature support in advance using ``TailscaleClient/daemonFeatures()``:
 
 ```swift
 let features = try await client.daemonFeatures()
@@ -54,20 +90,37 @@ if features.isEnabled("use-exit-node") {
 }
 ```
 
-## A pattern that composes
+### Resilient Error Handling Pattern
 
 ```swift
 do {
-  let report = try await client.netcheck()
-  render(report)
+  let status = try await client.status()
+  render(status)
 } catch let error as TailscaleClientError {
   switch error {
-  case .transport:
-    showBanner("Tailscale isn't running", detail: error.recoverySuggestion)
-  case .endpointUnavailable:
-    hideFeature()  // daemon build can't do this; don't nag the user
+  case .transport(let transportError):
+    showBanner("Tailscale connection error: \(transportError.localizedDescription)")
+  case .discovery(let discoveryError):
+    showBanner(discoveryError.localizedDescription, detail: discoveryError.recoverySuggestion)
+  case .preconditionFailed:
+    retryUpdate()
+  case .permissionDenied:
+    promptForAdminCredentials()
   default:
-    log(error)     // includes endpoint + body context
+    log(error.localizedDescription)
   }
 }
 ```
+
+## Topics
+
+### Error Types
+- ``TailscaleClientError``
+- ``LocalAPIDiscoveryError``
+- ``TailscaleTransportError``
+
+### Concurrency & Streaming Models
+- ``ServeConfigSnapshot``
+- ``StreamBufferBounds``
+- ``StreamOverflowStrategy``
+

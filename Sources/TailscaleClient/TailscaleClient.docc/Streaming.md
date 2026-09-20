@@ -2,55 +2,79 @@
 
 Consume real-time state changes from the IPN bus instead of polling.
 
-## Watching the IPN bus
+## Overview
 
-``TailscaleClient/watchIPNBus(options:reconnect:onUndecodableLine:)`` returns
-an `AsyncThrowingStream` of ``IPNNotify`` values — the same notification bus
-the Tailscale GUI uses:
+The Tailscale daemon publishes real-time operational notifications over its IPN bus — the same event feed consumed by the official Tailscale menu bar and GUI applications. `TailscaleClient` provides first-class async streams for observing these events with bounded memory usage, automatic reconnection, and typed lifecycle tracking.
+
+### Watching IPN Bus Events in 1.0
+
+In swift-tailscale-client 1.0, the primary streaming entry point is ``TailscaleClient/watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)``. It returns an `AsyncThrowingStream` of ``IPNBusEvent`` values:
 
 ```swift
-for try await notify in try await client.watchIPNBus() {
-  if let state = notify.state { print("backend:", state) }
-  if let engine = notify.engine { print("↓\(engine.rBytes) ↑\(engine.wBytes)") }
-  if let health = notify.health { print("warnings:", health.warnings ?? [:]) }
+let events = try await client.watchIPNBusEvents(
+  options: [.initialState, .initialHealthState, .engineUpdates],
+  retryPolicy: .default,
+  bounds: .default
+)
+
+for try await event in events {
+  switch event {
+  case .notification(let notify):
+    if let state = notify.state { print("Backend state:", state) }
+    if let engine = notify.engine { print("Traffic: ↓\(engine.rBytes) ↑\(engine.wBytes)") }
+    if let health = notify.health { print("Health warnings:", health.warnings ?? [:]) }
+
+  case .lifecycle(let transition):
+    switch transition {
+    case .connected:
+      print("Stream established to LocalAPI")
+    case .disconnected(let detail):
+      print("Stream disconnected: \(detail)")
+    case .retrying(let attempt, let delay):
+      print("Reconnection attempt \(attempt) scheduled in \(delay)")
+    case .stateGap(let reason):
+      print("Warning: event gap occurred (\(reason)); state refreshed")
+    }
+  }
 }
 ```
 
-`options:` controls what the daemon sends. The default includes initial
-state, health, and engine updates; add `.initialPrefs` / `.initialNetMap`
-when you need a full snapshot on connect.
+### Event vs Lifecycle Distinction
 
-## Resilience semantics
+Prior versions yielded only ``IPNNotify`` objects, which obscured connection state transitions and dropped updates during reconnects. ``IPNBusEvent`` separates notification payloads from connection lifecycle metadata:
 
-Two failure modes matter for long-lived monitors, and they are handled
-differently:
+- ``IPNBusEvent/notification(_:)``: Carries raw sparse state deltas from the daemon.
+- ``IPNBusEvent/lifecycle(_:)``: Signals transport events:
+  - ``IPNBusLifecycle/connected``: Validated HTTP response head metadata received from the daemon.
+  - ``IPNBusLifecycle/disconnected(underlying:)``: Connection severed or closed.
+  - ``IPNBusLifecycle/retrying(attempt:delay:)``: Active backoff delay before re-dialing.
+  - ``IPNBusLifecycle/stateGap(reason:)``: Indicates intermediate notifications were dropped (due to buffer overflow or connection reset). When a state gap is emitted, the client re-syncs state from the daemon.
 
-- **A line you can't decode never kills the stream.** Daemons routinely gain
-  notification fields before this package models them. Undecodable lines are
-  skipped; observe them via `onUndecodableLine:` if you want telemetry.
-- **A dropped connection ends the stream** — unless you opt into
-  reconnection:
+### Bounded Buffering and Overflow Protection
 
-```swift
-let stream = try await client.watchIPNBus(
-  options: [.initialState, .initialHealthState],
-  reconnect: .default)  // exponential backoff, transparent re-dial
-```
+Streaming events are buffered in memory to decouple network delivery from downstream consumption speed. To guarantee that a slow consumer cannot cause unbounded memory growth, every stream enforces ``StreamBufferBounds``:
 
-With a ``IPNBusReconnectPolicy`` the client re-dials with backoff and the
-`for try await` loop simply keeps going; the daemon re-sends initial state
-per your watch options on each new connection, so your UI can treat every
-notification uniformly.
+- ``StreamBufferBounds/maxEventCount``: Maximum queued events (default: 256).
+- ``StreamBufferBounds/maxByteCount``: Maximum retained bytes (default: 16 MB).
+- ``StreamBufferBounds/overflowStrategy``:
+  - ``StreamOverflowStrategy/reportGap`` (default): Drops oldest unconsumed events and emits a `.lifecycle(.stateGap(reason: "buffer_overflow"))` event so the consumer knows state was dropped.
+  - ``StreamOverflowStrategy/fail``: Immediately terminates the stream with ``TailscaleClientError/streamOverflow``.
 
-The first connection is always established before the stream is returned, so
-an unreachable daemon throws immediately rather than poisoning the loop.
+### Reconnection and Backoff with Jitter
 
-## The second streaming surface: logtap
+``StreamRetryPolicy`` governs automated recovery when connections drop:
 
-``ExperimentalClient/logtap()`` streams the daemon's live log lines (see
-<doc:StabilityTiers> for why it lives under `experimental`). It reuses the
-same line-framing machinery but deliberately has **no** reconnection — it is
-a debug tap:
+- Classified retries: Fatal errors (HTTP 401/403, permission errors, non-existent sockets) terminate immediately without retrying. Transient network drops and daemon restarts trigger exponential backoff.
+- Configurable delay limits (initial delay, capped maximum delay).
+- Jitter factor to avoid thundering-herd reconnect storms when the daemon restarts.
+
+### Legacy Sparse Notifications
+
+For simple use cases where lifecycle events and buffer bounds are not required, ``TailscaleClient/watchIPNBus(options:reconnect:onUndecodableLine:)`` remains available as a convenience method returning a stream of raw ``IPNNotify`` values.
+
+### Diagnostic Logtap Streaming
+
+``ExperimentalClient/logtap()`` streams live internal daemon log lines for debugging. Because it is intended strictly as a diagnostic tool, it deliberately does not perform automated reconnects:
 
 ```swift
 for try await entry in try await client.experimental.logtap() {
@@ -58,9 +82,29 @@ for try await entry in try await client.experimental.logtap() {
 }
 ```
 
-## Testing streams
+### Testing Streaming Workflows
 
-`TailscaleClientMocks` scripts stream scenarios without a daemon —
-`MockTransport.scriptedStream([...])` replays lines, delays, and injected
-failures; `scriptedStreams([[...], [...]])` serves one script per connection
-attempt, which is how the package's own reconnect tests work.
+`TailscaleClientMocks` allows testing stream consumers in unit tests without requiring a running daemon:
+- `MockTransport.scriptedStream([...])` replays scripted data chunks and injected errors.
+- `MockTransport.scriptedStreams([[...], [...]])` supplies sequential scripts across reconnect attempts.
+
+## Topics
+
+### Streaming APIs
+- ``TailscaleClient/watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)``
+- ``TailscaleClient/watchIPNBus(options:reconnect:onUndecodableLine:)``
+- ``ExperimentalClient/logtap()``
+
+### Event Models
+- ``IPNBusEvent``
+- ``IPNBusLifecycle``
+- ``IPNNotify``
+- ``NotifyWatchOpt``
+
+### Resilience & Limits
+- ``StreamRetryPolicy``
+- ``StreamBufferBounds``
+- ``StreamOverflowStrategy``
+- ``StreamErrorClassification``
+- ``IPNBusReconnectPolicy``
+

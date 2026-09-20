@@ -8,7 +8,7 @@
 
 > Swift SDK for the Tailscale LocalAPI — control an existing tailscaled daemon with async/await
 
-`swift-tailscale-client` is a personal, MIT-licensed project by David E. Weekly. It is **not** an official Tailscale product and is not endorsed by Tailscale Inc. The goal is to provide an idiomatic async/await Swift interface to the LocalAPI so Apple-platform and Linux apps can query and control Tailscale state without shelling out to the `tailscale` CLI.
+`swift-tailscale-client` is a personal, MIT-licensed project by David E. Weekly. It is **not** an official Tailscale product and is not endorsed by Tailscale Inc. The goal is to provide an idiomatic async/await Swift interface to the LocalAPI so Apple-platform apps can query and control Tailscale state without shelling out to the `tailscale` CLI.
 
 API documentation is published to [GitHub Pages](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/) on every push to `main`, and the [Swift Package Index](https://swiftpackageindex.com/dweekly/swift-tailscale-client) builds a versioned mirror from `.spi.yml` — see [its documentation tab](https://swiftpackageindex.com/dweekly/swift-tailscale-client/documentation) for per-release docs.
 
@@ -36,7 +36,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 ## Installation
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.12.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
 ```
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
@@ -84,9 +84,10 @@ try await client.checkPrefs(updated)
 ```swift
 // Snapshot → mutate → write, with ETag optimistic concurrency: a concurrent
 // change by anyone else makes the write throw .preconditionFailed.
-var serve = try await client.serveConfig()
+let snapshot = try await client.serveConfigSnapshot()
+var serve = snapshot.config
 serve.tcp[8443] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
-try await client.setServeConfig(serve)
+_ = try await client.setServeConfig(serve, matching: snapshot)
 ```
 
 See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/writingsafely), [*Streaming*](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/streaming), and [*Serve, Funnel & Certificates*](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/serveandfunnel).
@@ -98,14 +99,14 @@ See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.
 | Platform | Builds (CI-verified) | Connects to a local tailscaled |
 |---|---|---|
 | macOS 13+ | ✅ hosted CI | ✅ unix socket + opt-in App Store loopback — integration-tested against a real daemon in CI |
-| Linux | ✅ hosted CI | ✅ unix socket — hermetically integration-tested against headscale + real tailscaled (stable / previous-stable / unstable) in CI |
+| Linux | Outside the 1.0 release scope | Existing portability code is unqualified; no Linux CI or binary is required for this release |
 | iOS 16+, tvOS 16+, watchOS 9+ | ✅ build-only CI | ❌ no reachable daemon on-device — Tailscale's iOS app runs as a network extension whose LocalAPI third-party apps cannot reach. Declared so shared/multi-platform targets compile; useful for model code, not live connections. |
 
 ## Status
 
-**Current release: v0.12.0** — Always-on gap-fill & 1.0 runway: `services()` (Tailscale Services state) and `shutdownTailscaled()` wrap the last always-registered LocalAPI handlers; `startFreshProfile(controlURL:)` completes the interactive login lifecycle (proven end-to-end against headscale in CI); Linux `interfaceName`/`interfaceInfo` discovery; test-coverage floor raised to 85% and documentation-coverage floors in CI; model-conformance and full upstream-handler inventory gates; weekly upstream-drift automation; a menu-bar DocC tutorial.
+**Current release: v1.0.0** — Safer Serve writes with concurrency snapshots, bounded streaming, native macOS discovery, and a frozen public API. Qualified on Apple platforms with NWX as the initial consumer. See the [release notes](CHANGELOG.md#100---2026-09-20) for migration details and validation limits.
 
-The full version-by-version history lives in [`CHANGELOG.md`](CHANGELOG.md). The path to 1.0 — API freeze, ≥85% coverage, complete DocC tree — is laid out in [`ROADMAP.md`](ROADMAP.md), with the endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
+The full version-by-version history lives in [`CHANGELOG.md`](CHANGELOG.md). The stability policy and future work are laid out in [`ROADMAP.md`](ROADMAP.md), with the endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
 
 ## CLI
 
@@ -126,7 +127,7 @@ Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetri
 
 > **Using an AI coding agent?** [`Documentation/INTEGRATING.md`](Documentation/INTEGRATING.md) is the canonical integration guide for humans and agents alike; this repo also ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md), a root [`AGENTS.md`](AGENTS.md), and Copilot instructions that all point there.
 
-Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS and Linux and runs it against a real daemon.
+Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS; real-daemon checks are separate.
 
 ## API Reference
 
@@ -153,7 +154,7 @@ Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDem
 | `loginInteractive()` / `logout()` / `resetAuth()` | Auth lifecycle (BrowseToURL arrives on the IPN bus) |
 | `profiles()` / `switchProfile(_:)` / … | Multi-account profile management |
 | `idToken(audience:)` | OIDC ID token from the control plane |
-| `serveConfig()` / `setServeConfig(_:)` | Serve/Funnel config snapshot + ETag-guarded replace (stale writes throw `.preconditionFailed`) |
+| `serveConfigSnapshot()` / `setServeConfig(_:matching:)` | Serve/Funnel config snapshot + ETag-guarded replace (stale writes throw `.preconditionFailed`) |
 | `certDomains()` / `certPEM(domain:kind:minValidity:)` / `certPair(domain:minValidity:)` | Tailnet TLS domains and certificate material |
 | `setDNS(name:value:)` / `queryFeature(_:)` | ACME dns-01 TXT records; control-plane feature probes |
 | `watchIPNBus(options:reconnect:onUndecodableLine:)` | Stream real-time state changes (returns `AsyncThrowingStream<IPNNotify, Error>`); opt-in auto-reconnect with backoff |
@@ -217,7 +218,7 @@ When enabled, the library scans Group Containers to find `sameuserproof-<port>-<
   TAILSCALE_INTEGRATION=1 swift test --filter TailscaleClientIntegrationTests
   ```
   You can also override socket or loopback settings using the environment variables above.
-- CI runs the mock-backed suites on hosted macOS and Linux runners (plus a Thread Sanitizer lane), the real-daemon integration suite on a self-hosted Mac, and a nightly hermetic integration matrix against headscale + real tailscaled. See [`Documentation/TESTING.md`](Documentation/TESTING.md).
+- Required CI runs macOS unit tests, macOS Thread Sanitizer, strict DocC/API checks, and iOS/tvOS/watchOS builds. Real-daemon integration runs separately on a self-hosted Mac; the Linux workflow is manual-only and outside release qualification. See [`Documentation/TESTING.md`](Documentation/TESTING.md).
 
 ## Contributing
 

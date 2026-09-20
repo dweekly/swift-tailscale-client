@@ -1,0 +1,20 @@
+API breakage: enumelement JSONValue.integer has declared type change from (TailscaleClient.JSONValue.Type) -> (Swift.Int) -> TailscaleClient.JSONValue to (TailscaleClient.JSONValue.Type) -> (Swift.Int64) -> TailscaleClient.JSONValue
+API breakage: enumelement JSONValue.unsignedInteger has been added as a new enum case
+API breakage: enumelement TailscaleClientError.missingConcurrencyToken has been added as a new enum case
+API breakage: enumelement TailscaleClientError.streamOverflow has been added as a new enum case
+API breakage: enumelement TailscaleClientError.discovery has been added as a new enum case
+API breakage: enumelement TailscaleClientError.targetMismatch has been added as a new enum case
+API breakage: func TailscaleTransport.sendStreaming(_:configuration:) has return type change from _Concurrency.AsyncThrowingStream<Foundation.Data, any Swift.Error> to TailscaleClient.StreamingResponse
+API breakage: func URLSessionTailscaleTransport.sendStreaming(_:configuration:) has return type change from _Concurrency.AsyncThrowingStream<Foundation.Data, any Swift.Error> to TailscaleClient.StreamingResponse
+API breakage: constructor TailscaleClientConfiguration.init(endpoint:authToken:capabilityVersion:requestTimeout:transport:) has been removed
+API breakage: func TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery:) has been renamed to func default(allowMacOSAppStoreDiscovery:transport:)
+API breakage: constructor ServeConfig.init(tcp:web:services:allowFunnel:foreground:etag:) has been removed
+API breakage: constructor TCPPortHandler.init(https:http:tcpForward:terminateTLS:) has been removed
+API breakage: constructor WebServerConfig.init(handlers:) has been removed
+API breakage: constructor HTTPHandler.init(path:proxy:text:redirect:) has been removed
+API breakage: constructor ServiceConfig.init(tcp:web:tun:) has been removed
+API breakage: func TailscaleClient.addProfile() has been removed
+API breakage: typealias MockTransport.StreamHandler has underlying type change from (TailscaleClient.TailscaleRequest, TailscaleClient.TailscaleClientConfiguration) async throws -> _Concurrency.AsyncThrowingStream<Foundation.Data, any Swift.Error> to (TailscaleClient.TailscaleRequest, TailscaleClient.TailscaleClientConfiguration) async throws -> TailscaleClient.StreamingResponse
+API breakage: func MockTransport.sendStreaming(_:configuration:) has return type change from _Concurrency.AsyncThrowingStream<Foundation.Data, any Swift.Error> to TailscaleClient.StreamingResponse
+API breakage: func MockTransport.scriptedStream(_:) has been renamed to func scriptedStream(_:statusCode:headers:)
+API breakage: func MockTransport.scriptedStreams(_:) has been renamed to func scriptedStreams(_:statusCode:headers:)

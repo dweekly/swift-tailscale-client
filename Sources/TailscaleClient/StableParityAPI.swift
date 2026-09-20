@@ -14,7 +14,9 @@ import Foundation
 
 /// The IP protocol scope for a protocol-specific whois lookup.
 public enum WhoIsIPProtocol: String, Sendable {
+  /// Transmission Control Protocol (TCP).
   case tcp
+  /// User Datagram Protocol (UDP).
   case udp
 }
 

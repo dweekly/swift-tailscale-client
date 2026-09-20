@@ -3,12 +3,14 @@
 
 import ArgumentParser
 import Foundation
+import TailscaleClient
 
 @main
 struct TailscaleSwift: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "tailscale-swift",
     abstract: "Inspect a local Tailscale daemon (built on swift-tailscale-client)",
+    version: TailscaleClientConfiguration.packageVersion,
     subcommands: [
       Status.self,
       ServicesCommand.self,

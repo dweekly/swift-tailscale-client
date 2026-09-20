@@ -3,22 +3,28 @@
 
 import Foundation
 
-// MARK: - Serve, Funnel & Certificates (v0.10.0)
+// MARK: - Serve, Funnel & Certificates (v0.10.0, 1.0.0)
 
 extension TailscaleClient {
-  /// Fetches the daemon's current serve/Funnel configuration.
+  /// Fetches the daemon's current serve/Funnel configuration as an immutable snapshot.
   ///
-  /// The returned config carries the daemon's concurrency token in
-  /// ``ServeConfig/etag``; keep it and pass the modified config to
-  /// ``setServeConfig(_:)`` so concurrent writers are detected instead of
-  /// silently overwritten.
+  /// The returned snapshot carries the daemon's concurrency token in ``ServeConfigSnapshot/etag``
+  /// and timestamp in ``ServeConfigSnapshot/fetchedAt``. Pass this snapshot to
+  /// ``setServeConfig(_:matching:)`` or ``updateServeConfig(_:mutate:)`` to perform
+  /// safe conditional updates that detect concurrent modifications.
   ///
   /// ```swift
-  /// var config = try await client.serveConfig()
+  /// let snapshot = try await client.serveConfigSnapshot()
+  /// var config = snapshot.config
   /// config.tcp[8080] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
-  /// try await client.setServeConfig(config)  // 412 if it changed meanwhile
+  /// let newSnapshot = try await client.setServeConfig(config, matching: snapshot)
   /// ```
-  public func serveConfig() async throws -> ServeConfig {
+  ///
+  /// - Throws:
+  ///   - ``TailscaleClientError/missingConcurrencyToken`` if the daemon does not return a valid ETag header.
+  ///   - ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` if the response is not 200 OK.
+  ///   - ``TailscaleClientError/decoding(_:body:endpoint:)`` if the body cannot be decoded.
+  public func serveConfigSnapshot() async throws -> ServeConfigSnapshot {
     let endpoint = "/localapi/v0/serve-config"
     let request = TailscaleRequest(method: "GET", path: endpoint)
     let response = try await executeWithDeadline(request, endpoint: endpoint)
@@ -44,25 +50,169 @@ extension TailscaleClient {
           decodingError, body: response.data, endpoint: endpoint)
       }
     }
+
     // The unix transport lowercases header names; URLSession preserves them.
     let etagHeader = response.headers.first { key, _ in
       key.caseInsensitiveCompare("Etag") == .orderedSame
     }
-    config.etag = etagHeader?.value
+    guard let etag = etagHeader?.value,
+      !etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      throw TailscaleClientError.missingConcurrencyToken
+    }
+    let targetId = response.targetIdentifier ?? self.targetIdentifier
+    return ServeConfigSnapshot(
+      etag: etag,
+      targetIdentifier: targetId,
+      fetchedAt: Date(),
+      config: config
+    )
+  }
+
+  /// Safely replaces the daemon's serve/Funnel configuration, matching the provided snapshot's ETag.
+  ///
+  /// Sends the snapshot's ``ServeConfigSnapshot/etag`` as the `If-Match` HTTP header.
+  /// If the configuration has changed on the daemon since the snapshot was fetched,
+  /// the write fails with ``TailscaleClientError/preconditionFailed(body:endpoint:)``
+  /// without modifying state.
+  ///
+  /// - Parameters:
+  ///   - newConfig: The desired new serve configuration.
+  ///   - snapshot: The snapshot against which this update is applied.
+  /// - Returns: A fresh ``ServeConfigSnapshot`` representing the updated state and new ETag.
+  /// - Throws:
+  ///   - ``TailscaleClientError/missingConcurrencyToken`` if `snapshot.etag` is empty.
+  ///   - ``TailscaleClientError/targetMismatch(expected:actual:)`` if `snapshot.targetIdentifier` does not match this client.
+  ///   - ``TailscaleClientError/preconditionFailed(body:endpoint:)`` if a concurrent edit occurred (HTTP 412).
+  ///   - ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` on unexpected HTTP statuses.
+  public func setServeConfig(
+    _ newConfig: ServeConfig,
+    matching snapshot: ServeConfigSnapshot
+  ) async throws -> ServeConfigSnapshot {
+    guard !snapshot.etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw TailscaleClientError.missingConcurrencyToken
+    }
+    guard snapshot.targetIdentifier == self.targetIdentifier else {
+      throw TailscaleClientError.targetMismatch(
+        expected: self.targetIdentifier,
+        actual: snapshot.targetIdentifier
+      )
+    }
+
+    let endpoint = "/localapi/v0/serve-config"
+    let body = try JSONEncoder().encode(newConfig)
+    let request = TailscaleRequest(
+      method: "POST",
+      path: endpoint,
+      body: body,
+      additionalHeaders: ["If-Match": snapshot.etag],
+      expectedTargetIdentifier: snapshot.targetIdentifier
+    )
+    let response = try await executeWithDeadline(request, endpoint: endpoint)
+    if let error = Self.commonStatusError(response, endpoint: endpoint) {
+      throw error
+    }
+    guard (200..<300).contains(response.statusCode) else {
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode, body: response.data, endpoint: endpoint)
+    }
+
+    let etagHeader = response.headers.first { key, _ in
+      key.caseInsensitiveCompare("Etag") == .orderedSame
+    }
+    let targetId = response.targetIdentifier ?? snapshot.targetIdentifier
+    if let newEtag = etagHeader?.value,
+      !newEtag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      return ServeConfigSnapshot(
+        etag: newEtag,
+        targetIdentifier: targetId,
+        fetchedAt: Date(),
+        config: newConfig
+      )
+    } else {
+      return try await serveConfigSnapshot()
+    }
+  }
+
+  /// Convenience mutation helper for reading, modifying, and conditionally writing ServeConfig.
+  ///
+  /// Clones the configuration from `snapshot`, applies the synchronous `mutate` closure,
+  /// and writes back the modified configuration matching the snapshot's ETag.
+  ///
+  /// ```swift
+  /// let updated = try await client.updateServeConfig(snapshot) { config in
+  ///   config.tcp[8080] = TCPPortHandler(tcpForward: "127.0.0.1:3000")
+  /// }
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - snapshot: The snapshot to base the update upon.
+  ///   - mutate: A closure mutating the working copy of `ServeConfig`.
+  /// - Returns: A fresh ``ServeConfigSnapshot`` with the new configuration and new ETag.
+  /// - Throws: Any error thrown by `mutate`, ``TailscaleClientError/targetMismatch(expected:actual:)``
+  ///   if the snapshot was obtained from a different target daemon, or
+  ///   ``TailscaleClientError/preconditionFailed(body:endpoint:)`` if the daemon configuration was changed concurrently.
+  public func updateServeConfig(
+    _ snapshot: ServeConfigSnapshot,
+    mutate: (inout ServeConfig) throws -> Void
+  ) async throws -> ServeConfigSnapshot {
+    guard !snapshot.etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw TailscaleClientError.missingConcurrencyToken
+    }
+    guard snapshot.targetIdentifier == self.targetIdentifier else {
+      throw TailscaleClientError.targetMismatch(
+        expected: self.targetIdentifier,
+        actual: snapshot.targetIdentifier
+      )
+    }
+    var config = snapshot.config
+    try mutate(&config)
+    return try await setServeConfig(config, matching: snapshot)
+  }
+
+  /// Unconditionally replaces the daemon's serve/Funnel configuration without concurrency checks.
+  ///
+  /// > Warning: This replaces the daemon's entire background serve configuration and
+  /// > overwrites any concurrent edits made by other processes, CLI commands, or GUIs.
+  /// > Use this only for initial setup or explicit force-resets.
+  ///
+  /// Wraps `POST /localapi/v0/serve-config` with an empty `If-Match` header.
+  ///
+  /// - Parameter config: The new serve configuration to write.
+  /// - Throws: ``TailscaleClientError`` on communication or daemon error.
+  public func replaceServeConfigUnconditionally(_ config: ServeConfig) async throws {
+    let endpoint = "/localapi/v0/serve-config"
+    let body = try JSONEncoder().encode(config)
+    let request = TailscaleRequest(
+      method: "POST",
+      path: endpoint,
+      body: body,
+      additionalHeaders: ["If-Match": ""],
+      expectedTargetIdentifier: self.targetIdentifier
+    )
+    _ = try await performRawRequest(request, endpoint: endpoint)
+  }
+
+  /// Fetches the daemon's current serve/Funnel configuration.
+  ///
+  /// - Warning: Deprecated in 1.0. Use ``serveConfigSnapshot()`` instead to ensure safe concurrency.
+  @available(*, deprecated, message: "Use serveConfigSnapshot() instead")
+  public func serveConfig() async throws -> ServeConfig {
+    let snapshot = try await serveConfigSnapshot()
+    var config = snapshot.config
+    config.etag = snapshot.etag
     return config
   }
 
   /// Replaces the daemon's serve/Funnel configuration.
   ///
-  /// Sends the config's ``ServeConfig/etag`` as `If-Match`: if the daemon's
-  /// configuration changed since that ETag was fetched, the write fails with
-  /// ``TailscaleClientError/preconditionFailed(body:endpoint:)`` — re-fetch
-  /// via ``serveConfig()``, re-apply your change, and retry. An empty/`nil`
-  /// `etag` writes unconditionally (matching upstream's client behavior).
-  ///
-  /// > Warning: This replaces the whole background configuration. Always
-  /// > start from a fresh ``serveConfig()`` snapshot rather than
-  /// > constructing one from scratch, or you will drop existing handlers.
+  /// - Warning: Deprecated in 1.0. Use ``setServeConfig(_:matching:)`` for safe conditional updates,
+  ///   or ``replaceServeConfigUnconditionally(_:)`` for explicit unconditional replacement.
+  @available(
+    *, deprecated,
+    message: "Use setServeConfig(_:matching:) or replaceServeConfigUnconditionally(_:) instead"
+  )
   public func setServeConfig(_ config: ServeConfig) async throws {
     let endpoint = "/localapi/v0/serve-config"
     let body = try JSONEncoder().encode(config)

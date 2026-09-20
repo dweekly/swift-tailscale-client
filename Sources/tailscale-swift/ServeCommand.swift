@@ -24,7 +24,8 @@ struct ServeStatusCommand: AsyncParsableCommand {
 
   func run() async throws {
     let client = TailscaleClient()
-    let config = try await client.serveConfig()
+    let snapshot = try await client.serveConfigSnapshot()
+    let config = snapshot.config
 
     if json {
       try printJSON(config)
@@ -35,8 +36,8 @@ struct ServeStatusCommand: AsyncParsableCommand {
       print("No serve configuration.")
       return
     }
-    if let etag = config.etag, !etag.isEmpty {
-      print("ETag: \(etag)")
+    if !snapshot.etag.isEmpty {
+      print("ETag: \(snapshot.etag)")
     }
     for (port, handler) in config.tcp.sorted(by: { $0.key < $1.key }) {
       var details: [String] = []

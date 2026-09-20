@@ -22,23 +22,127 @@ import Foundation
 /// > Important: This library is an unofficial, MIT-licensed project by David E. Weekly
 /// > and is not endorsed by Tailscale Inc.
 public actor TailscaleClient {
+  /// Internal thread-safe box holding active configuration for nonisolated access.
+  final class ConfigurationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _configuration: TailscaleClientConfiguration
+
+    init(_ configuration: TailscaleClientConfiguration) {
+      self._configuration = configuration
+    }
+
+    var value: TailscaleClientConfiguration {
+      lock.lock()
+      defer { lock.unlock() }
+      return _configuration
+    }
+
+    func update(_ newConfig: TailscaleClientConfiguration) {
+      lock.lock()
+      _configuration = newConfig
+      lock.unlock()
+    }
+  }
+
+  private let configurationBox: ConfigurationBox
+  private var activeConfiguration: TailscaleClientConfiguration
+  private var rediscoveryTask: Task<TailscaleClientConfiguration, Error>?
+
   /// Configuration applied to each request the client makes.
-  public nonisolated let configuration: TailscaleClientConfiguration
+  public nonisolated var configuration: TailscaleClientConfiguration {
+    configurationBox.value
+  }
+
+  /// An opaque identifier representing the target endpoint of this client,
+  /// used for target-binding validation across snapshots.
+  public nonisolated var targetIdentifier: String {
+    configuration.targetIdentifier
+  }
 
   /// The daemon version most recently observed in a `Tailscale-Version`
   /// response header, if any request has completed yet.
   private(set) var observedDaemonVersion: String?
 
   /// Task-local audit justification; see ``withAuditReason(_:operation:)``.
-  @TaskLocal private static var auditReason: String?
+  @TaskLocal static var auditReason: String?
 
   /// Creates a client that uses the default configuration for the current platform.
   public init(configuration: TailscaleClientConfiguration = .default) {
-    self.configuration = configuration
+    self.activeConfiguration = configuration
+    self.configurationBox = ConfigurationBox(configuration)
   }
 
-  /// Attaches an audit justification to every unary request made inside
-  /// `operation`, scoped to the current task.
+  /// Discovers the LocalAPI endpoint asynchronously and creates a configured client.
+  ///
+  /// - Parameters:
+  ///   - allowMacOSAppStoreDiscovery: Whether to opt into macOS App Store GUI discovery.
+  ///   - requestTimeout: Per-request deadline (defaults to 30 seconds).
+  ///   - transport: The transport used to execute HTTP requests (defaults to URLSessionTailscaleTransport).
+  /// - Returns: A connected `TailscaleClient` instance.
+  public static func discover(
+    allowMacOSAppStoreDiscovery: Bool = false,
+    requestTimeout: Duration? = .seconds(30),
+    transport: any TailscaleTransport = URLSessionTailscaleTransport()
+  ) async throws -> TailscaleClient {
+    let config = try await TailscaleClientConfiguration.discover(
+      allowMacOSAppStoreDiscovery: allowMacOSAppStoreDiscovery,
+      requestTimeout: requestTimeout,
+      transport: transport
+    )
+    return TailscaleClient(configuration: config)
+  }
+
+  /// Single-flight re-discovery coordinator for daemon restarts or credential rotation.
+  @discardableResult
+  func singleFlightRediscovery() async throws -> TailscaleClientConfiguration {
+    guard case .automatic(let discovery) = activeConfiguration.endpointSource else {
+      throw TailscaleClientError.permissionDenied(
+        body: Data("Endpoint is pinned; dynamic rediscovery disabled".utf8),
+        endpoint: "pinned"
+      )
+    }
+
+    if let inFlight = rediscoveryTask {
+      do {
+        let config = try await inFlight.value
+        self.activeConfiguration = config
+        self.configurationBox.update(config)
+        return config
+      } catch let discError as LocalAPIDiscoveryError {
+        throw TailscaleClientError.discovery(discError)
+      }
+    }
+
+    let timeout = activeConfiguration.requestTimeout
+    let transport = activeConfiguration.transport
+
+    let task = Task<TailscaleClientConfiguration, Error> {
+      let result = try await discovery.discoverAsync()
+      return TailscaleClientConfiguration(
+        discovery: discovery,
+        result: result,
+        requestTimeout: timeout,
+        transport: transport
+      )
+    }
+
+    self.rediscoveryTask = task
+    defer { self.rediscoveryTask = nil }
+
+    do {
+      let updated = try await task.value
+      self.activeConfiguration = updated
+      self.configurationBox.update(updated)
+      return updated
+    } catch let discError as LocalAPIDiscoveryError {
+      throw TailscaleClientError.discovery(discError)
+    } catch {
+      throw error
+    }
+  }
+
+  /// Attaches an audit justification to every unary or streaming request made
+  /// inside `operation`, scoped to the current task.
   ///
   /// Sent as the upstream `X-Tailscale-Reason` header (Base64-encoded, the
   /// encoding Tailscale's own client uses), mirroring how the upstream client
@@ -49,9 +153,7 @@ public actor TailscaleClient {
   /// secrets in it.
   ///
   /// Because the value is task-local, concurrent tasks each carry their own
-  /// justification (or none) and can never observe each other's. Streaming
-  /// connections (``watchIPNBus(options:reconnect:onUndecodableLine:)``) do
-  /// not send the header.
+  /// justification (or none) and can never observe each other's.
   ///
   /// ```swift
   /// try await TailscaleClient.withAuditReason("ticket INC-1234") {
@@ -68,11 +170,10 @@ public actor TailscaleClient {
   /// Version and capability facts useful in diagnostics and bug reports.
   ///
   /// `daemonVersion` is the most recent `Tailscale-Version` response header
-  /// seen by this client (nil until a **unary** request completes — streaming
-  /// connections such as ``watchIPNBus(options:reconnect:onUndecodableLine:)``
-  /// bypass response-header observation). A mismatch with the versions this
-  /// package was tested against is a diagnostic signal, never a request
-  /// failure: wire-compatible requests keep working.
+  /// seen by this client (nil until a unary or streaming request completes).
+  /// A mismatch with the versions this package was tested against is a
+  /// diagnostic signal, never a request failure: wire-compatible requests keep
+  /// working.
   public func versionDiagnostics() -> VersionDiagnostics {
     VersionDiagnostics(
       packageVersion: TailscaleClientConfiguration.packageVersion,
@@ -378,52 +479,6 @@ public actor TailscaleClient {
       TailscaleRequest(method: "POST", path: endpoint), endpoint: endpoint)
   }
 
-  /// Lists all saved login profiles.
-  public func profiles() async throws -> [LoginProfile] {
-    let endpoint = "/localapi/v0/profiles/"
-    return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
-  }
-
-  /// Fetches the currently active login profile.
-  public func currentProfile() async throws -> LoginProfile {
-    let endpoint = "/localapi/v0/profiles/current"
-    return try await performRequest(TailscaleRequest(path: endpoint), endpoint: endpoint)
-  }
-
-  /// Creates a new, empty login profile and switches to it — the "sign out
-  /// to a clean slate" move. Follow with ``loginInteractive()`` or
-  /// ``start(options:)`` to authenticate it; the previous profile remains
-  /// available via ``profiles()`` / ``switchProfile(_:)``.
-  ///
-  /// Mirrors upstream's stable `SwitchToEmptyProfile`
-  /// (`PUT /localapi/v0/profiles/`); the daemon answers `201 Created`.
-  public func switchToEmptyProfile() async throws {
-    let endpoint = "/localapi/v0/profiles/"
-    _ = try await performRawRequest(
-      TailscaleRequest(method: "PUT", path: endpoint), endpoint: endpoint)
-  }
-
-  /// Former name of ``switchToEmptyProfile()`` (same wire operation); the
-  /// upstream-aligned name is now canonical.
-  @available(*, deprecated, renamed: "switchToEmptyProfile()")
-  public func addProfile() async throws {
-    try await switchToEmptyProfile()
-  }
-
-  /// Switches to the profile with the given ID (see ``LoginProfile/id``).
-  public func switchProfile(_ id: String) async throws {
-    let endpoint = "/localapi/v0/profiles/\(id)"
-    _ = try await performRawRequest(
-      TailscaleRequest(method: "POST", path: endpoint), endpoint: endpoint)
-  }
-
-  /// Deletes the profile with the given ID. **Destructive.**
-  public func deleteProfile(_ id: String) async throws {
-    let endpoint = "/localapi/v0/profiles/\(id)"
-    _ = try await performRawRequest(
-      TailscaleRequest(method: "DELETE", path: endpoint), endpoint: endpoint)
-  }
-
   /// Fetches an OIDC ID token for this node from the control plane.
   ///
   /// - Parameter audience: The token audience (`aud` claim).
@@ -594,37 +649,283 @@ public actor TailscaleClient {
     return try await performRequest(request, endpoint: endpoint)
   }
 
-  /// Watches the IPN notification bus for real-time state changes.
+  /// Starts watching the IPN bus for notifications and connection lifecycle events.
   ///
-  /// This streaming API provides instant notifications when Tailscale state changes,
-  /// eliminating the need to poll the status endpoint.
+  /// Delivers typed ``IPNBusEvent`` values over an asynchronous stream, bounded by `bounds`
+  /// to prevent unbounded memory growth. Connection recovery is governed by `retryPolicy`.
   ///
-  /// ```swift
-  /// let client = TailscaleClient()
-  /// for try await notify in client.watchIPNBus() {
-  ///     if let state = notify.state {
-  ///         print("Backend state: \(state)")
-  ///     }
-  ///     if let engine = notify.engine {
-  ///         print("Traffic: ↓\(engine.rBytes) ↑\(engine.wBytes)")
-  ///     }
-  /// }
-  /// ```
+  /// - Parameters:
+  ///   - options: Watch options controlling what notifications to receive.
+  ///     Defaults to `.default` which includes initial state, health, and engine updates.
+  ///   - retryPolicy: Automatic reconnection policy with capped exponential backoff and jitter.
+  ///     Defaults to `.default`.
+  ///   - bounds: Queue depth and memory bounds with explicit overflow strategy. Defaults to `.default`.
+  ///   - onUndecodableLine: Called with the raw line and the decoding error for each line that
+  ///     could not be decoded as an ``IPNNotify``.
+  /// - Returns: An async stream of IPN bus events (notifications and lifecycle transitions).
+  /// - Throws: `TailscaleClientError` if the initial connection fails.
+  public func watchIPNBusEvents(
+    options: NotifyWatchOpt = .default,
+    retryPolicy: StreamRetryPolicy = .default,
+    bounds: StreamBufferBounds = .default,
+    onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
+  ) async throws -> AsyncThrowingStream<IPNBusEvent, Error> {
+    let endpoint = "/localapi/v0/watch-ipn-bus"
+    var request = TailscaleRequest(
+      path: endpoint,
+      queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
+    )
+    if let reason = Self.auditReason, !reason.isEmpty,
+      request.additionalHeaders["X-Tailscale-Reason"] == nil
+    {
+      request.additionalHeaders["X-Tailscale-Reason"] =
+        Data(reason.utf8).base64EncodedString()
+    }
+
+    let client = self
+    let finalRequest = request
+    let openStream: @Sendable () async throws -> StreamingResponse = {
+      let config = client.configuration
+      let targetId = config.targetIdentifier
+      return try await Self.withDeadline(config.requestTimeout, endpoint: endpoint) {
+        let resp = try await config.transport.sendStreaming(finalRequest, configuration: config)
+        return StreamingResponse(
+          statusCode: resp.statusCode,
+          headers: resp.headers,
+          body: resp.body,
+          targetIdentifier: targetId
+        )
+      }
+    }
+
+    var initialResponse: StreamingResponse
+    do {
+      let resp = try await openStream()
+      if resp.statusCode == 401
+        || (resp.statusCode == 403 && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
+        case .automatic = client.configuration.endpointSource
+      {
+        _ = try await client.singleFlightRediscovery()
+        initialResponse = try await openStream()
+      } else {
+        initialResponse = resp
+      }
+    } catch let transportError as TailscaleTransportError {
+      if Self.isConnectStageError(transportError),
+        case .automatic = client.configuration.endpointSource
+      {
+        _ = try await client.singleFlightRediscovery()
+        do {
+          initialResponse = try await openStream()
+        } catch let retryErr as TailscaleTransportError {
+          throw TailscaleClientError.transport(retryErr)
+        }
+      } else {
+        throw TailscaleClientError.transport(transportError)
+      }
+    }
+
+    recordObservedDaemonVersion(from: initialResponse.headers)
+
+    guard (200..<300).contains(initialResponse.statusCode) else {
+      let errorBody = await Self.consumeBoundedErrorBody(initialResponse.body)
+      let fakeResponse = TailscaleResponse(
+        statusCode: initialResponse.statusCode,
+        data: errorBody,
+        headers: initialResponse.headers
+      )
+      if let error = Self.commonStatusError(
+        fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
+      ) {
+        throw error
+      }
+      throw TailscaleClientError.unexpectedStatus(
+        code: initialResponse.statusCode, body: errorBody, endpoint: endpoint
+      )
+    }
+
+    let queue = IPNBusBoundedQueue(bounds: bounds)
+
+    let task = Task<Void, Never> {
+      var currentStream: AsyncThrowingStream<Data, Error>? = initialResponse.body
+      var attempt = 0
+      var isFirstConnection = true
+
+      func shouldExit() async -> Bool {
+        if Task.isCancelled { return true }
+        return await queue.isClosed
+      }
+
+      while !Task.isCancelled {
+        if await shouldExit() {
+          await queue.finish()
+          return
+        }
+
+        if currentStream == nil {
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
+
+          attempt += 1
+          if let maxAttempts = retryPolicy.maxAttempts, attempt > maxAttempts {
+            await queue.finish()
+            return
+          }
+
+          let delay = retryPolicy.delay(forAttempt: attempt - 1)
+          await queue.enqueue(.lifecycle(.retrying(attempt: attempt, delay: delay)), byteSize: 64)
+
+          do {
+            try await Task.sleep(for: delay)
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
+            let resp = try await openStream()
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
+            await client.recordObservedDaemonVersion(from: resp.headers)
+            guard (200..<300).contains(resp.statusCode) else {
+              let errorBody = await Self.consumeBoundedErrorBody(resp.body)
+              let fakeResponse = TailscaleResponse(
+                statusCode: resp.statusCode,
+                data: errorBody,
+                headers: resp.headers
+              )
+              let mapped =
+                Self.commonStatusError(
+                  fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "HasIPNBus"
+                )
+                ?? TailscaleClientError.unexpectedStatus(
+                  code: resp.statusCode, body: errorBody, endpoint: endpoint
+                )
+              if StreamRetryPolicy.classify(mapped) == .fatal {
+                await queue.fail(mapped)
+                return
+              }
+              currentStream = nil
+              continue
+            }
+            currentStream = resp.body
+          } catch is CancellationError {
+            await queue.finish()
+            return
+          } catch {
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
+            if StreamRetryPolicy.classify(error) == .fatal {
+              await queue.fail(error)
+              return
+            }
+            currentStream = nil
+            continue
+          }
+        }
+
+        if await shouldExit() {
+          await queue.finish()
+          return
+        }
+
+        // Connection established
+        await queue.enqueue(.lifecycle(.connected), byteSize: 64)
+        if !isFirstConnection {
+          await queue.enqueue(.lifecycle(.stateGap(reason: "reconnected")), byteSize: 64)
+        }
+        isFirstConnection = false
+
+        do {
+          for try await lineData in currentStream! {
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
+            do {
+              let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
+              attempt = 0
+              await queue.enqueue(.notification(notify), byteSize: lineData.count)
+            } catch let decodingError as DecodingError {
+              let clientErr = TailscaleClientError.decoding(
+                decodingError, body: lineData, endpoint: endpoint)
+              onUndecodableLine?(lineData, clientErr)
+              await queue.enqueue(.lifecycle(.stateGap(reason: "undecodable_line")), byteSize: 64)
+            }
+            if await shouldExit() {
+              await queue.finish()
+              return
+            }
+          }
+          // Server closed the stream (e.g. daemon restart).
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
+          await queue.enqueue(
+            .lifecycle(.disconnected(underlying: "server_closed")), byteSize: 64)
+          if retryPolicy.maxAttempts == 0 {
+            await queue.finish()
+            return
+          }
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
+          currentStream = nil
+        } catch is CancellationError {
+          await queue.finish()
+          return
+        } catch {
+          if await shouldExit() {
+            await queue.finish()
+            return
+          }
+          await queue.enqueue(.lifecycle(.disconnected(underlying: "\(error)")), byteSize: 64)
+          if StreamRetryPolicy.classify(error) == .fatal || retryPolicy.maxAttempts == 0 {
+            await queue.fail(error)
+            return
+          }
+          if await shouldExit() {
+            await queue.fail(error)
+            return
+          }
+          currentStream = nil
+        }
+      }
+      await queue.finish()
+    }
+
+    await queue.setProducerTask(task)
+
+    let context = IPNBusStreamContext(queue: queue, task: task)
+    return AsyncThrowingStream<IPNBusEvent, Error>(unfolding: {
+      try await context.queue.next()
+    })
+  }
+
+  /// Starts watching the IPN bus for notifications from the daemon.
   ///
-  /// An undecodable line never terminates the stream: it is skipped and, when
-  /// provided, reported through `onUndecodableLine` — daemons routinely add
-  /// notification fields this package hasn't modeled yet. A dropped connection
-  /// terminates the stream with an error unless a `reconnect` policy is given,
+  /// Delivers typed ``IPNNotify`` values over an asynchronous stream. Initial
+  /// state is received first, followed by incremental updates as the daemon's
+  /// status, engine, or network state changes.
+  ///
+  /// Reconnection is governed by `reconnect`. The default (`nil`) ends the
+  /// stream on connection drop, which is appropriate for short-lived tasks.
+  /// Long-lived callers should supply ``IPNBusReconnectPolicy/default``,
   /// in which case the client re-dials with exponential backoff and the stream
   /// continues transparently (the daemon re-sends initial state per the watch
   /// options on each connection).
   ///
-  /// > Note: Streaming connections bypass the unary response contract: typed
-  /// > status errors (``TailscaleClientError/permissionDenied(body:endpoint:)``,
-  /// > ``TailscaleClientError/rateLimited(retryAfterSeconds:body:endpoint:)``),
-  /// > `Tailscale-Version` observation, and audit-reason injection apply to
-  /// > unary requests only. A rejected or failed streaming connection surfaces
-  /// > as ``TailscaleClientError/transport(_:)``.
+  /// > Note: Streaming connections share status-code mapping, `Tailscale-Version`
+  /// > observation, and audit-reason injection with unary requests. A rejected
+  /// > streaming connection surfaces typed errors such as
+  /// > ``TailscaleClientError/permissionDenied(body:endpoint:)`` or
+  /// > ``TailscaleClientError/rateLimited(retryAfterSeconds:body:endpoint:)``.
   ///
   /// - Parameters:
   ///   - options: Watch options controlling what notifications to receive.
@@ -640,95 +941,48 @@ public actor TailscaleClient {
     reconnect: IPNBusReconnectPolicy? = nil,
     onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
   ) async throws -> AsyncThrowingStream<IPNNotify, Error> {
-    let endpoint = "/localapi/v0/watch-ipn-bus"
-    let request = TailscaleRequest(
-      path: endpoint,
-      queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
+    let retryPolicy =
+      reconnect.map { policy in
+        StreamRetryPolicy(
+          maxAttempts: policy.maxAttempts,
+          initialDelay: policy.initialDelay,
+          maxDelay: policy.maxDelay,
+          jitter: 0.0
+        )
+      } ?? StreamRetryPolicy.none
+
+    let eventStream = try await watchIPNBusEvents(
+      options: options,
+      retryPolicy: retryPolicy,
+      bounds: .throwing,
+      onUndecodableLine: onUndecodableLine
     )
 
-    let configuration = self.configuration
-    let open: @Sendable () async throws -> AsyncThrowingStream<Data, Error> = {
-      try await Self.withDeadline(configuration.requestTimeout, endpoint: endpoint) {
-        try await configuration.transport.sendStreaming(request, configuration: configuration)
-      }
+    let unfolder = IPNNotifyUnfolder(iterator: eventStream.makeAsyncIterator())
+    return AsyncThrowingStream<IPNNotify, Error>(unfolding: {
+      try await unfolder.next()
+    })
+  }
+
+  private final class IPNNotifyUnfolder: @unchecked Sendable {
+    private var iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator
+
+    init(iterator: AsyncThrowingStream<IPNBusEvent, Error>.AsyncIterator) {
+      self.iterator = iterator
     }
 
-    // Establish the first connection before returning so callers get a thrown
-    // error (not a poisoned stream) when the daemon is unreachable.
-    let initialStream: AsyncThrowingStream<Data, Error>
-    do {
-      initialStream = try await open()
-    } catch let transportError as TailscaleTransportError {
-      throw TailscaleClientError.transport(transportError)
-    }
-
-    return AsyncThrowingStream { continuation in
-      let task = Task {
-        var stream: AsyncThrowingStream<Data, Error>? = initialStream
-        var attempt = 0
-        var lastError: (any Error)? = nil
-
-        while true {
-          if stream == nil {
-            guard let policy = reconnect else {
-              // Unreachable: stream is only cleared when a policy exists.
-              continuation.finish()
-              return
-            }
-            if let maxAttempts = policy.maxAttempts, attempt >= maxAttempts {
-              continuation.finish(throwing: lastError.map(Self.mapStreamError))
-              return
-            }
-            attempt += 1
-            do {
-              try await Task.sleep(for: policy.delay(forAttempt: attempt))
-              stream = try await open()
-            } catch is CancellationError {
-              continuation.finish()
-              return
-            } catch {
-              lastError = error
-              stream = nil
-              continue
-            }
-          }
-
-          do {
-            for try await lineData in stream! {
-              do {
-                let notify = try JSONDecoder.tailscale().decode(IPNNotify.self, from: lineData)
-                attempt = 0
-                continuation.yield(notify)
-              } catch let decodingError as DecodingError {
-                onUndecodableLine?(
-                  lineData,
-                  .decoding(decodingError, body: lineData, endpoint: endpoint))
-              }
-            }
-            // Server closed the stream (e.g. daemon restart).
-            if reconnect == nil {
-              continuation.finish()
-              return
-            }
-            stream = nil
-            lastError = nil
-          } catch is CancellationError {
-            continuation.finish()
-            return
-          } catch {
-            if reconnect == nil {
-              continuation.finish(throwing: Self.mapStreamError(error))
-              return
-            }
-            stream = nil
-            lastError = error
-          }
+    func next() async throws -> IPNNotify? {
+      while let event = try await iterator.next() {
+        switch event {
+        case .notification(let notify):
+          return notify
+        case .lifecycle(.stateGap):
+          throw TailscaleClientError.streamOverflow
+        case .lifecycle:
+          continue
         }
       }
-
-      continuation.onTermination = { _ in
-        task.cancel()
-      }
+      return nil
     }
   }
 
@@ -797,7 +1051,75 @@ public actor TailscaleClient {
   func executeWithDeadline(_ request: TailscaleRequest, endpoint: String) async throws
     -> TailscaleResponse
   {
-    let configuration = self.configuration
+    try await executeWithRecovery(request, endpoint: endpoint, attempt: 0)
+  }
+
+  private enum FailurePhase {
+    case connectStage
+    case credential
+  }
+
+  static func isConnectStageError(_ error: TailscaleTransportError) -> Bool {
+    switch error {
+    case .connectionRefused, .socketNotFound:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func isRecoverableStatus(statusCode: Int, endpoint: TailscaleEndpoint) -> Bool {
+    if statusCode == 401 {
+      return true
+    }
+    if statusCode == 403 {
+      switch endpoint {
+      case .loopback, .url:
+        return true
+      case .unixSocket:
+        return false
+      }
+    }
+    return false
+  }
+
+  static func isUnixSocketEndpoint(_ endpoint: TailscaleEndpoint) -> Bool {
+    if case .unixSocket = endpoint { return true }
+    return false
+  }
+
+  private func isReplaySafe(request: TailscaleRequest, failurePhase: FailurePhase) -> Bool {
+    switch failurePhase {
+    case .connectStage:
+      // Failed before bytes were sent or connection accepted; safe to replay any request.
+      return true
+    case .credential:
+      // Daemon returned 401 or loopback 403.
+      // Idempotent requests (GET, HEAD) are always safe to replay.
+      // Mutating requests rejected with 401/403 were rejected by the daemon's auth check
+      // before executing the mutation, so replaying with refreshed token is safe.
+      // (Ambiguous transport drops like EOF/reset/timeout never reach here).
+      return true
+    }
+  }
+
+  private func executeWithRecovery(
+    _ request: TailscaleRequest,
+    endpoint: String,
+    attempt: Int
+  ) async throws -> TailscaleResponse {
+    if let inFlight = rediscoveryTask {
+      if let config = try? await inFlight.value {
+        self.activeConfiguration = config
+        self.configurationBox.update(config)
+      }
+    }
+    let currentConfig = self.activeConfiguration
+    let currentTarget = currentConfig.targetIdentifier
+    if let expected = request.expectedTargetIdentifier, expected != currentTarget {
+      throw TailscaleClientError.targetMismatch(expected: expected, actual: currentTarget)
+    }
+
     var pending = request
     if let reason = Self.auditReason, !reason.isEmpty,
       pending.additionalHeaders["X-Tailscale-Reason"] == nil
@@ -808,24 +1130,71 @@ public actor TailscaleClient {
       pending.additionalHeaders["X-Tailscale-Reason"] =
         Data(reason.utf8).base64EncodedString()
     }
-    // The deadline closure is @Sendable; it may only capture immutable state.
     let finalRequest = pending
+
     do {
-      let response = try await Self.withDeadline(
-        configuration.requestTimeout, endpoint: endpoint
+      var response = try await Self.withDeadline(
+        currentConfig.requestTimeout, endpoint: endpoint
       ) {
-        try await configuration.transport.send(finalRequest, configuration: configuration)
+        try await currentConfig.transport.send(finalRequest, configuration: currentConfig)
       }
-      // The unix transport lowercases header names; URLSession preserves them.
-      if let version = response.headers.first(where: {
-        $0.key.caseInsensitiveCompare("Tailscale-Version") == .orderedSame
-      })?.value, !version.isEmpty {
-        observedDaemonVersion = version
+      if response.targetIdentifier == nil {
+        response.targetIdentifier = currentTarget
       }
+      if let expected = request.expectedTargetIdentifier,
+        let actual = response.targetIdentifier,
+        expected != actual
+      {
+        throw TailscaleClientError.targetMismatch(expected: expected, actual: actual)
+      }
+      recordObservedDaemonVersion(from: response.headers)
+
+      // Check for credential rejection (401 or loopback 403)
+      if isRecoverableStatus(statusCode: response.statusCode, endpoint: currentConfig.endpoint),
+        attempt == 0,
+        case .automatic = currentConfig.endpointSource,
+        isReplaySafe(request: finalRequest, failurePhase: .credential)
+      {
+        _ = try await singleFlightRediscovery()
+        return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
+      }
+
       return response
     } catch let transportError as TailscaleTransportError {
+      if Self.isConnectStageError(transportError),
+        attempt == 0,
+        case .automatic = currentConfig.endpointSource,
+        isReplaySafe(request: finalRequest, failurePhase: .connectStage)
+      {
+        _ = try await singleFlightRediscovery()
+        return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
+      }
       throw TailscaleClientError.transport(transportError)
     }
+  }
+
+  func recordObservedDaemonVersion(from headers: [String: String]) {
+    if let version = headers.first(where: {
+      $0.key.caseInsensitiveCompare("Tailscale-Version") == .orderedSame
+    })?.value, !version.isEmpty {
+      observedDaemonVersion = version
+    }
+  }
+
+  static func consumeBoundedErrorBody(
+    _ stream: AsyncThrowingStream<Data, Error>,
+    limit: Int = 64 * 1024
+  ) async -> Data {
+    var data = Data()
+    do {
+      for try await chunk in stream {
+        data.append(chunk)
+        if data.count >= limit { break }
+      }
+    } catch {
+      // Bounded consumption tolerates stream termination on error
+    }
+    return data
   }
 
   /// Status-code mapping shared by every request path: typed cases for the
@@ -997,12 +1366,24 @@ public enum TailscaleClientError: Error, Sendable {
   /// The daemon answered a peer lookup with 404: the endpoint exists, but no
   /// peer matches the queried address or key (upstream `ErrPeerNotFound`).
   case peerNotFound(endpoint: String)
+  /// A conditional write was attempted, but no valid concurrency token (ETag)
+  /// was available in the snapshot, or the daemon returned no ETag header on read.
+  case missingConcurrencyToken
+  /// A conditional write was attempted with a snapshot that was obtained from a different
+  /// daemon target or endpoint than the client performing the update.
+  case targetMismatch(expected: String, actual: String)
+  /// The streaming event queue exceeded its configured event or memory bounds
+  /// and the overflow strategy was configured to fail.
+  case streamOverflow
+  /// Discovery could not locate an operational LocalAPI endpoint.
+  case discovery(LocalAPIDiscoveryError)
 
   /// Returns a preview of the response body (up to 500 characters), useful for debugging.
   public var bodyPreview: String? {
     let data: Data
     switch self {
-    case .transport, .endpointUnavailable, .timeout, .peerNotFound:
+    case .transport, .endpointUnavailable, .timeout, .peerNotFound, .missingConcurrencyToken,
+      .targetMismatch, .streamOverflow, .discovery:
       return nil
     case .unexpectedStatus(_, let body, _):
       data = body
@@ -1026,10 +1407,13 @@ public enum TailscaleClientError: Error, Sendable {
 }
 
 extension TailscaleClientError: CustomStringConvertible {
+  /// A textual description of the client error.
   public var description: String {
     switch self {
     case .transport(let error):
       return "Transport error: \(error.description)"
+    case .discovery(let error):
+      return "LocalAPI discovery error: \(error.description)"
     case .unexpectedStatus(let code, _, let endpoint):
       let statusMessage = Self.httpStatusMessage(for: code)
       return "LocalAPI returned HTTP \(code) (\(statusMessage)) for \(endpoint)"
@@ -1045,6 +1429,12 @@ extension TailscaleClientError: CustomStringConvertible {
     case .preconditionFailed(_, let endpoint):
       return
         "LocalAPI rejected the write to \(endpoint): stale ETag (HTTP 412) — re-fetch and retry"
+    case .missingConcurrencyToken:
+      return
+        "Cannot perform conditional write: missing or empty concurrency token (ETag) — fetch a fresh ServeConfigSnapshot"
+    case .targetMismatch(let expected, let actual):
+      return
+        "Cannot perform conditional write: snapshot target '\(actual)' does not match client target '\(expected)'"
     case .permissionDenied(_, let endpoint):
       return "LocalAPI denied access to \(endpoint) (HTTP 403)"
     case .rateLimited(let retryAfter, _, let endpoint):
@@ -1057,6 +1447,8 @@ extension TailscaleClientError: CustomStringConvertible {
       return "LocalAPI rate-limited \(endpoint) (HTTP 429)"
     case .peerNotFound(let endpoint):
       return "LocalAPI found no matching peer for the lookup on \(endpoint) (HTTP 404)"
+    case .streamOverflow:
+      return "IPN bus event stream queue overflowed configured bounds"
     }
   }
 
@@ -1094,8 +1486,10 @@ extension TailscaleClientError: CustomStringConvertible {
 }
 
 extension TailscaleClientError: LocalizedError {
+  /// A localized description of the client error.
   public var errorDescription: String? { description }
 
+  /// A localized recovery suggestion for the client error.
   public var recoverySuggestion: String? {
     switch self {
     case .transport(let error):
@@ -1126,6 +1520,12 @@ extension TailscaleClientError: LocalizedError {
     case .preconditionFailed:
       return
         "Another client changed this configuration concurrently. Re-fetch it, re-apply your change, and retry the write."
+    case .missingConcurrencyToken:
+      return
+        "Fetch a fresh ServeConfigSnapshot using serveConfigSnapshot() before modifying and writing configuration."
+    case .targetMismatch:
+      return
+        "Ensure the ServeConfigSnapshot was fetched from the same Tailscale client and target daemon performing the update."
     case .permissionDenied:
       return
         "Check the caller's permissions. If a policy gates this operation, supply a justification via TailscaleClient.withAuditReason(_:operation:) before retrying."
@@ -1138,6 +1538,11 @@ extension TailscaleClientError: LocalizedError {
     case .peerNotFound:
       return
         "The queried address or key does not match any peer visible to this node. Verify the address and that the peer is on this tailnet."
+    case .streamOverflow:
+      return
+        "The consumer was too slow to drain the IPN bus event stream. Re-fetch current state using status() and resume watching."
+    case .discovery(let error):
+      return error.recoverySuggestion
     }
   }
 }
@@ -1160,6 +1565,7 @@ public struct VersionDiagnostics: Sendable, Equatable, CustomStringConvertible {
     self.daemonVersion = daemonVersion
   }
 
+  /// A textual description of the version diagnostics.
   public var description: String {
     "swift-tailscale-client \(packageVersion), Tailscale-Cap \(capabilityVersion), "
       + "daemon \(daemonVersion ?? "unknown")"

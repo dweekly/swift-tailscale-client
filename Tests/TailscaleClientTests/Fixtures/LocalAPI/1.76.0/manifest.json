@@ -1,0 +1,107 @@
+{
+  "capability_version": 106,
+  "capture_command": "python3 Scripts/capture-fixtures.py --synthetic --version 1.76.0",
+  "capture_timestamp": "2026-09-18T10:14:51.923781+00:00",
+  "daemon_version": "1.76.0",
+  "endpoints": {
+    "cert_domains": {
+      "file": "cert-domains.json",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/cert-domains",
+      "sha256": "29c71b778f338ddf68a2a2508f5c6153e74887cfeccd01f37e9cf4b1e0fbc797",
+      "swift_model": "[String]"
+    },
+    "derpmap": {
+      "file": "derpmap.json",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/derpmap",
+      "sha256": "1ae7bf201f49fc99c0bdeb041e6744fdd8ccaf53964123ac0cb28d4a391ec2a7",
+      "swift_model": "DERPMap"
+    },
+    "prefs": {
+      "file": "prefs.json",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/prefs",
+      "sha256": "697aace9fe603ee6377aa564ed7856348eaf024827d76db6f66f55705bd0acf2",
+      "swift_model": "Prefs"
+    },
+    "serve_config": {
+      "file": "serve-config.json",
+      "headers": {
+        "Content-Type": "application/json",
+        "ETag": "\"etag-sanitized-1.76.0-001\""
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/serve-config",
+      "sha256": "df0c133bb2bc21136fe7a5dd3dacd8fd2e151f666a0196fd45a71cc5432c0ba9",
+      "swift_model": "ServeConfig"
+    },
+    "status": {
+      "file": "status.json",
+      "headers": {
+        "Content-Type": "application/json",
+        "Tailscale-Version": "1.76.0-tbd25bc2f1bf"
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/status",
+      "sha256": "fe80209da454e186260d33824df33d94e7bd572ea81f1ea1ec56bb9196c96d79",
+      "swift_model": "StatusResponse"
+    },
+    "status_peers_false": {
+      "file": "status_peers_false.json",
+      "headers": {
+        "Content-Type": "application/json",
+        "Tailscale-Version": "1.76.0-tbd25bc2f1bf"
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/status?peers=false",
+      "sha256": "6351e12a1e2940bd0d197c0334b2609e5524b3654ce3006117c1ff80cbcfacb4",
+      "swift_model": "StatusResponse"
+    },
+    "whois": {
+      "file": "whois.json",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "http_status": 200,
+      "method": "GET",
+      "path": "/localapi/v0/whois?addr=100.64.0.1",
+      "sha256": "bc4c07e6a4a7acb3b309273344064d18bc14b9d470da782938e59939319e6349",
+      "swift_model": "WhoIsResponse"
+    }
+  },
+  "is_synthetic": true,
+  "platform": {
+    "arch": "arm64",
+    "flavor": "synthetic",
+    "os": "darwin"
+  },
+  "sanitization": {
+    "rules_applied": [
+      "redact_auth_tokens",
+      "anonymize_ips",
+      "pseudonymize_keys",
+      "pseudonymize_users",
+      "anonymize_tailnet_fqdn",
+      "normalize_etags"
+    ],
+    "sanitizer_version": "1.0.0"
+  },
+  "schema_version": "1.0.0",
+  "upstream_git_commit": "d25bc2f1bfb83c79da58f334a1795c6bf7589255"
+}

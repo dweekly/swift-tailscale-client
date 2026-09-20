@@ -1,0 +1,13 @@
+{
+  "ID": "nExitNodeStable001",
+  "Location": {
+    "City": "San Francisco, CA",
+    "CityCode": "SFO",
+    "Country": "USA",
+    "CountryCode": "US",
+    "Latitude": 37.7749,
+    "Longitude": -122.4194,
+    "Priority": 100
+  },
+  "Name": "exit-node.example.ts.net."
+}

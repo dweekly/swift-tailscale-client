@@ -2,6 +2,13 @@
 
 How this package earns trust in an API surface that upstream labels unstable: spike against real daemons, capture real fixtures, unit-test the parsers to death, and run hermetic integration tests in CI against multiple tailscaled versions.
 
+## Current release scope (2026-09-19)
+
+Required CI is Apple-only: macOS tests and Thread Sanitizer, strict DocC, API
+baselines, and iOS/tvOS/watchOS builds. The Linux/Headscale workflow below is
+retained for manual experiments only; it is not scheduled or required for 1.0.
+Linux compilation and runtime support are not qualified by this release.
+
 ## The spike-first rule
 
 No endpoint is implemented from documentation alone. The sequence for every new surface:
@@ -25,9 +32,9 @@ No endpoint is implemented from documentation alone. The sequence for every new 
 
 ## Test harness architecture
 
-### `TailscaleClientMocks` (shipped library product, v0.4.0)
+### `TailscaleClientMocks` (shipped library product)
 
-Today `MockTransport` and `RequestRecorder` are duplicated privately across three test files, and every copy's `sendStreaming` just throws. They move into a public `TailscaleClientMocks` product that both our suite and downstream consumers use:
+`MockTransport` and `RequestRecorder` are exposed via the public `TailscaleClientMocks` product that both our suite and downstream consumers use:
 
 - **`MockTransport`** — scripted responses keyed by request matcher; records all requests.
 - **Scripted streams** — `sendStreaming` yields a scripted sequence of lines with per-line delays, injected mid-stream errors, and controlled EOF, so the full `watchIPNBus` state machine (skip-bad-line, cancellation, reconnect) is unit-testable.
@@ -36,9 +43,9 @@ Today `MockTransport` and `RequestRecorder` are duplicated privately across thre
 
 Shipping mocks publicly is an adoption feature: apps depending on this package can test their own Tailscale-facing code without a daemon.
 
-### Testable parsers (v0.5.0)
+### Testable parsers
 
-`UnixSocketTransport` currently in-lines HTTP response parsing and chunked-transfer decoding as private functions reachable only through a live socket. They become internal pure types — `HTTPResponseParser`, `ChunkedTransferDecoder` — fed `Data` in unit tests via `@testable import`.
+`HTTPWireFormat` and `ChunkedTransferDecoder` are dedicated internal types fed `Data` directly in unit tests via `@testable import`, separating wire framing from socket transport mechanics.
 
 ## Fixture library
 
@@ -53,7 +60,7 @@ Tests/TailscaleClientTests/Fixtures/
 ```
 
 - Organized by the tailscaled version they were captured from, so decoding tests can assert compatibility across versions.
-- Captured by a documented script (`Scripts/capture-fixtures.sh`, to be added with v0.4.0) that hits a real daemon through the spike commands above and sanitizes keys, IPs, hostnames, and user identifiers.
+- Captured by `Scripts/capture-fixtures.py` (W5) that hits a real daemon through the spike commands above and sanitizes keys, IPs, hostnames, and user identifiers.
 - Streaming fixtures are `.ndjson` — real line sequences including the initial-state burst.
 
 ## Corner-case checklist
@@ -106,7 +113,7 @@ The project has a self-hosted macOS runner with Tailscale installed and logged i
 - **Single version.** The runner tests whatever Tailscale version it has installed — valuable real-world signal, but not a version matrix.
 - **Install-flavor aware discovery.** The workflow's "Configure LocalAPI access" step asks `tailscale debug local-creds` first — Tailscale's own discovery is authoritative for whatever flavor is installed. If the CLI is missing or its answer doesn't respond, it falls back through: unix sockets (Homebrew/standalone tailscaled), the standalone .pkg app (port from the `/Library/Tailscale/ipnport` symlink, token from the *contents* of the adjacent `sameuserproof-<port>` file — the runner user must be in the `admin` group to read it), then the App Store app (port and token encoded in the sameuserproof *filename* inside its Group Container — needs Full Disk Access). Every loopback candidate must answer an authenticated status request before it is used, because sameuserproof files from a previously installed flavor linger after switching and would otherwise be trusted blindly.
 
-### Hermetic CI (v0.5.0, headscale in `integration.yml`)
+### Hermetic CI (Headscale in `integration-linux.yml`)
 
 The self-hosted runner gives one real macOS daemon; the version matrix and mutation-safe environment need hermetic infrastructure, and *hosted* macOS runners can't run tailscaled — **Linux runners can**. Design:
 

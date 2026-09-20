@@ -1,0 +1,19 @@
+[
+  {
+    "ControlURL": "https://controlplane.tailscale.com",
+    "Created": "2024-01-01T00:00:00Z",
+    "ID": "48d1",
+    "Name": "user1@example.com",
+    "NetworkProfile": {
+      "DisplayName": "example-corp",
+      "DomainName": "example.ts.net",
+      "MagicDNSName": "example-device.example.ts.net"
+    },
+    "NodeID": "nStableSelf001",
+    "UserProfile": {
+      "DisplayName": "Self User",
+      "ID": 1000000000000001,
+      "LoginName": "user1@example.com"
+    }
+  }
+]

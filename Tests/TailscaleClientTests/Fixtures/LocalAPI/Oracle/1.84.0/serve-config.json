@@ -1,0 +1,45 @@
+{
+  "AllowFunnel": {
+    "example-device.example.ts.net:443": true
+  },
+  "CustomVendorSetting": {
+    "FeatureActive": true,
+    "RateLimit": 5000000000
+  },
+  "Foreground": {
+    "session-abc123": {
+      "TCP": {
+        "8443": {
+          "HTTPS": true
+        }
+      }
+    }
+  },
+  "TCP": {
+    "10000": {
+      "TCPForward": "127.0.0.1:8080",
+      "TerminateTLS": "example-device.example.ts.net"
+    },
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "example-device.example.ts.net:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:3000"
+        },
+        "/motd": {
+          "Text": "hello from the tailnet"
+        },
+        "/old": {
+          "Redirect": "https://example.com/new"
+        },
+        "/static": {
+          "Path": "/var/www/"
+        }
+      }
+    }
+  }
+}

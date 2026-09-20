@@ -1,0 +1,52 @@
+{
+  "capability_level": 144,
+  "generated_at": "2026-09-18T10:20:24Z",
+  "schema_version": "1.0.0",
+  "upstream_commit": "4c4d1c35f83a21c6069ae09de69b246ed1993f3e",
+  "versions": {
+    "1.76.0": {
+      "files": [
+        "status.json",
+        "status_peers_false.json",
+        "whois.json",
+        "prefs.json",
+        "serve-config.json",
+        "derpmap.json",
+        "cert-domains.json"
+      ]
+    },
+    "1.84.0": {
+      "files": [
+        "status.json",
+        "status_peers_false.json",
+        "whois.json",
+        "prefs.json",
+        "serve-config.json",
+        "derpmap.json",
+        "cert-domains.json"
+      ]
+    },
+    "1.96.4": {
+      "files": [
+        "status.json",
+        "status_peers_false.json",
+        "whois.json",
+        "prefs.json",
+        "serve-config.json",
+        "derpmap.json",
+        "cert-domains.json"
+      ]
+    },
+    "1.98.0": {
+      "files": [
+        "status.json",
+        "status_peers_false.json",
+        "whois.json",
+        "prefs.json",
+        "serve-config.json",
+        "derpmap.json",
+        "cert-domains.json"
+      ]
+    }
+  }
+}

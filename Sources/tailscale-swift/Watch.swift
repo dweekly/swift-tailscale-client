@@ -20,6 +20,14 @@ struct WatchCommand: AsyncParsableCommand {
   @Flag(name: .long, help: "Include all initial state in first message")
   var allInitial = false
 
+  @Flag(name: .long, help: "Enable automatic reconnection on connection drop")
+  var reconnect = false
+
+  @Flag(
+    name: .long,
+    help: "Stream full IPNBusEvent lifecycle events (connected, disconnected, stateGap, etc.)")
+  var events = false
+
   @MainActor
   func run() async throws {
     let client = TailscaleClient()
@@ -44,21 +52,67 @@ struct WatchCommand: AsyncParsableCommand {
     var isFirstMessage = true
 
     do {
-      let stream = try await client.watchIPNBus(options: options)
-
-      for try await notify in stream {
-        if json {
-          printJSON(notify)
-        } else {
-          printFormatted(notify, isFirst: isFirstMessage)
+      if events {
+        let stream = try await client.watchIPNBusEvents(
+          options: options,
+          retryPolicy: reconnect ? .default : .none,
+          bounds: .default
+        )
+        for try await event in stream {
+          if json {
+            printEventJSON(event)
+          } else {
+            printFormattedEvent(event, isFirst: isFirstMessage)
+          }
+          isFirstMessage = false
+          fflush(nil)
         }
-        isFirstMessage = false
-        fflush(nil)
+      } else {
+        let stream = try await client.watchIPNBus(
+          options: options,
+          reconnect: reconnect ? .default : nil
+        )
+
+        for try await notify in stream {
+          if json {
+            printJSON(notify)
+          } else {
+            printFormatted(notify, isFirst: isFirstMessage)
+          }
+          isFirstMessage = false
+          fflush(nil)
+        }
       }
       FileHandle.standardError.write(Data("Stream ended\n".utf8))
     } catch {
       FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
       throw error
+    }
+  }
+
+  private func printEventJSON(_ event: IPNBusEvent) {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    encoder.dateEncodingStrategy = .iso8601
+    switch event {
+    case .notification(let notify):
+      if let data = try? encoder.encode(notify),
+        let string = String(data: data, encoding: .utf8)
+      {
+        print("{\"type\":\"notification\",\"payload\":\(string)}")
+      }
+    case .lifecycle(let lifecycle):
+      print("{\"type\":\"lifecycle\",\"lifecycle\":\"\(lifecycle)\"}")
+    }
+  }
+
+  private func printFormattedEvent(_ event: IPNBusEvent, isFirst: Bool) {
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    switch event {
+    case .notification(let notify):
+      printFormatted(notify, isFirst: isFirst)
+    case .lifecycle(let lifecycle):
+      print("[\(timestamp)] ⚡ Lifecycle: \(lifecycle)")
     }
   }
 

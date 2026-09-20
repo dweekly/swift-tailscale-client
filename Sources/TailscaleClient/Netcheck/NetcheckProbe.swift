@@ -200,7 +200,7 @@ enum NetcheckProbe {
 
 extension Duration {
   /// The duration in seconds as a floating-point value.
-  var timeIntervalValue: Double {
+  fileprivate var timeIntervalValue: Double {
     Double(components.seconds) + Double(components.attoseconds) / 1e18
   }
 }

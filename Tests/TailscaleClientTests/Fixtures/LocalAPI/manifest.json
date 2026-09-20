@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Master index of versioned Tailscale LocalAPI fixtures for swift-tailscale-client",
+  "latest_stable": "1.98.0",
+  "mainline_versions": [
+    "1.76.0",
+    "1.84.0",
+    "1.96.4"
+  ],
+  "schema_version": "1.0.0",
+  "supported_floor": "1.76.0",
+  "versions": {
+    "1.76.0": {
+      "endpoint_count": 7,
+      "manifest": "1.76.0/manifest.json",
+      "path": "1.76.0",
+      "tier": "floor"
+    },
+    "1.84.0": {
+      "endpoint_count": 9,
+      "manifest": "1.84.0/manifest.json",
+      "path": "1.84.0",
+      "tier": "intermediate"
+    },
+    "1.96.4": {
+      "endpoint_count": 12,
+      "manifest": "1.96.4/manifest.json",
+      "path": "1.96.4",
+      "tier": "mainline"
+    },
+    "1.98.0": {
+      "endpoint_count": 13,
+      "manifest": "1.98.0/manifest.json",
+      "path": "1.98.0",
+      "tier": "latest_stable"
+    }
+  }
+}

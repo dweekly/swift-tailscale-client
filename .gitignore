@@ -11,3 +11,5 @@ DerivedData/
 *~
 .claude/worktrees/
 __pycache__/
+.agents/
+soak-report-*.json

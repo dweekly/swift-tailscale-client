@@ -1,0 +1,19 @@
+{
+  "svc:metrics": {
+    "Actions": [
+      {
+        "DisplayName": "Prometheus Scrape",
+        "Port": 9090,
+        "Type": "prometheus"
+      }
+    ],
+    "Addrs": [
+      "100.64.0.3"
+    ],
+    "DisplayName": "Internal Metrics",
+    "Name": "svc:metrics",
+    "Ports": [
+      "tcp:9090"
+    ]
+  }
+}

@@ -47,7 +47,7 @@ let package = Package(
             name: "TailscaleClientTests",
             dependencies: ["TailscaleClient", "TailscaleClientMocks"],
             resources: [
-                .process("Fixtures")
+                .copy("Fixtures")
             ]
         )
     ],

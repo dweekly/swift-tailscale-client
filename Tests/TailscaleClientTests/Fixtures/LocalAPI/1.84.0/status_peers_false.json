@@ -1,0 +1,85 @@
+{
+  "AuthURL": "",
+  "BackendState": "Running",
+  "CertDomains": [
+    "example-device.example.ts.net"
+  ],
+  "ClientVersion": {
+    "RunningLatest": true
+  },
+  "CurrentTailnet": {
+    "MagicDNSEnabled": true,
+    "MagicDNSSuffix": "example.ts.net",
+    "Name": "example.ts.net"
+  },
+  "HaveNodeKey": true,
+  "Health": [],
+  "MagicDNSSuffix": "example.ts.net",
+  "Peer": {},
+  "Self": {
+    "Active": false,
+    "Addrs": [
+      "198.51.100.11:41641"
+    ],
+    "AllowedIPs": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0:ab12:4843:cd96:6200:0001/128"
+    ],
+    "CapMap": {
+      "https://tailscale.com/cap/ssh": null,
+      "tailnet.maxKeyDuration": [
+        86400
+      ]
+    },
+    "Capabilities": [
+      "https",
+      "https://tailscale.com/cap/ssh",
+      "tailnet.maxKeyDuration"
+    ],
+    "Created": "2024-01-01T00:00:00Z",
+    "CurAddr": "",
+    "DNSName": "example-device.example.ts.net.",
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "HostName": "example-device",
+    "ID": "nSelfExample",
+    "InEngine": true,
+    "InMagicSock": true,
+    "InNetworkMap": true,
+    "KeyExpiry": "2025-01-01T00:00:00Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "NoFileSharingReason": "",
+    "OS": "macOS",
+    "Online": true,
+    "PeerAPIURL": [
+      "http://100.64.0.1:12345"
+    ],
+    "PeerRelay": "",
+    "PublicKey": "nodekey:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "Relay": "nyc",
+    "RxBytes": 1024,
+    "TaildropTarget": 0,
+    "TailscaleIPs": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0:ab12:4843:cd96:6200:0001"
+    ],
+    "TxBytes": 2048,
+    "UserID": 1000000000000001
+  },
+  "TUN": true,
+  "TailscaleIPs": [
+    "100.64.0.1",
+    "fd7a:115c:a1e0:ab12:4843:cd96:6200:0001"
+  ],
+  "User": {
+    "1000000000000001": {
+      "DisplayName": "Self User",
+      "ID": 1000000000000001,
+      "LoginName": "user1@example.com",
+      "ProfilePicURL": "https://example.com/avatars/user1.png"
+    }
+  },
+  "Version": "1.84.0"
+}

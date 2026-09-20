@@ -38,6 +38,25 @@ public enum NetworkInterfaceDiscovery {
 
     /// Whether this is a point-to-point interface (typical for TUN/TAP).
     public let isPointToPoint: Bool
+
+    /// Creates a network interface info description.
+    public init(
+      name: String,
+      address: String,
+      isIPv6: Bool,
+      isUp: Bool,
+      isRunning: Bool,
+      isLoopback: Bool,
+      isPointToPoint: Bool
+    ) {
+      self.name = name
+      self.address = address
+      self.isIPv6 = isIPv6
+      self.isUp = isUp
+      self.isRunning = isRunning
+      self.isLoopback = isLoopback
+      self.isPointToPoint = isPointToPoint
+    }
   }
 
   /// Returns all network interfaces with their IP addresses.

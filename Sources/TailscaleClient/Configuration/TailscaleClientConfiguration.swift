@@ -24,6 +24,14 @@ public struct TailscaleClientConfiguration: Sendable {
   public var requestTimeout: Duration?
   /// Transport responsible for executing HTTP requests. Defaults to the built-in implementation.
   public var transport: any TailscaleTransport
+  /// Captures how the LocalAPI endpoint was resolved, governing recovery and re-discovery behavior.
+  public var endpointSource: EndpointSource
+
+  /// An opaque identifier representing the target endpoint of this configuration,
+  /// used for target-binding validation across snapshots.
+  public var targetIdentifier: String {
+    endpoint.description
+  }
 
   /// The default for ``capabilityVersion``, pinned to a tested upstream
   /// revision — never bumped to "latest" without compatibility evidence.
@@ -47,7 +55,7 @@ public struct TailscaleClientConfiguration: Sendable {
   /// This package's own release version, surfaced in
   /// ``TailscaleClient/versionDiagnostics()``. Kept in sync with the
   /// CHANGELOG by `Scripts/check-release-consistency.sh`.
-  public static let packageVersion = "0.12.0"
+  public static let packageVersion = "1.0.0"
 
   /// Creates a new configuration with explicit settings.
   ///
@@ -58,18 +66,36 @@ public struct TailscaleClientConfiguration: Sendable {
   ///     (defaults to ``defaultCapabilityVersion``).
   ///   - requestTimeout: Per-request deadline (defaults to 30 seconds; nil disables).
   ///   - transport: Transport implementation for executing requests (defaults to URLSessionTailscaleTransport).
+  ///   - endpointSource: Origin and recovery policy of the endpoint (defaults to `.pinned(endpoint)`).
   public init(
     endpoint: TailscaleEndpoint,
     authToken: String?,
     capabilityVersion: Int = TailscaleClientConfiguration.defaultCapabilityVersion,
     requestTimeout: Duration? = .seconds(30),
-    transport: any TailscaleTransport = URLSessionTailscaleTransport()
+    transport: any TailscaleTransport = URLSessionTailscaleTransport(),
+    endpointSource: EndpointSource? = nil
   ) {
     self.endpoint = endpoint
     self.authToken = authToken
     self.capabilityVersion = capabilityVersion
     self.requestTimeout = requestTimeout
     self.transport = transport
+    self.endpointSource = endpointSource ?? .pinned(endpoint)
+  }
+
+  /// Internal initializer for automatic discovery results.
+  init(
+    discovery: LocalAPIDiscovery,
+    result: LocalAPIDiscovery.Result,
+    requestTimeout: Duration? = .seconds(30),
+    transport: any TailscaleTransport = URLSessionTailscaleTransport()
+  ) {
+    self.endpoint = result.endpoint
+    self.authToken = result.authToken
+    self.capabilityVersion = result.capabilityVersion
+    self.requestTimeout = requestTimeout
+    self.transport = transport
+    self.endpointSource = .automatic(discovery)
   }
 
   /// Returns a configuration discovered from the current process environment and platform defaults.
@@ -81,33 +107,62 @@ public struct TailscaleClientConfiguration: Sendable {
   /// Discovery order:
   /// 1. Environment variable overrides (`TAILSCALE_LOCALAPI_URL`, `TAILSCALE_LOCALAPI_SOCKET`, etc.)
   /// 2. Unix domain sockets (Homebrew: `/var/run/tailscaled.socket`, System: `/Library/Tailscale/Data/tailscaled.sock`)
-  /// 3. Default fallback socket path
+  /// 3. macOS standalone `.pkg` app (`/Library/Tailscale/ipnport` symlink)
+  /// 4. Default fallback socket path
   public static var `default`: TailscaleClientConfiguration {
     `default`(allowMacOSAppStoreDiscovery: false)
   }
 
-  /// Returns a configuration with explicit control over macOS App Store discovery.
+  /// Returns a configuration with explicit control over macOS App Store discovery and transport injection.
   ///
-  /// - Parameter allowMacOSAppStoreDiscovery: If `true`, enables discovery of the macOS App Store GUI's
-  ///   loopback API by scanning Group Containers. **WARNING:** This will trigger a macOS TCC permission
-  ///   popup asking the user to allow access to another app's data. Only enable this if:
-  ///   - Your users have the App Store version of Tailscale (not Homebrew/standalone)
-  ///   - You have explained to users why this permission is needed
-  ///   - Unix socket discovery has failed
-  ///
-  ///   When `false` (the default), only Unix domain sockets and environment variable overrides are used,
-  ///   which works with Homebrew (`brew install tailscale`) and standalone `tailscaled` installations
-  ///   without any permission popups.
+  /// - Parameters:
+  ///   - allowMacOSAppStoreDiscovery: If `true`, enables discovery of the macOS App Store GUI's
+  ///     loopback API by scanning Group Containers. **WARNING:** This will trigger a macOS TCC permission
+  ///     popup asking the user to allow access to another app's data. Only enable this if:
+  ///     - Your users have the App Store version of Tailscale (not Homebrew/standalone)
+  ///     - You have explained to users why this permission is needed
+  ///     - Unix socket discovery has failed
+  ///   - transport: The transport used to execute HTTP requests (defaults to URLSessionTailscaleTransport).
   ///
   /// - Returns: A configuration suitable for connecting to the LocalAPI.
-  public static func `default`(allowMacOSAppStoreDiscovery: Bool) -> TailscaleClientConfiguration {
+  public static func `default`(
+    allowMacOSAppStoreDiscovery: Bool = false,
+    transport: any TailscaleTransport = URLSessionTailscaleTransport()
+  ) -> TailscaleClientConfiguration {
     let discovery = LocalAPIDiscovery(
       allowMacOSAppStoreDiscovery: allowMacOSAppStoreDiscovery
-    ).discover()
+    )
+    let result = discovery.discover()
     return TailscaleClientConfiguration(
-      endpoint: discovery.endpoint,
-      authToken: discovery.authToken,
-      capabilityVersion: discovery.capabilityVersion)
+      discovery: discovery,
+      result: result,
+      requestTimeout: .seconds(30),
+      transport: transport
+    )
+  }
+
+  /// Asynchronously discovers and constructs a configuration, executing candidate probes off the calling actor.
+  ///
+  /// - Parameters:
+  ///   - allowMacOSAppStoreDiscovery: Whether to opt into macOS App Store GUI discovery.
+  ///   - requestTimeout: Per-request deadline (defaults to 30 seconds).
+  ///   - transport: The transport used to execute HTTP requests (defaults to URLSessionTailscaleTransport).
+  /// - Returns: A discovered client configuration marked `.automatic`.
+  public static func discover(
+    allowMacOSAppStoreDiscovery: Bool = false,
+    requestTimeout: Duration? = .seconds(30),
+    transport: any TailscaleTransport = URLSessionTailscaleTransport()
+  ) async throws -> TailscaleClientConfiguration {
+    let discovery = LocalAPIDiscovery(
+      allowMacOSAppStoreDiscovery: allowMacOSAppStoreDiscovery
+    )
+    let result = try await discovery.discoverAsync()
+    return TailscaleClientConfiguration(
+      discovery: discovery,
+      result: result,
+      requestTimeout: requestTimeout,
+      transport: transport
+    )
   }
 }
 
@@ -119,9 +174,10 @@ extension TailscaleClientConfiguration: CustomStringConvertible, CustomDebugStri
     let timeout = requestTimeout.map { "\($0)" } ?? "nil"
     return
       "TailscaleClientConfiguration(endpoint: \(endpoint), authToken: \(token), "
-      + "capabilityVersion: \(capabilityVersion), requestTimeout: \(timeout))"
+      + "capabilityVersion: \(capabilityVersion), requestTimeout: \(timeout), endpointSource: \(endpointSource))"
   }
 
+  /// A textual description of the configuration suitable for debugging.
   public var debugDescription: String { description }
 }
 
@@ -138,6 +194,7 @@ extension TailscaleClientConfiguration: CustomReflectable {
         "capabilityVersion": capabilityVersion,
         "requestTimeout": requestTimeout.map { "\($0)" } ?? "nil",
         "transport": String(describing: type(of: transport)),
+        "endpointSource": String(describing: endpointSource),
       ],
       displayStyle: .struct)
   }

@@ -1,0 +1,52 @@
+{
+  "Node": {
+    "ID": 1000000000000001,
+    "StableID": "nStableSelf001",
+    "Name": "example-device.example.ts.net.",
+    "User": 1000000000000001,
+    "Key": "nodekey:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "KeyExpiry": "2025-06-15T12:00:00Z",
+    "Machine": "mkey:0101010101010101010101010101010101010101010101010101010101010101",
+    "DiscoKey": "discokey:d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d01d",
+    "Addresses": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0:ab12:4843:cd96:6200:0001/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0:ab12:4843:cd96:6200:0001/128"
+    ],
+    "Endpoints": [
+      "198.51.100.11:41641"
+    ],
+    "DERP": "https://controlplane.tailscale.com/derpmap/default",
+    "Hostinfo": {
+      "Hostname": "example-device",
+      "OS": "macOS",
+      "OSVersion": "14.0.0",
+      "SSH": true,
+      "TailscaleVersion": "1.76.0"
+    },
+    "Created": "2024-01-01T00:00:00Z",
+    "Tags": [
+      "tag:server"
+    ],
+    "Expired": false,
+    "Online": true,
+    "LastSeen": "2024-01-01T00:00:00Z",
+    "ComputedName": "example-device",
+    "ComputedNameWithHost": "example-device (example-device)",
+    "IsExitNode": false
+  },
+  "UserProfile": {
+    "ID": 1000000000000001,
+    "LoginName": "user1@example.com",
+    "DisplayName": "Self User",
+    "ProfilePicURL": "https://example.com/avatars/user1.png"
+  },
+  "CapMap": {
+    "tailnet.maxKeyDuration": [
+      86400
+    ]
+  }
+}

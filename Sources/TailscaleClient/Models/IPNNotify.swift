@@ -90,6 +90,7 @@ public struct IPNNotify: Codable, Sendable, Equatable {
     case filesWaiting = "FilesWaiting"
   }
 
+  /// Creates an IPN notification instance for tests, previews, or fixtures.
   public init(
     version: String? = nil,
     sessionID: String? = nil,
@@ -266,12 +267,14 @@ public enum IPNState: Int, Codable, Sendable, Equatable, CustomStringConvertible
   /// decoding never fails on it.
   case other = -1
 
+  /// Decodes an IPN state from an integer raw value, falling back to `.other` for unrecognized values.
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     let rawValue = try container.decode(Int.self)
     self = IPNState(rawValue: rawValue) ?? .other
   }
 
+  /// A textual description of the IPN state.
   public var description: String {
     switch self {
     case .noState: return "NoState"
@@ -319,6 +322,7 @@ public struct EngineStatus: Codable, Sendable, Equatable {
     case liveDERPs = "LiveDERPs"
   }
 
+  /// Creates an engine status instance for tests, previews, or fixtures.
   public init(rBytes: Int64 = 0, wBytes: Int64 = 0, numLive: Int = 0, liveDERPs: Int = 0) {
     self.rBytes = rBytes
     self.wBytes = wBytes
@@ -336,6 +340,7 @@ public struct HealthState: Codable, Sendable, Equatable {
     case warnings = "Warnings"
   }
 
+  /// Creates a health state instance for tests, previews, or fixtures.
   public init(warnings: [String: HealthWarning]? = nil) {
     self.warnings = warnings
   }
@@ -372,6 +377,7 @@ public struct HealthWarning: Codable, Sendable, Equatable {
     case impactsConnectivity = "ImpactsConnectivity"
   }
 
+  /// Creates a health warning instance for tests, previews, or fixtures.
   public init(
     warningCode: String? = nil,
     severity: String? = nil,
@@ -392,8 +398,10 @@ public struct HealthWarning: Codable, Sendable, Equatable {
 /// These are bitmask flags that control what notifications are sent
 /// and what initial state is included in the first message.
 public struct NotifyWatchOpt: OptionSet, Sendable {
+  /// The raw bitmask value.
   public let rawValue: UInt64
 
+  /// Creates a set of watch options from a raw integer bitmask.
   public init(rawValue: UInt64) {
     self.rawValue = rawValue
   }

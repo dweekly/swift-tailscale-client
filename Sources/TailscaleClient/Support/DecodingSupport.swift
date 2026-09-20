@@ -54,3 +54,24 @@ extension KeyedDecodingContainer {
     return TailscaleDateParser.parse(isoString)
   }
 }
+
+/// An open-ended coding key used to dynamically decode and encode unmodeled JSON fields.
+package struct AnyCodingKey: CodingKey, Hashable, Sendable {
+  package var stringValue: String
+  package var intValue: Int?
+
+  package init?(stringValue: String) {
+    self.stringValue = stringValue
+    self.intValue = Int(stringValue)
+  }
+
+  package init?(intValue: Int) {
+    self.stringValue = "\(intValue)"
+    self.intValue = intValue
+  }
+
+  package init(string: String) {
+    self.stringValue = string
+    self.intValue = Int(string)
+  }
+}

@@ -11,10 +11,11 @@ import TailscaleClient
 public func addTCPForward(port: UInt16, to target: String) async throws {
   let client = TailscaleClient()
   for _ in 0..<3 {
-    var config = try await client.serveConfig()  // snapshot carries the ETag
+    let snapshot = try await client.serveConfigSnapshot()
+    var config = snapshot.config
     config.tcp[port] = TCPPortHandler(tcpForward: target)
     do {
-      try await client.setServeConfig(config)
+      _ = try await client.setServeConfig(config, matching: snapshot)
       return
     } catch TailscaleClientError.preconditionFailed {
       continue  // someone else won the race — rebase on their change and retry
@@ -27,9 +28,10 @@ public func addTCPForward(port: UInt16, to target: String) async throws {
 /// Removes the forward added above, with the same concurrency discipline.
 public func removeTCPForward(port: UInt16) async throws {
   let client = TailscaleClient()
-  var config = try await client.serveConfig()
+  let snapshot = try await client.serveConfigSnapshot()
+  var config = snapshot.config
   config.tcp[port] = nil
-  try await client.setServeConfig(config)
+  _ = try await client.setServeConfig(config, matching: snapshot)
 }
 
 /// Fetches this node's TLS credential for its first cert domain. The first

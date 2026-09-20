@@ -34,7 +34,15 @@ jobs:
         run: swift build -v
 
       - name: Run tests
-        run: swift test -v --enable-code-coverage
+        run: python3 Scripts/ci-test-report.py --lane test_macos --member unit --output "$RUNNER_TEMP/test-reports/unit.json" -- swift test -v --enable-code-coverage
+
+      - name: Upload test report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-test_macos
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
 
       - name: Check code coverage
         run: |
@@ -93,31 +101,6 @@ jobs:
           swift build --package-path Examples/Recipes
           swift test --package-path Examples/Recipes
 
-  test-linux:
-    name: Test on Linux
-    runs-on: ubuntu-24.04
-    container: swift:6.1
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Check Swift version
-        run: swift --version
-
-      - name: Build
-        run: swift build -v
-
-      - name: Run tests
-        run: swift test -v
-
-      - name: Build example (links the library as an external consumer)
-        run: swift build --package-path Examples/StatusDemo
-
-      - name: Build and test recipes (compiled documentation snippets)
-        run: |
-          swift build --package-path Examples/Recipes
-          swift test --package-path Examples/Recipes
-
   docs-consistency:
     name: Docs consistency
     runs-on: ubuntu-24.04
@@ -128,6 +111,13 @@ jobs:
       # Version drift across README/DocC/SKILL/coverage/CHANGELOG has
       # slipped through review three separate times; a 5-second grep gate
       # is cheaper than another review round.
+      - name: Test release evidence and soak tooling
+        run: |
+          python3 Scripts/test-ci-test-report.py
+          python3 Scripts/test-api-baseline.py
+          python3 Scripts/test-release-rehearsal.py
+          python3 Scripts/test-soak-verification.py
+
       - name: Check advertised versions agree
         run: ./Scripts/check-release-consistency.sh
 
@@ -156,16 +146,13 @@ jobs:
 
   docs-build-strict:
     name: DocC (strict)
-    runs-on: ubuntu-24.04
-    container: swift:6.1
+    runs-on: macos-26
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       # Warnings-as-errors catches broken ``symbol`` links and malformed
       # directives on every PR instead of at deploy time.
-      # shell: bash because the swift:6.1 container's default `sh` is dash,
-      # which rejects `set -o pipefail`.
       - name: Build documentation strictly
         shell: bash
         run: |
@@ -179,10 +166,8 @@ jobs:
 
       # Regression floors on the abstract-coverage table above (measured
       # v0.12.0: Types 93%, Members 70%, Globals 1.6%). The pre-1.0 API
-      # audit raises these to 100 — the 1.0 criterion is no undocumented
-      # public symbols; until then this fails any PR that loses ground.
-      # awk, not python: the swift:6.1 container ships neither python3
-      # nor perl.
+      # PR 14 Part 1 enforces 100% authored public symbol coverage, raising floors
+      # to Types >= 95% and Members >= 80% (Globals 1% reflects synthesized operators).
       - name: Check documentation coverage floors
         shell: bash
         run: |
@@ -191,7 +176,7 @@ jobs:
               pct = $3; sub(/%/, "", pct); rows[$1] = pct
             }
             END {
-              floors["Types"] = 90; floors["Members"] = 68; floors["Globals"] = 1
+              floors["Types"] = 95; floors["Members"] = 80; floors["Globals"] = 1
               bad = 0
               for (k in floors) {
                 if (!(k in rows)) {
@@ -210,9 +195,8 @@ jobs:
 
   test-tsan:
     name: Test with Thread Sanitizer
-    runs-on: ubuntu-24.04
-    container: swift:6.1
-    # TSan roughly doubles runtime, so this gets headroom over test-linux.
+    runs-on: macos-26
+    # TSan gets extra headroom for the concurrency-heavy socket tests.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -224,7 +208,15 @@ jobs:
         run: swift build --sanitize=thread
 
       - name: Run tests (thread sanitizer)
-        run: swift test --sanitize=thread
+        run: python3 Scripts/ci-test-report.py --lane test_tsan --member unit --output "$RUNNER_TEMP/test-reports/unit.json" -- swift test --sanitize=thread
+
+      - name: Upload test report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-test_tsan
+          path: ${{ runner.temp }}/test-reports/
+          if-no-files-found: error
 
   build-platforms:
     name: Build (${{ matrix.platform }})
@@ -250,3 +242,95 @@ jobs:
             -destination '${{ matrix.destination }}' \
             -skipPackagePluginValidation \
             -skipMacroValidation
+
+  api-baseline:
+    name: Check API Baseline
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check API baseline against v0.12.0
+        run: ./Scripts/check-api-baseline.sh
+
+  all-required:
+    name: All Required Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - test-macos
+      - docs-consistency
+      - docs-build-strict
+      - test-tsan
+      - build-platforms
+      - api-baseline
+    steps:
+      - name: Evaluate required job statuses
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 -c '
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+
+          expected = {
+              "test-macos",
+              "docs-consistency",
+              "docs-build-strict",
+              "test-tsan",
+              "build-platforms",
+              "api-baseline",
+          }
+          missing = expected - set(needs.keys())
+          if missing:
+              print(f"\n::error::Missing expected required CI jobs in needs context: {sorted(missing)}")
+              sys.exit(1)
+
+          failed = []
+          skipped = []
+          successful = []
+
+          print("==================================================")
+          print("       EVALUATING REQUIRED MERGE GATES            ")
+          print("==================================================")
+          for job_id, details in sorted(needs.items()):
+              res = details.get("result", "unknown")
+              print(f"[{res.upper():9}] {job_id}")
+              if res == "success":
+                  successful.append(job_id)
+              elif res == "skipped":
+                  skipped.append(job_id)
+              else:
+                  failed.append((job_id, res))
+
+          print("--------------------------------------------------")
+          print(f"Total: {len(needs)} | Succeeded: {len(successful)} | Failed: {len(failed)} | Skipped: {len(skipped)}")
+          print("==================================================")
+
+          has_errors = False
+          if failed:
+              has_errors = True
+              print("\n::error::The following required CI jobs failed or were cancelled:")
+              for job_id, res in failed:
+                  print(f"  ❌ {job_id} (result: {res})")
+
+          if skipped:
+              has_errors = True
+              print("\n::error::The following required CI jobs were unexpectedly skipped:")
+              for job_id in skipped:
+                  print(f"  ⚠️ {job_id} (result: skipped)")
+
+          if has_errors:
+              print("\n❌ MERGE BLOCKED: One or more required checks did not succeed.")
+              sys.exit(1)
+
+          print("\n✅ MERGE ALLOWED: All required checks passed successfully.")
+          sys.exit(0)
+          '
+

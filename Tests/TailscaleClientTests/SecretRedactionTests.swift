@@ -139,6 +139,21 @@ final class SecretRedactionTests: XCTestCase {
       }
     }
   #endif
+
+  func testDiscoveryErrorDescriptionRedactsSecretInPath() {
+    let rawPath = "/tmp/containers/sameuserproof-53422-\(secret)"
+    let error = LocalAPIDiscoveryError.inaccessible(path: rawPath, reason: "Permission denied")
+    assertFree(of: secret, "\(error)", "LocalAPIDiscoveryError.description")
+    assertFree(of: secret, error.errorDescription ?? "", "LocalAPIDiscoveryError.errorDescription")
+    assertFree(
+      of: secret,
+      error.recoverySuggestion ?? "",
+      "LocalAPIDiscoveryError.recoverySuggestion"
+    )
+
+    let clientError = TailscaleClientError.discovery(error)
+    assertFree(of: secret, "\(clientError)", "TailscaleClientError.description")
+  }
 }
 
 /// Minimal thread-safe line collector for the log sink.

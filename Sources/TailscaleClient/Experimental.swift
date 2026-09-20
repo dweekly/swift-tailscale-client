@@ -42,7 +42,7 @@ public struct ExperimentalClient: Sendable {
   /// - Throws: ``TailscaleClientError/endpointUnavailable(endpoint:feature:)`` when the
   ///   daemon was built without debug support; other `TailscaleClientError`
   ///   cases on failure.
-  public func bugreport(
+  public func bugReport(
     note: String? = nil, diagnose: Bool = false, record: Bool = false
   ) async throws -> String {
     let endpoint = "/localapi/v0/bugreport"
@@ -60,6 +60,14 @@ public struct ExperimentalClient: Sendable {
     let marker = try await client.performRawRequest(
       request, endpoint: endpoint, optionalEndpoint: true, feature: "debug")
     return marker.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Deprecated alias for ``bugReport(note:diagnose:record:)`` aligned with Swift naming guidelines.
+  @available(*, deprecated, renamed: "bugReport(note:diagnose:record:)")
+  public func bugreport(
+    note: String? = nil, diagnose: Bool = false, record: Bool = false
+  ) async throws -> String {
+    try await bugReport(note: note, diagnose: diagnose, record: record)
   }
 
   /// Dumps the stacks of every goroutine in the daemon — the moral
@@ -133,20 +141,47 @@ public struct ExperimentalClient: Sendable {
   ///   connection cannot be established.
   public func logtap() async throws -> AsyncThrowingStream<LogtapEntry, Error> {
     let endpoint = "/localapi/v0/logtap"
-    let request = TailscaleRequest(path: endpoint)
+    var request = TailscaleRequest(path: endpoint)
+    if let reason = TailscaleClient.auditReason, !reason.isEmpty,
+      request.additionalHeaders["X-Tailscale-Reason"] == nil
+    {
+      request.additionalHeaders["X-Tailscale-Reason"] =
+        Data(reason.utf8).base64EncodedString()
+    }
     let configuration = client.configuration
+    let finalRequest = request
 
-    let lineStream: AsyncThrowingStream<Data, Error>
+    let response: StreamingResponse
     do {
-      lineStream = try await TailscaleClient.withDeadline(
+      response = try await TailscaleClient.withDeadline(
         configuration.requestTimeout, endpoint: endpoint
       ) {
-        try await configuration.transport.sendStreaming(request, configuration: configuration)
+        try await configuration.transport.sendStreaming(finalRequest, configuration: configuration)
       }
     } catch let transportError as TailscaleTransportError {
       throw TailscaleClientError.transport(transportError)
     }
 
+    await client.recordObservedDaemonVersion(from: response.headers)
+
+    guard (200..<300).contains(response.statusCode) else {
+      let errorBody = await TailscaleClient.consumeBoundedErrorBody(response.body)
+      let fakeResponse = TailscaleResponse(
+        statusCode: response.statusCode,
+        data: errorBody,
+        headers: response.headers
+      )
+      if let error = TailscaleClient.commonStatusError(
+        fakeResponse, endpoint: endpoint, optionalEndpoint: true, feature: "Logtail"
+      ) {
+        throw error
+      }
+      throw TailscaleClientError.unexpectedStatus(
+        code: response.statusCode, body: errorBody, endpoint: endpoint
+      )
+    }
+
+    let lineStream = response.body
     return AsyncThrowingStream { continuation in
       let task = Task {
         do {

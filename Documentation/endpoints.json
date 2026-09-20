@@ -155,7 +155,7 @@
       "methods": [
         "GET (stream)"
       ],
-      "symbol": "watchIPNBus(options:reconnect:onUndecodableLine:)",
+      "symbol": "watchIPNBus(options:reconnect:onUndecodableLine:), watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)",
       "access": "read",
       "gate": "HasIPNBus",
       "upstream_maturity": "unstable",
@@ -630,7 +630,7 @@
       "upstream_maturity": "unspecified",
       "swift_support": "supported",
       "upstream_symbol": "ProfileStatus / SwitchProfile / SwitchToEmptyProfile / DeleteProfile",
-      "upstream_notes": "mixed per-symbol maturity; switchToEmptyProfile() mirrors the upstream name (stable), with addProfile() kept as a deprecated alias",
+      "upstream_notes": "mixed per-symbol maturity; switchToEmptyProfile() mirrors the upstream name (stable)",
       "since": "0.9.0",
       "min_tailscaled": "old",
       "tested": "matrix (reads; mutations hermetic-only)",
@@ -672,7 +672,7 @@
         "GET",
         "POST"
       ],
-      "symbol": "serveConfig(), setServeConfig(_:)",
+      "symbol": "serveConfigSnapshot(), setServeConfig(_:matching:), replaceServeConfigUnconditionally(_:)",
       "access": "write",
       "gate": "HasServe",
       "upstream_maturity": "unstable",

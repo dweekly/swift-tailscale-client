@@ -10,7 +10,7 @@ import Foundation
 
 #if os(macOS)
   struct MacClientInfo: Sendable {
-    struct Result: Sendable {
+    struct Result: Sendable, Equatable {
       var port: UInt16
       var token: String
       var source: String
@@ -23,6 +23,20 @@ import Foundation
     /// Candidate directories to scan; injectable for tests. Defaults to
     /// Tailscale's Group Containers (plus `TAILSCALE_SAMEUSER_DIR`).
     var directoriesOverride: [URL]?
+
+    /// Standalone directory to inspect; injectable for tests. Defaults to
+    /// `/Library/Tailscale` (plus `TAILSCALE_STANDALONE_DIR`).
+    var standaloneDirectoryOverride: URL?
+
+    init(
+      probeOverride: (@Sendable (UInt16, String) -> Bool)? = nil,
+      directoriesOverride: [URL]? = nil,
+      standaloneDirectoryOverride: URL? = nil
+    ) {
+      self.probeOverride = probeOverride
+      self.directoriesOverride = directoriesOverride
+      self.standaloneDirectoryOverride = standaloneDirectoryOverride
+    }
 
     /// Locates the sameuserproof file asynchronously.
     ///
@@ -277,6 +291,239 @@ import Foundation
       // prove no token material leaks; callers redact proof paths first.
       if ProcessInfo.processInfo.environment["TAILSCALE_DISCOVERY_DEBUG"] == "1" {
         DiscoveryLog.emit("[MacClientInfo] \(message)")
+      }
+    }
+
+    // MARK: - Standalone macOS (.pkg) discovery
+
+    enum StandaloneCandidateResult: Error, Sendable, Equatable {
+      case notInstalled
+      case ok(Result)
+      case stopped(TailscaleEndpoint)
+      case inaccessible(path: String, reason: String)
+      case invalidCredentials(TailscaleEndpoint)
+
+      var asResult: Result? {
+        if case .ok(let res) = self { return res }
+        return nil
+      }
+    }
+
+    /// Locates the macOS standalone (.pkg) LocalAPI port and auth token asynchronously.
+    func locateStandaloneAsync(
+      sharedDirectory: URL = URL(fileURLWithPath: "/Library/Tailscale")
+    ) async -> Result? {
+      let dir = effectiveStandaloneDirectory(sharedDirectory)
+      return await inspectStandaloneAsync(sharedDirectory: dir).asResult
+    }
+
+    /// Locates the macOS standalone (.pkg) LocalAPI port and auth token synchronously.
+    /// Does NOT access Group Containers and does NOT trigger TCC prompts.
+    func locateStandalone(
+      sharedDirectory: URL = URL(fileURLWithPath: "/Library/Tailscale")
+    ) -> Result? {
+      let dir = effectiveStandaloneDirectory(sharedDirectory)
+      return inspectStandalone(sharedDirectory: dir).asResult
+    }
+
+    func inspectStandaloneAsync(
+      sharedDirectory: URL = URL(fileURLWithPath: "/Library/Tailscale")
+    ) async -> StandaloneCandidateResult {
+      let dir = effectiveStandaloneDirectory(sharedDirectory)
+      guard let port = resolvePort(in: dir) else {
+        return .notInstalled
+      }
+
+      let (_, tokenResult) = resolveToken(port: port, in: dir)
+      switch tokenResult {
+      case .success(let token):
+        if let probeOverride {
+          if probeOverride(port, token) {
+            return .ok(
+              Result(
+                port: port, token: token,
+                source: dir.appendingPathComponent("ipnport").path))
+          } else {
+            log("Port \(port) derived from ipnport failed probe override")
+            return .stopped(.loopback(host: "127.0.0.1", port: port))
+          }
+        }
+        let status = await Self.probeStatusAsync(port: port, token: token)
+        switch status {
+        case .ok:
+          return .ok(
+            Result(
+              port: port, token: token,
+              source: dir.appendingPathComponent("ipnport").path))
+        case .invalidCredentials:
+          log("Port \(port) derived from ipnport rejected credentials")
+          return .invalidCredentials(.loopback(host: "127.0.0.1", port: port))
+        case .stopped, .timedOut, .unreachable:
+          log("Port \(port) derived from ipnport is not answering")
+          return .stopped(.loopback(host: "127.0.0.1", port: port))
+        }
+      case .failure(let error):
+        return error
+      }
+    }
+
+    func inspectStandalone(
+      sharedDirectory: URL = URL(fileURLWithPath: "/Library/Tailscale")
+    ) -> StandaloneCandidateResult {
+      let dir = effectiveStandaloneDirectory(sharedDirectory)
+      guard let port = resolvePort(in: dir) else {
+        return .notInstalled
+      }
+
+      let (_, tokenResult) = resolveToken(port: port, in: dir)
+      switch tokenResult {
+      case .success(let token):
+        if let probeOverride {
+          if probeOverride(port, token) {
+            return .ok(
+              Result(
+                port: port, token: token,
+                source: dir.appendingPathComponent("ipnport").path))
+          } else {
+            log("Port \(port) derived from ipnport failed live probe")
+            return .stopped(.loopback(host: "127.0.0.1", port: port))
+          }
+        }
+        return .ok(
+          Result(
+            port: port, token: token,
+            source: dir.appendingPathComponent("ipnport").path))
+      case .failure(let error):
+        return error
+      }
+    }
+
+    private func effectiveStandaloneDirectory(_ requested: URL) -> URL {
+      if requested.path == "/Library/Tailscale" {
+        if let override = standaloneDirectoryOverride {
+          return override
+        }
+        if let dirEnv = ProcessInfo.processInfo.environment["TAILSCALE_STANDALONE_DIR"] {
+          let expanded = (dirEnv as NSString).expandingTildeInPath
+          return URL(fileURLWithPath: expanded, isDirectory: true)
+        }
+      }
+      return requested
+    }
+
+    private func resolvePort(in sharedDirectory: URL) -> UInt16? {
+      let symlinkURL = sharedDirectory.appendingPathComponent("ipnport")
+      let symlinkPath = symlinkURL.path
+
+      var portString: String?
+      if let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: symlinkPath) {
+        portString = destination
+      } else {
+        var buf = [CChar](repeating: 0, count: 1024)
+        let len = readlink(symlinkPath, &buf, buf.count - 1)
+        if len > 0 {
+          buf[len] = 0
+          portString = buf.withUnsafeBufferPointer { ptr in
+            ptr.baseAddress.map { String(cString: $0) }
+          }
+        } else if let raw = try? String(contentsOfFile: symlinkPath, encoding: .utf8) {
+          let content = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !content.isEmpty {
+            portString = content
+          }
+        }
+      }
+
+      guard let portString,
+        let port = UInt16(portString.trimmingCharacters(in: .whitespacesAndNewlines)),
+        port > 0
+      else {
+        return nil
+      }
+      return port
+    }
+
+    private func resolveToken(
+      port: UInt16,
+      in sharedDirectory: URL
+    ) -> (URL, Swift.Result<String, StandaloneCandidateResult>) {
+      let primaryTokenURL = sharedDirectory.appendingPathComponent("sameuserproof-\(port)")
+      let fallbackTokenURL = sharedDirectory.appendingPathComponent("ipnport.token")
+
+      let tokenURL: URL
+      if FileManager.default.fileExists(atPath: primaryTokenURL.path) {
+        tokenURL = primaryTokenURL
+      } else if FileManager.default.fileExists(atPath: fallbackTokenURL.path) {
+        tokenURL = fallbackTokenURL
+      } else {
+        log("Found ipnport pointing to \(port) but no token file at \(primaryTokenURL.path)")
+        return (primaryTokenURL, .failure(.stopped(.loopback(host: "127.0.0.1", port: port))))
+      }
+
+      let tokenData: String
+      do {
+        tokenData = try String(contentsOfFile: tokenURL.path, encoding: .utf8)
+      } catch let error as NSError {
+        let reason: String
+        if (error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoPermissionError)
+          || error.code == 257  // EACCES
+        {
+          reason = "Permission denied (file is 0640 root:admin)"
+        } else {
+          reason = error.localizedDescription
+        }
+        log(
+          "Failed to read token file at \(DiscoveryLog.redactedProofPath(tokenURL.path)): \(reason)"
+        )
+        return (tokenURL, .failure(.inaccessible(path: tokenURL.path, reason: reason)))
+      }
+
+      let token = tokenData.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !token.isEmpty else {
+        log("Token file at \(DiscoveryLog.redactedProofPath(tokenURL.path)) was empty")
+        return (tokenURL, .failure(.invalidCredentials(.loopback(host: "127.0.0.1", port: port))))
+      }
+
+      return (tokenURL, .success(token))
+    }
+
+    enum ProbeStatus: Sendable, Equatable {
+      case ok
+      case invalidCredentials
+      case stopped
+      case timedOut
+      case unreachable(String)
+    }
+
+    static func probeStatusAsync(port: UInt16, token: String) async -> ProbeStatus {
+      guard let url = URL(string: "http://127.0.0.1:\(port)/localapi/v0/status?peers=false")
+      else {
+        return .unreachable("invalid URL")
+      }
+      var request = URLRequest(url: url, timeoutInterval: 0.8)
+      let credentials = Data(":\(token)".utf8).base64EncodedString()
+      request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
+      do {
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+          return .unreachable("non-HTTP response")
+        }
+        if http.statusCode == 200 {
+          return .ok
+        } else if http.statusCode == 401 || http.statusCode == 403 {
+          return .invalidCredentials
+        } else {
+          return .stopped
+        }
+      } catch let error as URLError {
+        if error.code == .cannotConnectToHost || error.code == .networkConnectionLost {
+          return .stopped
+        } else if error.code == .timedOut {
+          return .timedOut
+        }
+        return .stopped
+      } catch {
+        return .stopped
       }
     }
   }

@@ -6,7 +6,7 @@ Complete inventory of the Tailscale LocalAPI surface and this package's position
 **Last updated:** 2026-08-03
 **Upstream reference:** `tailscale/tailscale` pinned commit `4c4d1c35f83a` (verified 2026-08-03; full SHA and validation in [`endpoints.json`](endpoints.json)), `ipn/localapi/` + `client/local/`
 <!-- END GENERATED: coverage-provenance (Scripts/generate-endpoint-docs.py) -->
-**swift-tailscale-client version:** 0.12.0
+**swift-tailscale-client version:** 1.0.0
 
 Tiers are defined in [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers): **Stable** (methods on `TailscaleClient`, SemVer-protected post-1.0), **Experimental** (`client.experimental`, exempt from SemVer), **Unsupported** (documented, not wrapped).
 
@@ -52,7 +52,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `ping` | POST | `ping(ip:type:size:)` | read | unspecified | supported | core | v0.2.0 | old | matrix+live | disco/TSMP/ICMP/peerAPI ping types |
 | `metrics` | GET | `metrics()` | read | unspecified | supported | HasClientMetrics || HasDebug | v0.2.0 | old | matrix+live | Prometheus text; internal counters, names may churn upstream |
 | `usermetrics` | GET | `userMetrics()` | read | unspecified | supported | HasUserMetrics | v0.6.0 | 1.78 | matrix+live | stable user-facing metrics (tailscale metrics print) |
-| `watch-ipn-bus` | GET (stream) | `watchIPNBus(options:reconnect:onUndecodableLine:)` | read | unstable | supported | HasIPNBus | v0.3.0 | old | matrix+live | NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0). Upstream: our Swift facade normalizes and tolerates shape drift |
+| `watch-ipn-bus` | GET (stream) | `watchIPNBus(options:reconnect:onUndecodableLine:), watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)` | read | unstable | supported | HasIPNBus | v0.3.0 | old | matrix+live | NDJSON stream; skip-and-report on malformed lines, opt-in reconnect (v0.4.0). Upstream: our Swift facade normalizes and tolerates shape drift |
 | `debug-optional-features` | POST | `daemonFeatures()` | read | unspecified | supported | HasDebug | v0.4.0 | 1.86 | matrix+live | capability probe: which optional features this daemon was built with |
 | `derpmap` | GET | `derpMap()` | read | stable | supported | core | v0.6.0 | old | matrix+live | relay regions/nodes; feeds the client-side netcheck |
 | `suggest-exit-node` | GET | `suggestExitNode(forceProbe:)` | read | unspecified | supported | HasUseExitNode | v0.6.0 | old (POST probe: 1.86) | matrix+live | empty 200 body = no candidates |
@@ -74,9 +74,9 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `update/check` | GET | `checkUpdate()` | read | stable | supported | HasClientUpdate | v0.11.0 | old | matrix (skips where the build omits clientupdate) | reports update availability only; installs nothing |
 | `disconnect-control` | POST | `disconnectControl()` | write | stable | supported | HasDebug || HasAdvertiseRoutes | v0.11.0 | old | unit only (administrative: never exercised against live daemons) | administrative: drains HA subnet-router/app-connector replicas before shutdown |
 | `reset-auth` | POST | `resetAuth()` | destructive | unspecified | supported | core | v0.9.0 | old | unit only (never integration-tested) | wipes auth state for re-login. Upstream: no public Go client method |
-| `profiles/` | GET, PUT, POST, DELETE | `profiles(), currentProfile(), switchToEmptyProfile(), switchProfile(_:), deleteProfile(_:)` | write | unspecified (SwitchProfile: stable, SwitchToEmptyProfile: stable) | supported | core | v0.9.0 | old | matrix (reads; mutations hermetic-only) | multi-account profile management (LoginProfile/NetworkProfile models). Upstream: mixed per-symbol maturity; switchToEmptyProfile() mirrors the upstream name (stable), with addProfile() kept as a deprecated alias |
+| `profiles/` | GET, PUT, POST, DELETE | `profiles(), currentProfile(), switchToEmptyProfile(), switchProfile(_:), deleteProfile(_:)` | write | unspecified (SwitchProfile: stable, SwitchToEmptyProfile: stable) | supported | core | v0.9.0 | old | matrix (reads; mutations hermetic-only) | multi-account profile management (LoginProfile/NetworkProfile models). Upstream: mixed per-symbol maturity; switchToEmptyProfile() mirrors the upstream name (stable) |
 | `id-token` | POST | `idToken(audience:)` | read | unspecified | supported | HasDebug | v0.9.0 | old | unit (control-plane dependent) | OIDC token passed through as raw control-plane JSON |
-| `serve-config` | GET, POST | `serveConfig(), setServeConfig(_:)` | write | unstable (SetServeConfig: unspecified) | supported | HasServe | v0.10.0 | old (ETag: 1.40+) | matrix incl. live stale-ETag 412 proof (hermetic-only writes) | ETag optimistic concurrency; stale writes throw .preconditionFailed. Upstream: GetServeConfig is explicitly unstable upstream; GetServeConfig is annotated unstable; SetServeConfig carries no annotation (assume unstable) |
+| `serve-config` | GET, POST | `serveConfigSnapshot(), setServeConfig(_:matching:), replaceServeConfigUnconditionally(_:)` | write | unstable (SetServeConfig: unspecified) | supported | HasServe | v0.10.0 | old (ETag: 1.40+) | matrix incl. live stale-ETag 412 proof (hermetic-only writes) | ETag optimistic concurrency; stale writes throw .preconditionFailed. Upstream: GetServeConfig is explicitly unstable upstream; GetServeConfig is annotated unstable; SetServeConfig carries no annotation (assume unstable) |
 | `cert-domains` | GET | `certDomains()` | read | stable | supported | core | v0.10.0 | old | matrix (ACME-less builds → endpointUnavailable, seen on 1.96.4 tarball) | null body (no HTTPS) decodes as empty list |
 | `cert/` | GET | `certPEM(domain:kind:minValidity:), certPair(domain:minValidity:)` | read | stable | supported | HasACME | v0.10.0 | old | unit (needs HTTPS-enabled tailnet live) | first fetch may block on ACME issuance; pair split fails closed |
 | `set-dns` | POST | `setDNS(name:value:)` | write | unspecified | supported | HasACME | v0.10.0 | old | unit (control-plane rate-limited) | ACME dns-01 TXT records only; control plane restricts names |
@@ -168,14 +168,14 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 | `login-interactive` | POST | core | Stable | **v0.9.0** | `loginInteractive()` — pair with `watchIPNBus` for `BrowseToURL` |
 | `logout` | POST | core | Stable | **v0.9.0** | `logout()` — destructive; unit-tested only |
 | `reset-auth` | POST | core | Stable | **v0.9.0** | `resetAuth()` |
-| `profiles/` (prefix) | GET, PUT, POST, DELETE | core | Stable | **v0.9.0** | `profiles()`, `currentProfile()`, `addProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` |
+| `profiles/` (prefix) | GET, PUT, POST, DELETE | core | Stable | **v0.9.0** | `profiles()`, `currentProfile()`, `switchToEmptyProfile()`, `switchProfile(_:)`, `deleteProfile(_:)` |
 | `shutdown` | POST | core | Stable | v1.0.0 | `shutdownDaemon()` |
 
 ### Serve, Funnel & certificates
 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
-| `serve-config` | GET, POST | `HasServe` | Stable | **v0.10.0** | `serveConfig()` → snapshot with `etag`; `setServeConfig(_:)` sends `If-Match` — a stale write throws `.preconditionFailed(body:endpoint:)` (proven against a live daemon in the write lane) |
+| `serve-config` | GET, POST | `HasServe` | Stable | **v0.10.0** | `serveConfigSnapshot()` → snapshot with `etag`; `setServeConfig(_:matching:)` sends `If-Match` — a stale write throws `.preconditionFailed(body:endpoint:)` (proven against a live daemon in the write lane) |
 | `cert-domains` | GET | `HasACME` | Stable | **v0.10.0** | `certDomains()` — optional-endpoint gated; 404 on ACME-less builds (seen on the 1.96.4 tarball) → `endpointUnavailable` |
 | `cert/<domain>` (prefix) | GET | `HasACME` | Stable | **v0.10.0** | `certPEM(domain:kind:minValidity:)` (`?type=pair\|cert\|key`), `certPair(domain:minValidity:)` splits key/cert |
 | `set-dns` | POST | `HasACME` | Stable | **v0.10.0** | `setDNS(name:value:)` — ACME DNS-01 TXT |

@@ -16,48 +16,6 @@ permissions:
   contents: write
 
 jobs:
-  linux-binary:
-    name: Attach Linux CLI binary
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    container: swift:6.1
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag }}
-
-      - name: Install curl
-        run: apt-get update -qq && apt-get install -y -qq curl ca-certificates
-
-      - name: Build CLI
-        run: swift build -c release --product tailscale-swift
-
-      - name: Upload asset unless present
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
-        run: |
-          ARCHIVE="tailscale-swift-${TAG}-linux-x86_64.tar.gz"
-          BIN_DIR=$(swift build -c release --show-bin-path)
-          tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
-          sha256sum "$ARCHIVE"
-
-          RELEASE=$(curl -sf \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
-          RELEASE_ID=$(echo "$RELEASE" | grep -m1 '"id":' | tr -dc '0-9')
-          if echo "$RELEASE" | grep -q "\"name\": \"$ARCHIVE\""; then
-            echo "$ARCHIVE already attached to release $RELEASE_ID; skipping"
-            exit 0
-          fi
-          curl -sf -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/gzip" \
-            --data-binary "@$ARCHIVE" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$ARCHIVE" \
-            > /dev/null
-          echo "Attached $ARCHIVE to release $RELEASE_ID"
-
   macos-binary:
     name: Attach macOS universal CLI binary
     runs-on: macos-26
