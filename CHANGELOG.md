@@ -4,28 +4,28 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
-## [1.0.0] - Unreleased Candidate
+## [1.0.0] - 2026-09-20
 
-`swift-tailscale-client` 1.0.0 is the upcoming major production release of the unofficial Swift client library and CLI utility for the Tailscale LocalAPI daemon.
+`swift-tailscale-client` 1.0.0 is the first stable release of the unofficial Swift client library and CLI for an already-installed Tailscale daemon.
 
-This release candidate establishes an enterprise-grade, memory-safe, and concurrency-hardened foundation for building macOS menu bar apps, system monitoring daemons, server provisioning tools, and CLI automation scripts that communicate with an installed Tailscale daemon. Final release verification and gate remediation are actively in progress.
+This release adds safer configuration writes, bounded streaming, native macOS discovery, and a stable public API for monitoring apps and CLI automation. It is an independent project, not an official or endorsed Tailscale product.
 
 ### Highlights
 
-- **Safe Serve & Funnel Configuration**: Lossless `ServeConfig` serialization with 64-bit integer precision; optimistic concurrency with mandatory `ETag` checking prevents clobbering concurrent CLI or UI edits. Target binding validation in progress.
-- **Hardened Wire Protocol & Transport Framing**: Unconditional 64 KiB head limits, strict `Content-Length` and chunked transfer framing, cooperative Task cancellation, and single-ownership descriptor cleanup (zero leaks over 100+ cycles). Lower-layer transport memory bounds in progress.
+- **Safe Serve & Funnel Configuration**: Lossless `ServeConfig` serialization with 64-bit integer precision; optimistic concurrency with mandatory `ETag` checking prevents clobbering concurrent CLI or UI edits. Snapshots are bound to the original daemon target.
+- **Hardened Wire Protocol & Transport Framing**: Unconditional 64 KiB head limits, strict `Content-Length` and chunked transfer framing, cooperative Task cancellation, and single-ownership descriptor cleanup (zero leaks over 100+ cycles). Transport accumulation is bounded.
 - **Bounded Observable IPN Bus Streaming**: Bounded queues with explicit `.stateGap` data loss reporting; `StreamingResponse` head metadata delivery before body lines; classified exponential backoff with full jitter.
-- **Native Multi-Platform Discovery**: Zero-TCC discovery for macOS standalone `.pkg` apps; opt-in App Store GUI discovery; non-blocking asynchronous probes; dynamic single-flight credential refresh on daemon restart.
-- **Compatibility & Conformance**: Go-vs-Swift differential conformance oracle; versioned sanitized fixtures across daemon matrix (1.76.0 floor to 1.98.0+); 100% authored DocC coverage.
+- **Native macOS Discovery**: Zero-TCC discovery for macOS standalone `.pkg` apps; opt-in App Store GUI discovery; non-blocking asynchronous probes; dynamic single-flight credential refresh on daemon restart.
+- **Compatibility & Conformance**: Public API compatibility/freeze checks, synthetic versioned fixtures, and 100% authored DocC coverage. Broader live-daemon conformance remains unqualified.
 - **In-Tree Consumer Simulation**: Validated across simulated Network Weather (NWX) and TailscaleFleetAgent test suites using public APIs with zero `@testable` imports.
 - **Zero Third-Party Dependencies**: Core library relies strictly on Foundation and POSIX APIs with zero external package dependencies.
 
-### Release-candidate fixes
+### Additional fixes
 
 - Reject incomplete chunked streaming responses at EOF; verify lossless slow
   consumption beyond the transport queue's high-water mark.
 - Collect exact-commit CI test reports and original logs for release validation,
-  including named skip reasons and every required daemon matrix member.
+  including named skip reasons for the macOS unit and sanitizer lanes.
 - Fail soak verification when required measurements are unavailable, and test
   failure verdicts through the actual harness.
 
@@ -35,8 +35,14 @@ This release candidate establishes an enterprise-grade, memory-safe, and concurr
   - macOS 13.0+ (Ventura, Sonoma, Sequoia) on `arm64` and `x86_64`
 - **Outside 1.0 release qualification**: Linux; no Linux binary or required build lane.
 - **Build-Only (Models, Types & Mocks)**: iOS 16.0+, tvOS 16.0+, watchOS 9.0+, visionOS 1.0+
-- **Swift Toolchain Baseline**: Swift 6.1 and 6.2 (Strict Concurrency `Complete`, matching `swift-tools-version: 6.1`)
-- **Tailscale Daemon Compatibility**: 1.76.0 (floor) through 1.98.0+ (latest stable)
+- **Swift Toolchain Minimum**: Swift 6.1 (`swift-tools-version: 6.1`); strict concurrency.
+- **Tailscale Daemon Compatibility Target**: 1.76.0 and later, subject to per-endpoint availability. This release does not claim a completed live-daemon version matrix.
+
+### Validation and limitations
+
+- Apple CI: 879 tests in each of the macOS and Thread Sanitizer lanes, zero failures, 86.7% library line coverage; API freeze, strict DocC, and iOS/tvOS/watchOS builds passed. The 45 live-suite skips in each unit lane are explicitly recorded.
+- NWX is the initial consumer. Its original event monitor and extracted client factory passed a focused local read-only smoke test; this is not a complete app trial.
+- The self-hosted live-daemon runner was offline during qualification. A local read-only integration attempt had three connected-state assertion failures with the daemon stopped. A multi-version live matrix and sustained production soak remain incomplete; no daemon versions are certified by this release CI.
 
 ### Breaking Changes (Migration from 0.12.x)
 
@@ -86,7 +92,7 @@ All 12 pre-1.0 and architectural review defects have been closed and verified by
 - Defined official 1.0 platform, toolchain, and daemon compatibility matrix in [`Documentation/SUPPORT.md`](Documentation/SUPPORT.md).
 - Authored 100% DocC documentation coverage with `--warnings-as-errors` across all public types and members.
 - Authored complete soak verification protocol and test record in [`Documentation/SOAK-VERIFICATION.md`](Documentation/SOAK-VERIFICATION.md).
-- Authored 14-day production consumer evaluation report in [`Documentation/CONSUMER-EVALUATION-REPORT.md`](Documentation/CONSUMER-EVALUATION-REPORT.md).
+- Added a template for a future production consumer evaluation in [`Documentation/CONSUMER-EVALUATION-REPORT.md`](Documentation/CONSUMER-EVALUATION-REPORT.md).
 - Authored 1.0.0 release evidence record in [`Documentation/releases/1.0.0.md`](Documentation/releases/1.0.0.md).
 
 ### Added

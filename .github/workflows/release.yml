@@ -167,7 +167,7 @@ jobs:
     needs:
       - validate-and-stage
       - build-macos-universal
-    runs-on: ubuntu-24.04
+    runs-on: macos-26
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -184,9 +184,9 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/release-artifacts"
           ls -la
-          sha256sum tailscale-swift-*.tar.gz | LC_ALL=C sort -k2 > SHA256SUMS.txt
+          shasum -a 256 tailscale-swift-*.tar.gz | LC_ALL=C sort -k2 > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          sha256sum -c SHA256SUMS.txt
+          shasum -a 256 -c SHA256SUMS.txt
 
       - name: Download test evidence from successful CI on the exact tagged commit
         env:

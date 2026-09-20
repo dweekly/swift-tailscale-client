@@ -644,6 +644,30 @@ class TestRunner:
 
         # 3. _collect_lanes with --ci-data loads check runs and detects missing lanes
         with tempfile.TemporaryDirectory() as tmpdir:
+            staging = pathlib.Path(tmpdir)
+            name = "tailscale-swift-v1.0.0-macos-universal.tar.gz"
+            payload = b"archive fixture; binary execution is isolated in this collector test"
+            (staging / name).write_bytes(payload)
+            (staging / "SHA256SUMS.txt").write_text(f"{hashlib.sha256(payload).hexdigest()}  {name}\n")
+            agg_apple = EvidenceAggregator(tag="v1.0.0", artifacts_dir=staging)
+            agg_apple._smoke_test_archive = lambda path, target: {"help_flag": "passed", "version_flag": "passed"}
+            assets = agg_apple._collect_assets()
+            self.log_result(
+                "Apple-only release assets pass without a Linux archive",
+                assets["staging_status"] == "complete" and
+                [a["name"] for a in assets["artifacts"]] == [name],
+                f"Assets: {assets}"
+            )
+            (staging / name).write_bytes(b"tampered archive")
+            assets = agg_apple._collect_assets()
+            self.log_result(
+                "Apple-only release rejects a mismatched archive checksum",
+                assets["staging_status"] == "incomplete" and
+                assets["checksums_file"]["status"] == "mismatch",
+                f"Assets: {assets}"
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
             ci_data_file = pathlib.Path(tmpdir) / "ci_data.json"
             ci_payload = {
                 "check_runs": [

@@ -217,9 +217,10 @@ def get_environment_info() -> Dict[str, Any]:
         "os_name": platform.system(),
         "os_release": platform.release(),
         "arch": platform.machine(),
-        "toolchain_baseline": "6.0",
-        "tested_daemon_versions": ["1.76.0", "1.84.0", "1.96.4", "1.98.0"],
-        "headscale_version": "0.26.1",
+        "toolchain_baseline": "6.1",
+        # Apple release CI uses hermetic transports, not live daemon versions.
+        "tested_daemon_versions": [],
+        "headscale_version": None,
     }
 
 
@@ -1107,18 +1108,12 @@ class EvidenceAggregator:
         """Inspect actual release assets in artifacts_dir, compute genuine hashes and smoke test."""
         clean_tag = self.tag
         mac_name = f"tailscale-swift-{clean_tag}-macos-universal.tar.gz"
-        linux_name = f"tailscale-swift-{clean_tag}-linux-x86_64.tar.gz"
 
         target_specs = [
             {
                 "name": mac_name,
                 "platform": "darwin-universal",
                 "architectures": ["arm64", "x86_64"],
-            },
-            {
-                "name": linux_name,
-                "platform": "linux-x86_64",
-                "architectures": ["x86_64"],
             },
         ]
 
@@ -1417,4 +1412,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

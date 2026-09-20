@@ -104,9 +104,9 @@ See the DocC articles for the full patterns: [*Writing Safely*](https://dweekly.
 
 ## Status
 
-**Current release: v0.12.0** — Always-on gap-fill & 1.0 runway: `services()` (Tailscale Services state) and `shutdownTailscaled()` wrap the last always-registered LocalAPI handlers; `startFreshProfile(controlURL:)` completes the interactive login lifecycle (proven end-to-end against headscale in CI); Linux `interfaceName`/`interfaceInfo` discovery; test-coverage floor raised to 85% and documentation-coverage floors in CI; model-conformance and full upstream-handler inventory gates; weekly upstream-drift automation; a menu-bar DocC tutorial.
+**Current release: v1.0.0** — Safer Serve writes with concurrency snapshots, bounded streaming, native macOS discovery, and a frozen public API. Qualified on Apple platforms with NWX as the initial consumer. See the [release notes](CHANGELOG.md#100---2026-09-20) for migration details and validation limits.
 
-The full version-by-version history lives in [`CHANGELOG.md`](CHANGELOG.md). The path to 1.0 — API freeze, ≥85% coverage, complete DocC tree — is laid out in [`ROADMAP.md`](ROADMAP.md), with the endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
+The full version-by-version history lives in [`CHANGELOG.md`](CHANGELOG.md). The stability policy and future work are laid out in [`ROADMAP.md`](ROADMAP.md), with the endpoint-by-endpoint matrix in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md).
 
 ## CLI
 
