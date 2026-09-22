@@ -5,7 +5,7 @@ name: Upstream drift
 # against CURRENT tailscale/tailscale main, instead of the pinned commit
 # CI normally verifies. Drift here is expected eventually — upstream moves —
 # and the job's product is an issue describing exactly what changed, so the
-# re-pin (new SHA, manifest updates, matrix run) happens deliberately.
+# re-pin (new SHA, manifest updates, Apple validation) happens deliberately.
 #
 # This complements, never replaces, the pinned verification in ci.yml:
 # that one proves the manifest matches its recorded provenance; this one
@@ -68,7 +68,7 @@ jobs:
               'Re-pin procedure (see the capability constant\'s doc comment and ROADMAP):',
               '1. Update `upstream_provenance.revision` in `Documentation/endpoints.json` to the new SHA.',
               '2. Apply the manifest changes the report implies (maturity, gates, capability).',
-              '3. Update `defaultCapabilityVersion` if the capability moved; re-run the daemon matrix as compatibility evidence.',
+              '3. Update `defaultCapabilityVersion` if the capability moved; run required Apple CI and read-only macOS daemon integration as compatibility evidence. Linux is outside the release scope.',
               '4. Regenerate docs (`Scripts/generate-endpoint-docs.py`) and land it all in one PR.',
               '',
               '_Filed automatically by the upstream-drift workflow; it updates this issue on subsequent runs._',

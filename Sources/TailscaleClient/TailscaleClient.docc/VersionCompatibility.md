@@ -38,7 +38,7 @@ installs:
 
 ### Capability version
 
-Requests send `Tailscale-Cap: 144` by default
+Requests send `Tailscale-Cap: 148` by default
 (``TailscaleClientConfiguration/defaultCapabilityVersion``, override with
 ``TailscaleClientConfiguration/capabilityVersion`` or the
 `TAILSCALE_LOCALAPI_CAPABILITY` environment variable). The default is pinned

@@ -3,8 +3,8 @@
 Complete inventory of the Tailscale LocalAPI surface and this package's position on every endpoint: implemented, planned (with target version), experimental, or deliberately unsupported (with the reason).
 
 <!-- BEGIN GENERATED: coverage-provenance (Scripts/generate-endpoint-docs.py) -->
-**Last updated:** 2026-08-03
-**Upstream reference:** `tailscale/tailscale` pinned commit `4c4d1c35f83a` (verified 2026-08-03; full SHA and validation in [`endpoints.json`](endpoints.json)), `ipn/localapi/` + `client/local/`
+**Last updated:** 2026-09-21
+**Upstream reference:** `tailscale/tailscale` pinned commit `7bf76690f09d` (verified 2026-09-21; full SHA and validation in [`endpoints.json`](endpoints.json)), `ipn/localapi/` + `client/local/`
 <!-- END GENERATED: coverage-provenance (Scripts/generate-endpoint-docs.py) -->
 **swift-tailscale-client version:** 1.0.0
 
@@ -88,7 +88,7 @@ Generated from [`endpoints.json`](endpoints.json) — the machine-readable manif
 | `set-push-device-token` | POST | `experimental.setPushDeviceToken(_:)` | write | unspecified | experimental | HasDebug | v0.9.0 | old | unit (wire shape) | APNs token registration (GUI contract). Upstream: GUI-client contract; no public Go client method |
 | `handle-push-message` | POST | `experimental.handlePushMessage(_:)` | write | unspecified | experimental | HasDebug | v0.9.0 | old | unit (wire shape) | delivers a push payload to the daemon (GUI contract). Upstream: GUI-client contract; no public Go client method |
 
-Upstream maturity per Tailscale's own "API maturity" annotations in `tailscale/tailscale` 4c4d1c35f83a21c6069ae09de69b246ed1993f3e (verified 2026-08-03); methods without an annotation must be assumed unstable, and "supported" over an upstream-unstable endpoint means this package normalizes drift — not that Tailscale guarantees the wire contract.
+Upstream maturity per Tailscale's own "API maturity" annotations in `tailscale/tailscale` 7bf76690f09db74b1f48d49db056fac69c4b421e (verified 2026-09-21); methods without an annotation must be assumed unstable, and "supported" over an upstream-unstable endpoint means this package normalizes drift — not that Tailscale guarantees the wire contract.
 
 Tested against: hermetic headscale lanes: tailscaled stable / previous-stable 1.96.4 / unstable; plus a real tailnet daemon on self-hosted macOS.
 <!-- END GENERATED: implemented-endpoints (Scripts/generate-endpoint-docs.py) -->

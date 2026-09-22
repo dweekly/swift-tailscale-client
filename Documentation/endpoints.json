@@ -909,9 +909,9 @@
   ],
   "upstream_provenance": {
     "repository": "tailscale/tailscale",
-    "revision": "4c4d1c35f83a21c6069ae09de69b246ed1993f3e",
-    "capability_version": 144,
-    "verified": "2026-08-03",
+    "revision": "7bf76690f09db74b1f48d49db056fac69c4b421e",
+    "capability_version": 148,
+    "verified": "2026-09-21",
     "source": "client/local/{local,cert,serve}.go 'API maturity' doc comments; unannotated methods are upstream-unstable per package documentation. Validated by Scripts/verify-upstream-maturity.py against this exact revision."
   },
   "upstream_stable_unimplemented": [
