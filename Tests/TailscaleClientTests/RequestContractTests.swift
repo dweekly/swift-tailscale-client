@@ -23,10 +23,10 @@ final class RequestContractTests: XCTestCase {
   func testDefaultCapabilityIsThePinnedTestedValue() {
     // Provenance lives on the constant's doc comment; this test makes an
     // accidental bump (in either direction) a deliberate act.
-    XCTAssertEqual(TailscaleClientConfiguration.defaultCapabilityVersion, 144)
+    XCTAssertEqual(TailscaleClientConfiguration.defaultCapabilityVersion, 148)
     let configuration = TailscaleClientConfiguration(
       endpoint: .url(URL(string: "http://example.local")!), authToken: nil)
-    XCTAssertEqual(configuration.capabilityVersion, 144)
+    XCTAssertEqual(configuration.capabilityVersion, 148)
   }
 
   func testCapabilityHeaderCarriesTheConfiguredValue() {
@@ -67,7 +67,7 @@ final class RequestContractTests: XCTestCase {
     let after = await client.versionDiagnostics()
     XCTAssertEqual(after.daemonVersion, "1.99.1")
     XCTAssertEqual(after.packageVersion, TailscaleClientConfiguration.packageVersion)
-    XCTAssertEqual(after.capabilityVersion, 144)
+    XCTAssertEqual(after.capabilityVersion, 148)
   }
 
   func testDaemonVersionObservationIsCaseInsensitive() async throws {

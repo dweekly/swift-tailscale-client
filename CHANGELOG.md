@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Changed
+
+- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@7bf76690f09d`
+  and advance the default advertised capability from 144 to 148. Explicit
+  `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
+  still override the default. See `Documentation/COMPATIBILITY-148.md`
+  for the upstream review and compatibility evidence.
+
 ## [1.0.0] - 2026-09-20
 
 `swift-tailscale-client` 1.0.0 is the first stable release of the unofficial Swift client library and CLI for an already-installed Tailscale daemon.
