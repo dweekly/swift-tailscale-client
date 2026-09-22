@@ -63,10 +63,6 @@ jobs:
       - uses: actions/checkout@v7
         if: steps.check-skip.outputs.skip != 'true'
 
-      - name: Trust the container checkout for test provenance
-        if: steps.check-skip.outputs.skip != 'true'
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
       - name: Install headscale and tailscale
         if: steps.check-skip.outputs.skip != 'true'
         run: |
