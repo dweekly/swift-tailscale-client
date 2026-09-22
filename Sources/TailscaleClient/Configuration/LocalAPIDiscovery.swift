@@ -429,7 +429,11 @@ public struct LocalAPIDiscovery {
     private static func probeUnixSocket(
       path: String
     ) -> (isAlive: Bool, error: LocalAPIDiscoveryError?) {
-      let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      #if os(Linux)
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+      #else
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      #endif
       guard fd >= 0 else {
         return (false, nil)
       }
