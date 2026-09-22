@@ -26,7 +26,19 @@ on 2026-09-21.
 
 ## Validation
 
-The re-pin must pass the upstream verifier, capability contract tests,
-required Apple CI, read-only macOS daemon integration, and the manual
-hermetic daemon matrix before merge. Run links and outcomes will be recorded
-here when those checks finish.
+- The upstream verifier passes: 52 endpoint symbols, 42 gates, 20 unwrapped
+  handlers, the stable-gap ledger, and capability 148 agree with the pin.
+- All 17 request-contract tests pass locally, including the default value,
+  request-header overrides, environment overrides, and version diagnostics.
+- Generated documentation, release consistency, recipe snippets, and
+  changed-file Swift formatting checks pass.
+- [Read-only macOS daemon integration](https://github.com/dweekly/swift-tailscale-client/actions/runs/35675311377)
+  passed for re-pin commit `53bd247fcedb5d8f5ce01909783463bc1fd91df8`.
+- Required Apple CI and read-only macOS integration must also pass on the
+  final PR revision before merge. iOS/tvOS/watchOS lanes validate builds;
+  macOS is the supported runtime.
+
+An initial optional Linux matrix attempt stopped at a pre-existing Linux
+compile error. A subsequent attempt was canceled, and its Linux-specific
+changes were reverted. Neither run provides compatibility evidence. Linux
+is unqualified and is not a gate for this re-pin.

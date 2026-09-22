@@ -47,8 +47,9 @@ public struct TailscaleClientConfiguration: Sendable {
   ///
   /// Update procedure: advance the pinned commit in the manifest, re-verify
   /// the upstream constant there, re-check any capability-gated LocalAPI
-  /// behavior against our models, run the matrix, and update this constant —
-  /// in that order (CI enforces the agreement).
+  /// behavior against our models, update this constant, and validate with
+  /// required Apple CI and read-only macOS daemon integration before merge
+  /// (CI enforces the agreement).
   public static let defaultCapabilityVersion = 148
 
   /// This package's own release version, surfaced in
