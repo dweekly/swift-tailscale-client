@@ -909,9 +909,9 @@
   ],
   "upstream_provenance": {
     "repository": "tailscale/tailscale",
-    "revision": "7bf76690f09db74b1f48d49db056fac69c4b421e",
-    "capability_version": 148,
-    "verified": "2026-09-21",
+    "revision": "1db8e79a8b00d9ea3a7459c92df07e3d565a8811",
+    "capability_version": 152,
+    "verified": "2026-11-21",
     "source": "client/local/{local,cert,serve}.go 'API maturity' doc comments; unannotated methods are upstream-unstable per package documentation. Validated by Scripts/verify-upstream-maturity.py against this exact revision."
   },
   "upstream_stable_unimplemented": [
@@ -936,6 +936,11 @@
       "endpoint": "appc-route-info",
       "gate": "HasAppConnectors",
       "note": "App-connector route diagnostics; experimental candidate on demand (ROADMAP Ongoing)."
+    },
+    {
+      "endpoint": "cert-status/",
+      "gate": "HasACME",
+      "note": "Read-only cached-certificate status (no issuance); upstream-unstable, candidate for client.experimental on demand (ROADMAP Ongoing)."
     },
     {
       "endpoint": "check-so-mark-in-use",
@@ -1016,6 +1021,11 @@
       "endpoint": "pprof",
       "gate": "HasDebug",
       "note": "Go pprof profiles; goroutines (experimental) covers the diagnostic use case."
+    },
+    {
+      "endpoint": "resume-ipn-bus",
+      "gate": "HasIPNBus",
+      "note": "Resumes a watch-ipn-bus session suspended under NotifySuspendWhenBehind (bit 19), which this package never requests; upstream-unstable."
     },
     {
       "endpoint": "set-udp-gro-forwarding",

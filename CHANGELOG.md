@@ -35,12 +35,14 @@ All notable changes to this project will be documented in this file. The format 
 
 - The API compatibility check now compares against `v1.0.0` with an empty
   breakage allowlist (previously `v0.12.0` plus an allowlist of pre-1.0 breaks).
-
-- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@7bf76690f09d`
-  and advance the default advertised capability from 144 to 148. Explicit
+- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
+  and advance the default advertised capability from 144 to 152. Explicit
   `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
-  still override the default. See `Documentation/COMPATIBILITY-148.md`
-  for the upstream review and compatibility evidence.
+  still override the default. The upstream `cert-status/` and
+  `resume-ipn-bus` handlers are recorded as unwrapped. See
+  `Documentation/COMPATIBILITY-148.md` and
+  `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
+  compatibility evidence.
 
 ### Documentation
 
