@@ -4,12 +4,38 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- `PingResult.path` says how a ping reply reached the peer: a new `PingPath`
+  value of `.direct(endpoint:)`, `.peerRelay(endpoint:)`,
+  `.derp(regionID:regionCode:)`, or `.unknown`, and `nil` when the ping failed.
+  It uses the same precedence as `tailscale ping` (peer relay, then DERP, then
+  direct endpoint) and treats the empty strings and zeros the daemon always
+  sends as absent. Only disco pings report a path.
+- `tailscale-swift ping` prints that path the way `tailscale ping` does
+  (`via <ip:port>`, `via peer-relay(...)`, `via DERP(<code>)`, or the ping type
+  when the reply names no path). `--json` output is unchanged.
+- Sanitized ping replies captured from a Tailscale 1.102.2 daemon as test
+  fixtures, with provenance and digests, and `Scripts/capture-ping-fixture.py`
+  to capture more.
+
 ### Fixed
 
+- `PingResult.isDirect` was `true` for TSMP, ICMP, peerAPI, and failed pings,
+  because the daemon sends `Endpoint` as `""` rather than omitting it. It is now
+  `true` exactly when `path` is `.direct`.
+- `PingType.peerAPI` pings never got an answer and ran until the request
+  timeout, because they sent `type=peerAPI`; the daemon only recognizes
+  `peerapi` (`tailcfg.PingPeerAPI`). The raw value is now `"peerapi"`.
+  `PingType(rawValue:)` and decoding still accept `"peerAPI"`.
+- `tailscale-swift ping` no longer prints a bare `via ` for replies without an
+  endpoint.
 - A rejected IPN bus watch (`watchIPNBus`, `watchIPNBusEvents`, `tailscale-swift watch`) now reports its typed status error as soon as the response arrives (the error's `body` and `bodyPreview` carry the daemon's message), instead of hanging until the daemon closes the connection. Over the Unix socket, a streaming response body now ends after its `Content-Length` bytes (or at the terminal chunk, or at EOF only when neither framing is present), and the socket is closed then; a body shorter than its `Content-Length` fails with `malformedResponse`. Observed against tailscaled v1.104.7, which answers an unsupported watch mask with HTTP 400 and keeps the connection open.
 
 ### Changed
 
+- The API compatibility check now compares against `v1.0.0` with an empty
+  breakage allowlist (previously `v0.12.0` plus an allowlist of pre-1.0 breaks).
 - Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
   and advance the default advertised capability from 144 to 152. Explicit
   `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`

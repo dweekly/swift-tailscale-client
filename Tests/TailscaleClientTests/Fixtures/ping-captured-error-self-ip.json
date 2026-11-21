@@ -1,0 +1,12 @@
+{
+  "IP": "100.64.0.1",
+  "NodeIP": "",
+  "NodeName": "",
+  "Err": "100.64.0.1 is local Tailscale IP",
+  "LatencySeconds": 0,
+  "Endpoint": "",
+  "PeerRelay": "",
+  "DERPRegionID": 0,
+  "DERPRegionCode": "",
+  "IsLocalIP": true
+}

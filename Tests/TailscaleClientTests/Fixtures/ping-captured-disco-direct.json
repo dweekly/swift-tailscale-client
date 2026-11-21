@@ -1,0 +1,11 @@
+{
+  "IP": "100.64.0.2",
+  "NodeIP": "100.64.0.2",
+  "NodeName": "example-peer",
+  "Err": "",
+  "LatencySeconds": 0.005283459,
+  "Endpoint": "[2001:db8::a]:41641",
+  "PeerRelay": "",
+  "DERPRegionID": 0,
+  "DERPRegionCode": ""
+}

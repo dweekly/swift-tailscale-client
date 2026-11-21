@@ -30,7 +30,7 @@ Three upstream facts shape everything below:
 | Category | Count |
 |----------|-------|
 | Implemented (from `endpoints.json`) | 37 supported + 5 experimental |
-| Planned Stable (v0.4.0–v1.3) | ~40 |
+| Planned Stable | ~40 |
 | Planned Experimental | ~15 |
 | Unsupported (documented, with reasons) | 6 |
 | No LocalAPI equivalent (client-side features) | netcheck (implemented client-side in v0.6.0 as `Netcheck`), captive portal detection |
@@ -186,11 +186,11 @@ Gating: **core** = always registered; otherwise the upstream build feature that 
 
 | Endpoint | Method(s) | Gating | Tier | Status | Swift API |
 |----------|-----------|--------|------|--------|-----------|
-| `file-put/<target>/<name>` (prefix) | PUT, POST | taildrop feature | Stable | v1.1 | `pushFile(...)` |
-| `files/` (prefix) | GET, DELETE | taildrop feature | Stable | v1.1 | `waitingFiles()`, `awaitWaitingFiles()` (`?waitfor=` long-poll), `getWaitingFile(_:)`, `deleteWaitingFile(_:)` |
-| `file-targets` | GET | taildrop feature | Stable | v1.1 | `fileTargets()` |
-| `drive/fileserver-address` | PUT | drive feature | Stable | v1.2 | `setDriveFileServerAddress(_:)` |
-| `drive/shares` | GET, PUT, POST, DELETE | drive feature | Stable | v1.2 | `driveShares()`, set/rename/remove |
+| `file-put/<target>/<name>` (prefix) | PUT, POST | taildrop feature | Stable | Backlog | `pushFile(...)` |
+| `files/` (prefix) | GET, DELETE | taildrop feature | Stable | Backlog | `waitingFiles()`, `awaitWaitingFiles()` (`?waitfor=` long-poll), `getWaitingFile(_:)`, `deleteWaitingFile(_:)` |
+| `file-targets` | GET | taildrop feature | Stable | Backlog | `fileTargets()` |
+| `drive/fileserver-address` | PUT | drive feature | Stable | Backlog | `setDriveFileServerAddress(_:)` |
+| `drive/shares` | GET, PUT, POST, DELETE | drive feature | Stable | Backlog | `driveShares()`, set/rename/remove |
 
 ### Tailnet Lock (post-1.0)
 
@@ -198,8 +198,8 @@ All 13 endpoints, wrapped under **`TailnetLock`** naming (upstream renamed from 
 
 | Endpoint | Method | Tier | Status |
 |----------|--------|------|--------|
-| `tka/status`, `tka/log` (`?limit=`) | GET | Stable | v1.3 |
-| `tka/init`, `tka/modify`, `tka/sign`, `tka/disable`, `tka/force-local-disable`, `tka/affected-sigs`, `tka/wrap-preauth-key`, `tka/verify-deeplink`, `tka/generate-recovery-aum`, `tka/cosign-recovery-aum`, `tka/submit-recovery-aum` | POST | Stable | v1.3 |
+| `tka/status`, `tka/log` (`?limit=`) | GET | Stable | Backlog |
+| `tka/init`, `tka/modify`, `tka/sign`, `tka/disable`, `tka/force-local-disable`, `tka/affected-sigs`, `tka/wrap-preauth-key`, `tka/verify-deeplink`, `tka/generate-recovery-aum`, `tka/cosign-recovery-aum`, `tka/submit-recovery-aum` | POST | Stable | Backlog |
 
 ### GUI-client contract
 
