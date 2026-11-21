@@ -12,6 +12,14 @@ All notable changes to this project will be documented in this file. The format 
   still override the default. See `Documentation/COMPATIBILITY-148.md`
   for the upstream review and compatibility evidence.
 
+### Fixed
+
+- A reconnecting `watchIPNBusEvents` stream now follows a daemon restart that changes the
+  loopback port or proof token: when the endpoint source is automatic, each
+  reconnect attempt rediscovers the daemon once (single-flight with unary
+  requests) on a connect-stage failure or a 401/loopback 403, exactly as the
+  initial open does. Pinned configurations still never rediscover.
+
 ## [1.0.0] - 2026-09-20
 
 `swift-tailscale-client` 1.0.0 is the first stable release of the unofficial Swift client library and CLI for an already-installed Tailscale daemon.

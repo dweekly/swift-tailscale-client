@@ -698,31 +698,37 @@ public actor TailscaleClient {
       }
     }
 
-    var initialResponse: StreamingResponse
+    // Opens the stream, and when the endpoint source is automatic and the open
+    // fails at the connect stage or is rejected with 401 (or 403 off a Unix
+    // socket), rediscovers once and opens again against the refreshed
+    // configuration. Used by the initial open and by every reconnect attempt.
+    let openStreamRecovering: @Sendable () async throws -> StreamingResponse = {
+      let firstAttempt: StreamingResponse
+      do {
+        firstAttempt = try await openStream()
+      } catch let transportError as TailscaleTransportError {
+        guard Self.isConnectStageError(transportError),
+          case .automatic = client.configuration.endpointSource
+        else { throw transportError }
+        _ = try await client.singleFlightRediscovery()
+        return try await openStream()
+      }
+      if firstAttempt.statusCode == 401
+        || (firstAttempt.statusCode == 403
+          && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
+        case .automatic = client.configuration.endpointSource
+      {
+        _ = try await client.singleFlightRediscovery()
+        return try await openStream()
+      }
+      return firstAttempt
+    }
+
+    let initialResponse: StreamingResponse
     do {
-      let resp = try await openStream()
-      if resp.statusCode == 401
-        || (resp.statusCode == 403 && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
-        case .automatic = client.configuration.endpointSource
-      {
-        _ = try await client.singleFlightRediscovery()
-        initialResponse = try await openStream()
-      } else {
-        initialResponse = resp
-      }
+      initialResponse = try await openStreamRecovering()
     } catch let transportError as TailscaleTransportError {
-      if Self.isConnectStageError(transportError),
-        case .automatic = client.configuration.endpointSource
-      {
-        _ = try await client.singleFlightRediscovery()
-        do {
-          initialResponse = try await openStream()
-        } catch let retryErr as TailscaleTransportError {
-          throw TailscaleClientError.transport(retryErr)
-        }
-      } else {
-        throw TailscaleClientError.transport(transportError)
-      }
+      throw TailscaleClientError.transport(transportError)
     }
 
     recordObservedDaemonVersion(from: initialResponse.headers)
@@ -783,7 +789,7 @@ public actor TailscaleClient {
               await queue.finish()
               return
             }
-            let resp = try await openStream()
+            let resp = try await openStreamRecovering()
             if await shouldExit() {
               await queue.finish()
               return
