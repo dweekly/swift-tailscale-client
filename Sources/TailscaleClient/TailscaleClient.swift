@@ -63,6 +63,15 @@ public actor TailscaleClient {
   /// response header, if any request has completed yet.
   private(set) var observedDaemonVersion: String?
 
+  /// Whether a daemon this client watched rejected the options in
+  /// `NotifyWatchOpt.obsolete` and accepted the same watch without them.
+  /// Later watch opens from this client leave those options out.
+  private(set) var daemonRejectsObsoleteWatchOptions = false
+
+  func recordObsoleteWatchOptionsRejected() {
+    daemonRejectsObsoleteWatchOptions = true
+  }
+
   /// Task-local audit justification; see ``withAuditReason(_:operation:)``.
   @TaskLocal static var auditReason: String?
 
@@ -671,22 +680,22 @@ public actor TailscaleClient {
     onUndecodableLine: (@Sendable (Data, TailscaleClientError) -> Void)? = nil
   ) async throws -> AsyncThrowingStream<IPNBusEvent, Error> {
     let endpoint = "/localapi/v0/watch-ipn-bus"
-    var request = TailscaleRequest(
-      path: endpoint,
-      queryItems: [URLQueryItem(name: "mask", value: String(options.rawValue))]
-    )
+    var baseRequest = TailscaleRequest(path: endpoint)
     if let reason = Self.auditReason, !reason.isEmpty,
-      request.additionalHeaders["X-Tailscale-Reason"] == nil
+      baseRequest.additionalHeaders["X-Tailscale-Reason"] == nil
     {
-      request.additionalHeaders["X-Tailscale-Reason"] =
+      baseRequest.additionalHeaders["X-Tailscale-Reason"] =
         Data(reason.utf8).base64EncodedString()
     }
 
     let client = self
-    let finalRequest = request
-    let openStream: @Sendable () async throws -> StreamingResponse = {
+    let finalBaseRequest = baseRequest
+    let openStream: @Sendable (NotifyWatchOpt) async throws -> StreamingResponse = { mask in
       let config = client.configuration
       let targetId = config.targetIdentifier
+      var request = finalBaseRequest
+      request.queryItems = [URLQueryItem(name: "mask", value: String(mask.rawValue))]
+      let finalRequest = request
       return try await Self.withDeadline(config.requestTimeout, endpoint: endpoint) {
         let resp = try await config.transport.sendStreaming(finalRequest, configuration: config)
         return StreamingResponse(
@@ -698,31 +707,66 @@ public actor TailscaleClient {
       }
     }
 
-    var initialResponse: StreamingResponse
-    do {
-      let resp = try await openStream()
-      if resp.statusCode == 401
-        || (resp.statusCode == 403 && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
-        case .automatic = client.configuration.endpointSource
-      {
+    // Opens the stream, and when the endpoint source is automatic and the open
+    // fails at the connect stage or is rejected with 401 (or 403 off a Unix
+    // socket), rediscovers once and opens again against the refreshed
+    // configuration.
+    let openStreamRecovering: @Sendable (NotifyWatchOpt) async throws -> StreamingResponse = {
+      mask in
+      let firstAttempt: StreamingResponse
+      do {
+        firstAttempt = try await openStream(mask)
+      } catch let transportError as TailscaleTransportError {
+        guard Self.isConnectStageError(transportError),
+          case .automatic = client.configuration.endpointSource
+        else { throw transportError }
         _ = try await client.singleFlightRediscovery()
-        initialResponse = try await openStream()
-      } else {
-        initialResponse = resp
+        return try await openStream(mask)
       }
-    } catch let transportError as TailscaleTransportError {
-      if Self.isConnectStageError(transportError),
+      if firstAttempt.statusCode == 401
+        || (firstAttempt.statusCode == 403
+          && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
         case .automatic = client.configuration.endpointSource
       {
         _ = try await client.singleFlightRediscovery()
-        do {
-          initialResponse = try await openStream()
-        } catch let retryErr as TailscaleTransportError {
-          throw TailscaleClientError.transport(retryErr)
+        return try await openStream(mask)
+      }
+      return firstAttempt
+    }
+
+    // Opens the watch with the caller's options, used by the initial open and by
+    // every reconnect attempt. Options in `NotifyWatchOpt.obsolete` are left out
+    // once this client has seen the daemon reject them. Otherwise, when a request
+    // carrying any of them is answered 400, that response is released unread
+    // (reading its body could wait on a connection the daemon keeps open) and
+    // the watch is opened once more without them; success records the rejection
+    // for later opens. Each of the two opens runs its own rediscovery step first,
+    // so a 400 is only judged from a daemon that accepted the connection and
+    // credentials, and neither retry uses up the other.
+    let openWatch: @Sendable () async throws -> StreamingResponse = {
+      var mask = options
+      if await client.daemonRejectsObsoleteWatchOptions {
+        mask.subtract(.obsolete)
+      }
+      do {
+        let response = try await openStreamRecovering(mask)
+        guard response.statusCode == 400, !mask.isDisjoint(with: .obsolete) else {
+          return response
         }
-      } else {
-        throw TailscaleClientError.transport(transportError)
       }
+      mask.subtract(.obsolete)
+      let retried = try await openStreamRecovering(mask)
+      if (200..<300).contains(retried.statusCode) {
+        await client.recordObsoleteWatchOptionsRejected()
+      }
+      return retried
+    }
+
+    let initialResponse: StreamingResponse
+    do {
+      initialResponse = try await openWatch()
+    } catch let transportError as TailscaleTransportError {
+      throw TailscaleClientError.transport(transportError)
     }
 
     recordObservedDaemonVersion(from: initialResponse.headers)
@@ -783,7 +827,7 @@ public actor TailscaleClient {
               await queue.finish()
               return
             }
-            let resp = try await openStream()
+            let resp = try await openWatch()
             if await shouldExit() {
               await queue.finish()
               return
@@ -819,7 +863,16 @@ public actor TailscaleClient {
               await queue.finish()
               return
             }
-            if StreamRetryPolicy.classify(error) == .fatal {
+            // A watch that has already connected treats any rediscovery failure as a
+            // failed attempt: mid-restart, discovery metadata can be briefly missing
+            // or unreadable, and the retry policy bounds further attempts.
+            let isDiscoveryFailure: Bool
+            if case TailscaleClientError.discovery = error {
+              isDiscoveryFailure = true
+            } else {
+              isDiscoveryFailure = false
+            }
+            if !isDiscoveryFailure, StreamRetryPolicy.classify(error) == .fatal {
               await queue.fail(error)
               return
             }
@@ -836,7 +889,8 @@ public actor TailscaleClient {
         // Connection established
         await queue.enqueue(.lifecycle(.connected), byteSize: 64)
         if !isFirstConnection {
-          await queue.enqueue(.lifecycle(.stateGap(reason: "reconnected")), byteSize: 64)
+          await queue.enqueue(
+            .lifecycle(.stateGap(reason: IPNBusLifecycle.reconnectedGapReason)), byteSize: 64)
         }
         isFirstConnection = false
 
@@ -854,7 +908,9 @@ public actor TailscaleClient {
               let clientErr = TailscaleClientError.decoding(
                 decodingError, body: lineData, endpoint: endpoint)
               onUndecodableLine?(lineData, clientErr)
-              await queue.enqueue(.lifecycle(.stateGap(reason: "undecodable_line")), byteSize: 64)
+              await queue.enqueue(
+                .lifecycle(.stateGap(reason: IPNBusLifecycle.undecodableLineGapReason)),
+                byteSize: 64)
             }
             if await shouldExit() {
               await queue.finish()
@@ -933,7 +989,8 @@ public actor TailscaleClient {
   ///   - reconnect: Opt-in automatic reconnection policy. `nil` (the default)
   ///     ends the stream on the first connection failure.
   ///   - onUndecodableLine: Called with the raw line and the decoding error for
-  ///     each line that could not be decoded as an ``IPNNotify``.
+  ///     each line that could not be decoded as an ``IPNNotify``. The line is
+  ///     skipped and the stream continues.
   /// - Returns: An async stream of IPN notifications.
   /// - Throws: `TailscaleClientError` if the initial connection fails.
   public func watchIPNBus(
@@ -976,7 +1033,15 @@ public actor TailscaleClient {
         switch event {
         case .notification(let notify):
           return notify
-        case .lifecycle(.stateGap):
+        case .lifecycle(.stateGap(let reason)):
+          // A reconnect gap is covered by the daemon re-sending initial state, and an
+          // undecodable line is reported through `onUndecodableLine`; neither ends the
+          // stream. Any other gap means notifications were dropped.
+          if reason == IPNBusLifecycle.reconnectedGapReason
+            || reason == IPNBusLifecycle.undecodableLineGapReason
+          {
+            continue
+          }
           throw TailscaleClientError.streamOverflow
         case .lifecycle:
           continue

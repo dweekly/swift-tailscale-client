@@ -15,7 +15,10 @@ Key constraints for suggestions:
 - Ping: classify a reply with `PingResult.path` (1.1.0+; `nil` on error, else
   `.peerRelay`, `.derp`, `.direct`, or `.unknown`), never `endpoint != nil`.
   Only disco pings report a path; one reply is one measurement.
-- Prefer `watchIPNBus(...)` streaming over status polling.
+- Prefer `watchIPNBus(...)` streaming over status polling. Do not rely on
+  `.initialNetMap` or `IPNNotify.netMap` (Tailscale 1.104+ rejects/omits them);
+  to follow peers, watch `[.initialState, .peerChanges, .noNetMap]` and re-read
+  `status()` on each notification.
 - Tests should inject `MockTransport` from the `TailscaleClientMocks` product,
   never hit a real daemon.
 - For work on this repo itself, follow `CLAUDE.md` (build/test commands,
