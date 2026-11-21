@@ -14,9 +14,7 @@ build and run it against the exact code under review. To use it as a template
 for your own project, replace the path dependency with:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "0.6.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
 ```
 
-CI builds this example on macOS and Linux on every PR, and the self-hosted
-integration workflow *runs* it against a real daemon — so the example is
-continuously verified end-to-end, not just compiled.
+Hosted CI builds this example on macOS. The self-hosted macOS workflow runs it against a live daemon using an endpoint supplied by the workflow.

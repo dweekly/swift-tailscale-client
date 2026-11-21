@@ -2,6 +2,8 @@
 
 How versions are cut, tagged, published, and distributed.
 
+For the proposed 1.1.0 release, use the [candidate acceptance plan](PLAN-1.1.0.md) for peer diagnostics, native discovery, and documentation checks alongside this publication procedure.
+
 ## Versioning
 
 - Semantic versioning. Pre-1.0: minor bumps may break API. Post-1.0: strict SemVer for the Stable tier; the `experimental` namespace is explicitly exempt (see [`ROADMAP.md`](../ROADMAP.md#stability--support-tiers)).
