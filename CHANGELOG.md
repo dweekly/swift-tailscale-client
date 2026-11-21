@@ -47,6 +47,7 @@ All notable changes to this project will be documented in this file. The format 
 ### Documentation
 
 - Corrected the soak, adoption, consumer, review, support, testing, and 1.0 release documents to state only measured results: the 1-hour and 24-hour soaks are listed as not yet run, Linux as unqualified, no daemon versions as certified, and DCO sign-off as requested but not enforced in CI. The 1.0.0 release record now gives the published outcome and the gates left open.
+- The endpoint manifest (`Documentation/endpoints.json`) and the tables generated from it now keep three kinds of evidence apart for each endpoint: what the unit tests decode (synthetic fixture, captured fixture, or wire shape), the CI comparison with the pinned upstream source, and observation on a real daemon, which names the lane, run, tailscaled version, and date. 22 of 42 endpoints have been observed on a live daemon by 1.x code (Tailscale 1.102.2, read-only, self-hosted macOS lane); headscale-matrix observations from v0.12.0 code are kept in their own column, labeled as pre-1.0. `min_tailscaled` no longer implies a tested floor. `generate-endpoint-docs.py --check` rejects untraceable live claims and a matrix trigger that disagrees with its workflow. `capture-fixtures.py --capture`, which read live status and then wrote synthetic fixtures, is removed; `Scripts/capture-ping-fixture.py` is the capture path.
 
 ## [1.0.0] - 2026-09-20
 
