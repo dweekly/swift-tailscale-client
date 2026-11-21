@@ -69,6 +69,29 @@ Peer: peer-hostname-2
   IPs: 100.64.0.3
 ```
 
+### Ping a Peer
+
+```bash
+.build/debug/tailscale-swift ping 100.64.0.2 --count 3
+```
+
+**Output** (a live, sanitized run; each reply names the path it took, like `tailscale ping`):
+```
+PING 100.64.0.2 using disco...
+ping 1: example-peer - 5.99 ms via [2001:db8::a]:41641
+ping 2: example-peer - 3.63 ms via [2001:db8::a]:41641
+ping 3: example-peer - 3.07 ms via [2001:db8::a]:41641
+
+--- 100.64.0.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss
+avg latency: 4.23 ms
+```
+
+Paths print as `via <ip:port>` (direct), `via peer-relay(<endpoint>)`,
+`via DERP(<code>)` (or `DERP(region <id>)` without a code), or the ping type
+(`via TSMP`, `via ICMP`, `via peerapi`) when the reply names no path. Failed
+pings print `error - <message>`. `--type` takes `disco`, `tsmp`, `icmp`, or
+`peerapi` (`peerAPI` also works); `--json` prints the raw replies as an array.
 ### Watch the IPN Bus
 
 Stream state changes until Ctrl+C:

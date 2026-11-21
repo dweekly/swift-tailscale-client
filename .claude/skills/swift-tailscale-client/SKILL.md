@@ -25,6 +25,9 @@ Facts you need before opening the guide:
 - **Biggest gotcha:** macOS App Store Tailscale needs opt-in discovery
   (`TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`) and triggers a TCC
   popup; default unix-socket discovery never does.
+- **Ping interpretation (1.1.0+):** switch on `PingResult.path` (`nil` = failed; `.direct`,
+  `.peerRelay`, `.derp`, `.unknown`). Raw `endpoint` is `""`, not `nil`, when absent; only disco
+  pings report a path; one DERP reply is not the settled path (INTEGRATING.md gotcha 7).
 - **Watching peers:** Tailscale 1.104+ rejects `.initialNetMap`/`.rateLimit` (the client drops them
   and retries) and never sends `IPNNotify.netMap`. Watch `[.initialState, .peerChanges, .noNetMap]` and
   re-read `status()` on each notification and reconnect.

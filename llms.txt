@@ -14,6 +14,7 @@ IPN bus: Tailscale 1.104+ rejects the `initialNetMap`/`rateLimit` watch options 
 ## Docs
 
 - [Integration guide (canonical)](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/INTEGRATING.md): usage patterns, gotchas, testing with mocks
+- Ping path (1.1.0+): `PingResult.path` is `nil` on error, else `.peerRelay`, `.derp`, `.direct`, or `.unknown` (TSMP/ICMP/peerAPI pings); see gotcha 7 in the integration guide
 - [Endpoint manifest (JSON)](https://raw.githubusercontent.com/dweekly/swift-tailscale-client/main/Documentation/endpoints.json): machine-readable per-endpoint facts — symbol, read/write risk, feature gate, minimum tailscaled version, stability
 - [API reference (DocC)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/): full symbol documentation and articles (Getting Started, Streaming, Writing Safely, Login Flow, Serve & Funnel)
 - [LocalAPI coverage](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/LOCALAPI-COVERAGE.md): the package's position on every LocalAPI endpoint

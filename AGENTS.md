@@ -13,6 +13,9 @@ Quick orientation:
   api.tailscale.com admin API.
 - Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`,
   product `TailscaleClient`. Test with the `TailscaleClientMocks` product.
+- Ping path (1.1.0+): read `PingResult.path` (`.direct`, `.peerRelay`, `.derp`,
+  `.unknown`; `nil` on error), not raw `endpoint`; only disco pings report a path,
+  and one reply is one measurement (INTEGRATING.md gotcha 7).
 - IPN bus watches: Tailscale 1.104+ rejects `.initialNetMap`/`.rateLimit` and sends no netmap;
   the client drops those options automatically. Follow peers with `[.initialState, .peerChanges, .noNetMap]`
   and re-read `status()` per notification (details in INTEGRATING.md, gotcha 4).

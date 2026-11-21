@@ -2,6 +2,7 @@
 // Recipe: Test a Tailscale integration using TailscaleClientMocks.
 // Docs: Sources/TailscaleClient/TailscaleClient.docc/RecipeTesting.md
 
+import Recipes
 import TailscaleClient
 import TailscaleClientMocks
 import XCTest
@@ -101,5 +102,24 @@ final class MockedClientTests: XCTestCase {
 
     let status = try await client.status()
     XCTAssertEqual(status.backendState, .running)
+  }
+
+  func testPingWithNoPathIsUnknown() async throws {
+    // TSMP, ICMP, and peerAPI replies carry empty path fields, as the daemon sends them.
+    let reply = Data(
+      #"{"Err":"","LatencySeconds":0.004,"Endpoint":"","PeerRelay":"","DERPRegionID":0,"DERPRegionCode":""}"#
+        .utf8)
+    let transport = MockTransport { _, _ in TailscaleResponse(statusCode: 200, data: reply) }
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .url(URL(string: "http://mock.local")!),
+        authToken: nil,
+        transport: transport))
+
+    let result = try await client.ping(ip: "100.64.0.2", type: .tsmp)
+    XCTAssertEqual(result.path, .unknown)
+    XCTAssertFalse(result.isDirect)
+    XCTAssertEqual(describe(result), "reply without a path")
+    XCTAssertEqual(describe(PingResult(error: "timeout")), "failed: timeout")
   }
 }

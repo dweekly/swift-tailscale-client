@@ -4,8 +4,66 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- `PingResult.path` says how a ping reply reached the peer: a new `PingPath`
+  value of `.direct(endpoint:)`, `.peerRelay(endpoint:)`,
+  `.derp(regionID:regionCode:)`, or `.unknown`, and `nil` when the ping failed.
+  It uses the same precedence as `tailscale ping` (peer relay, then DERP, then
+  direct endpoint) and treats the empty strings and zeros the daemon always
+  sends as absent. Only disco pings report a path.
+- `tailscale-swift ping` prints that path the way `tailscale ping` does
+  (`via <ip:port>`, `via peer-relay(...)`, `via DERP(<code>)`, or the ping type
+  when the reply names no path). `--json` output is unchanged.
+- Sanitized ping replies captured from a Tailscale 1.102.2 daemon as test
+  fixtures, with provenance and digests, and `Scripts/capture-ping-fixture.py`
+  to capture more.
+- `NotifyWatchOpt.peerChanges`, `.noNetMap`, `.initialStatus`, and
+  `.peerPatches` (upstream bits 12-15), observed accepted by Tailscale
+  v1.102.2 and v1.104.7. `IPNNotify` does not yet model the fields they
+  produce; those notifications still decode.
+- `tailscale-swift watch` prints the daemon's message when it rejects a watch,
+  and its help, man page, and README describe the options it requests.
+
+### Fixed
+
+- `PingResult.isDirect` was `true` for TSMP, ICMP, peerAPI, and failed pings,
+  because the daemon sends `Endpoint` as `""` rather than omitting it. It is now
+  `true` exactly when `path` is `.direct`.
+- `PingType.peerAPI` pings never got an answer and ran until the request
+  timeout, because they sent `type=peerAPI`; the daemon only recognizes
+  `peerapi` (`tailcfg.PingPeerAPI`). The raw value is now `"peerapi"`.
+  `PingType(rawValue:)` and decoding still accept `"peerAPI"`.
+- `tailscale-swift ping` no longer prints a bare `via ` for replies without an
+  endpoint.
+- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
+  or, with a reconnect policy, on its first successful reconnect: the stream
+  continues, the line is reported through `onUndecodableLine`, and genuine
+  buffer overflow still throws `streamOverflow`.
+- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
+  now follow a daemon restart that changes the loopback port or proof token:
+  when the endpoint source is automatic, each reconnect attempt rediscovers
+  the daemon once (single-flight with unary requests) on a connect-stage
+  failure or a 401/loopback 403, as the initial open does. A rediscovery
+  failure during a reconnect (for example, discovery metadata briefly missing
+  mid-restart) counts as one failed attempt under the retry policy rather
+  than ending the stream; on the initial open it is still thrown. Pinned
+  configurations still never rediscover.
+- Watching the IPN bus works on Tailscale 1.104 and later. Those daemons answer
+  a watch that sets `.rateLimit` or `.initialNetMap` (including
+  `NotifyWatchOpt.default` and `.allInitial`) with HTTP 400. Before this fix,
+  `watchIPNBus()` with default options against such a daemon never returned or
+  threw until the daemon closed the connection, and `tailscale-swift watch`
+  printed only its banner. Now the client releases the rejected response
+  unread, opens the watch once more without those two options, and omits them
+  from later watches and reconnects of the same client. A daemon that accepts
+  them still receives exactly the options the caller passed, in one request.
+  Callers do not need to change their options.
+
 ### Changed
 
+- The API compatibility check now compares against `v1.0.0` with an empty
+  breakage allowlist (previously `v0.12.0` plus an allowlist of pre-1.0 breaks).
 - Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
   and advance the default advertised capability from 144 to 152. Explicit
   `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
@@ -23,44 +81,9 @@ All notable changes to this project will be documented in this file. The format 
   `status()` on each notification, reconnect, and state gap, instead of asking
   for `.initialNetMap`. It works on daemons before and after Tailscale 1.104.
 
-### Added
-
-- `NotifyWatchOpt.peerChanges`, `.noNetMap`, `.initialStatus`, and
-  `.peerPatches` (upstream bits 12-15), observed accepted by Tailscale
-  v1.102.2 and v1.104.7. `IPNNotify` does not yet model the fields they
-  produce; those notifications still decode.
-- `tailscale-swift watch` prints the daemon's message when it rejects a watch,
-  and its help, man page, and README describe the options it requests.
-
 ### Documentation
 
 - Corrected the soak, adoption, consumer, review, support, testing, and 1.0 release documents to state only measured results: the 1-hour and 24-hour soaks are listed as not yet run, Linux as unqualified, no daemon versions as certified, and DCO sign-off as requested but not enforced in CI. The 1.0.0 release record now gives the published outcome and the gates left open.
-
-### Fixed
-
-- Watching the IPN bus works on Tailscale 1.104 and later. Those daemons answer
-  a watch that sets `.rateLimit` or `.initialNetMap` (including
-  `NotifyWatchOpt.default` and `.allInitial`) with HTTP 400. Before this fix,
-  `watchIPNBus()` with default options against such a daemon never returned or
-  threw until the daemon closed the connection, and `tailscale-swift watch`
-  printed only its banner. Now the client releases the rejected response
-  unread, opens the watch once more without those two options, and omits them
-  from later watches and reconnects of the same client. A daemon that accepts
-  them still receives exactly the options the caller passed, in one request.
-  Callers do not need to change their options.
-- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
-  or, with a reconnect policy, on its first successful reconnect: the stream
-  continues, the line is reported through `onUndecodableLine`, and genuine
-  buffer overflow still throws `streamOverflow`.
-- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
-  now follow a daemon restart that changes the loopback port or proof token:
-  when the endpoint source is automatic, each reconnect attempt rediscovers
-  the daemon once (single-flight with unary requests) on a connect-stage
-  failure or a 401/loopback 403, as the initial open does. A rediscovery
-  failure during a reconnect (for example, discovery metadata briefly missing
-  mid-restart) counts as one failed attempt under the retry policy rather
-  than ending the stream; on the initial open it is still thrown. Pinned
-  configurations still never rediscover.
 
 ## [1.0.0] - 2026-09-20
 
