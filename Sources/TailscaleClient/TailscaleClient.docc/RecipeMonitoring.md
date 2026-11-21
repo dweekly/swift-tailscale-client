@@ -10,16 +10,19 @@ Every snippet below is compiled by CI from
 ## The pattern
 
 ```swift
-/// Follows Tailscale state, health, and netmap changes for the life of the
-/// process using 1.0 IPN bus events and bounded queues.
+/// Follows Tailscale state, health, and peer changes for the life of the
+/// process using 1.0 IPN bus events and bounded queues. Works on daemons
+/// before and after Tailscale 1.104, which stopped sending the network map.
 public func monitorTailscale(
   onChange: @escaping @Sendable (String) -> Void
 ) async throws {
   let client = TailscaleClient()
 
   let stream = try await client.watchIPNBusEvents(
-    // Ask for current values up front so the first events seed your state.
-    options: [.initialState, .initialHealthState, .initialNetMap],
+    // Current state and health up front, then a notification whenever a peer
+    // is added, removed, or changes. `.noNetMap` stops pre-1.104 daemons from
+    // also sending the full network map; newer ones accept it as a no-op.
+    options: [.initialState, .initialHealthState, .peerChanges, .noNetMap],
     // Long-lived monitors should survive daemon restarts with backoff.
     retryPolicy: .default,
     // Bounded queues prevent slow consumers from leaking memory.
@@ -29,6 +32,14 @@ public func monitorTailscale(
       print("skipped undecodable line (\(error)): \(line.count) bytes")
     }
   )
+
+  // Typed peer details come from status(). IPNNotify does not model the
+  // peer-change fields yet, so any notification (or a gap) means "re-read".
+  func refreshPeers() async {
+    guard let status = try? await client.status() else { return }
+    let online = status.peers.values.filter { $0.online == true }.count
+    onChange("peers: \(online) of \(status.peers.count) online")
+  }
 
   for try await event in stream {
     switch event {
@@ -40,27 +51,37 @@ public func monitorTailscale(
         let warnings = health.warnings ?? [:]
         onChange(warnings.isEmpty ? "healthy" : "warnings: \(warnings.keys.sorted())")
       }
-      if notify.netMap != nil {
-        // The netmap arrives as raw JSON (upstream shape churns); its
-        // presence is the "peers changed" signal — re-query status() for
-        // typed peer details when you see it.
-        onChange("netmap updated")
-      }
+      await refreshPeers()
     case .lifecycle(let lifecycle):
       switch lifecycle {
       case .connected:
+        // Also fires after a reconnect: re-read what may have changed meanwhile.
         onChange("lifecycle: connected")
+        await refreshPeers()
       case .disconnected(let underlying):
         onChange("lifecycle: disconnected (\(underlying))")
       case .retrying(let attempt, let delay):
         onChange("lifecycle: retrying attempt \(attempt) in \(delay)")
       case .stateGap(let reason):
         onChange("lifecycle: stateGap (\(reason))")
+        await refreshPeers()
       }
     }
   }
 }
 ```
+
+## Why re-read status()
+
+Tailscale 1.104 and later no longer send the network map over the IPN bus,
+and reject a watch that asks for it (`initialNetMap`) or for `rateLimit`; the
+client then opens the watch without them. Peer changes now arrive through
+`peerChanges` (and `peerPatches`) in fields ``IPNNotify`` does not model yet.
+A notification that carries only those fields still decodes, with its modeled
+fields `nil`, so the recipe treats every notification, reconnect, and state
+gap as a reason to call ``TailscaleClient/status(query:)``. The same
+subscription works on 1.102 daemons. A monitor that sees frequent changes can
+coalesce those calls (for example, at most one per second).
 
 ## Why not poll?
 

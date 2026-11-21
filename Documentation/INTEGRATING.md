@@ -110,6 +110,17 @@ or `.endpointUnavailable`) even on streaming endpoints.
 4. **Streaming (v0.4.0+):** malformed lines are skipped (observe via the
    `onUndecodableLine:` callback), and long-lived monitors should pass
    `reconnect: .default` for automatic re-dial with backoff.
+   **Watch options on Tailscale 1.104+:** those daemons reject `.initialNetMap`
+   and `.rateLimit` with HTTP 400 and no longer send `IPNNotify.netMap`. The
+   client reopens the watch once without those two options and omits them on
+   later watches from the same client, so `.default` and `.allInitial` keep
+   working; a daemon that accepts them gets exactly your mask. To follow peers
+   on every daemon version, subscribe with
+   `[.initialState, .peerChanges, .noNetMap]` and re-read `status()` on each
+   notification and reconnect (`IPNNotify` does not model the peer-delta or
+   `InitialStatus` fields yet; such notifications still decode). Any other 400
+   is fatal: it fails the initial open and ends a reconnecting stream instead of
+   being retried.
 5. **Writes are replace-or-patch, know which:** `editPrefs(_:)` patches only the
    `MaskedPrefs` fields you set; `setServeConfig(_:matching:)` **replaces the whole serve
    config** — always start from a fresh `serveConfigSnapshot()` snapshot, and retry on

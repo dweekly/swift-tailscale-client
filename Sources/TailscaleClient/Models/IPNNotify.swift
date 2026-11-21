@@ -57,6 +57,9 @@ public struct IPNNotify: Codable, Sendable, Equatable {
 
   /// Network map changed (or initial netmap when `.initialNetMap` is requested).
   /// Preserved losslessly as raw JSON; a typed NetworkMap model is planned.
+  ///
+  /// Daemons from Tailscale 1.104 on no longer send this field; see
+  /// ``NotifyWatchOpt/initialStatus`` and ``NotifyWatchOpt/peerChanges``.
   public var netMap: JSONValue?
 
   /// Taildrop transfers currently being received.
@@ -415,7 +418,14 @@ public struct NotifyWatchOpt: OptionSet, Sendable {
   /// Include current preferences in the first message.
   public static let initialPrefs = NotifyWatchOpt(rawValue: 1 << 2)
 
-  /// Include current network map in the first message.
+  /// Include current network map in the first message
+  /// (upstream `NotifyInitialNetMap`).
+  ///
+  /// Tailscale 1.104 and later reject this option: the daemon answers the watch
+  /// with HTTP 400 and no longer sends ``IPNNotify/netMap``. When a daemon rejects
+  /// it, the client opens the watch again without it (and without ``rateLimit``)
+  /// and omits both on later watches from the same client. On those daemons, seed
+  /// state with ``initialStatus`` or by calling ``TailscaleClient/status(query:)``.
   public static let initialNetMap = NotifyWatchOpt(rawValue: 1 << 3)
 
   /// Omit private keys from notifications.
@@ -430,7 +440,14 @@ public struct NotifyWatchOpt: OptionSet, Sendable {
   /// Include health state in the first message.
   public static let initialHealthState = NotifyWatchOpt(rawValue: 1 << 7)
 
-  /// Rate-limit spammy netmap updates.
+  /// Rate-limit spammy netmap updates (upstream `NotifyRateLimit`).
+  ///
+  /// Tailscale 1.104 and later reject this option with HTTP 400. When a daemon
+  /// rejects it, the client opens the watch again without it (and without
+  /// ``initialNetMap``) and omits both on later watches from the same client.
+  /// Tailscale 1.102 rejects it in combination with ``peerChanges``,
+  /// ``noNetMap``, ``initialStatus``, or ``peerPatches``; the client recovers
+  /// from that rejection the same way.
   public static let rateLimit = NotifyWatchOpt(rawValue: 1 << 8)
 
   /// Include primary actions in health state.
@@ -439,9 +456,75 @@ public struct NotifyWatchOpt: OptionSet, Sendable {
   /// Include suggested exit node in the first message.
   public static let initialSuggestedExitNode = NotifyWatchOpt(rawValue: 1 << 10)
 
+  /// Receive peer-set changes (upstream `NotifyPeerChanges`).
+  ///
+  /// At the pinned upstream revision, a watcher with this option receives
+  /// notifications when a peer is added, replaced, or removed (upstream
+  /// `Notify.PeersChanged` and `Notify.PeersRemoved`). Without it, peer changes are
+  /// not delivered over the IPN bus at all. Without ``peerPatches`` as well, every
+  /// per-field peer change arrives as a full peer entry. Upstream pairs it with
+  /// ``initialStatus`` to seed the initial view.
+  ///
+  /// Observed accepted by Tailscale v1.102.2 and v1.104.7.
+  ///
+  /// > Note: ``IPNNotify`` does not yet model the peer-delta fields. A notification
+  /// > carrying only them still arrives and decodes (with every modeled field
+  /// > `nil`), so treat it as "something changed" and re-read
+  /// > ``TailscaleClient/status(query:)``.
+  public static let peerChanges = NotifyWatchOpt(rawValue: 1 << 12)
+
+  /// Suppress the network map on notifications after the first
+  /// (upstream `NotifyNoNetMap`).
+  ///
+  /// Before Tailscale 1.104, this suppresses ``IPNNotify/netMap`` on runtime
+  /// (non-initial) notifications. From 1.104, which no longer sends a network map,
+  /// upstream keeps it as an accepted no-op for compatibility.
+  ///
+  /// Observed accepted by Tailscale v1.102.2 and v1.104.7.
+  public static let noNetMap = NotifyWatchOpt(rawValue: 1 << 13)
+
+  /// Include the current status in the first message
+  /// (upstream `NotifyInitialStatus`).
+  ///
+  /// At the pinned upstream revision, the first notification carries the daemon's
+  /// status snapshot (upstream `Notify.InitialStatus`, the `ipnstate.Status` that
+  /// ``TailscaleClient/status(query:)`` returns). Upstream fills its per-peer
+  /// entries only when the watch also sets ``peerChanges`` or ``peerPatches``;
+  /// otherwise it carries the local node and the scalar fields. Later
+  /// notifications report changes to the local node (upstream `Notify.SelfChange`).
+  ///
+  /// Observed accepted by Tailscale v1.102.2 and v1.104.7.
+  ///
+  /// > Note: ``IPNNotify`` does not yet model `InitialStatus` or `SelfChange`. A
+  /// > notification carrying only those fields still arrives and decodes, so treat
+  /// > it as "something changed" and re-read ``TailscaleClient/status(query:)``.
+  public static let initialStatus = NotifyWatchOpt(rawValue: 1 << 14)
+
+  /// Receive narrow per-field peer changes (upstream `NotifyPeerPatches`).
+  ///
+  /// At the pinned upstream revision, changes that fit a per-field patch
+  /// (currently online state, last seen, home DERP region, and endpoints) arrive
+  /// as patches (upstream `Notify.PeerChangedPatch`); other changes arrive as full
+  /// peer entries. It implies ``peerChanges``: the watcher also receives peer
+  /// additions and removals. This is upstream's lower-bandwidth peer mode.
+  ///
+  /// Observed accepted by Tailscale v1.102.2 and v1.104.7.
+  ///
+  /// > Note: ``IPNNotify`` does not yet model the peer-delta fields. A notification
+  /// > carrying only them still arrives and decodes, so treat it as "something
+  /// > changed" and re-read ``TailscaleClient/status(query:)``.
+  public static let peerPatches = NotifyWatchOpt(rawValue: 1 << 15)
+
+  /// The options Tailscale 1.104 and later reject with HTTP 400 (upstream
+  /// `ObsoleteNotifyInitialNetMap` and `ObsoleteNotifyRateLimit`). The client
+  /// removes these when a daemon rejects a watch that carried them.
+  static let obsolete: NotifyWatchOpt = [.initialNetMap, .rateLimit]
+
   /// Default options for general monitoring.
   ///
   /// Includes initial state, health state, engine updates, and rate limiting.
+  /// Daemons from Tailscale 1.104 on reject ``rateLimit``; against those the
+  /// client sends the other three.
   public static let `default`: NotifyWatchOpt = [
     .initialState,
     .initialHealthState,
@@ -450,6 +533,9 @@ public struct NotifyWatchOpt: OptionSet, Sendable {
   ]
 
   /// All initial state options.
+  ///
+  /// Daemons from Tailscale 1.104 on reject ``initialNetMap``; against those the
+  /// client sends the others.
   public static let allInitial: NotifyWatchOpt = [
     .initialState,
     .initialPrefs,

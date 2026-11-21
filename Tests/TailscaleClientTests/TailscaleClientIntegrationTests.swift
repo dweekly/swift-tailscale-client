@@ -46,6 +46,28 @@ import XCTest
         "Expected no peers when includePeers=false")
     }
 
+    // MARK: - IPN Bus
+
+    /// Read-only: a default watch opens and delivers its first notification.
+    func testDefaultWatchDeliversFirstNotification() async throws {
+      let stream = try await client.watchIPNBus()
+      let first = try await withThrowingTaskGroup(of: IPNNotify?.self) { group in
+        group.addTask {
+          for try await notify in stream { return notify }
+          return nil
+        }
+        group.addTask {
+          try await Task.sleep(for: .seconds(5))
+          return nil
+        }
+        let result = try await group.next() ?? nil
+        group.cancelAll()
+        return result
+      }
+      let notify = try XCTUnwrap(first, "Expected a notification within 5 seconds")
+      XCTAssertNotNil(notify.state, "Expected initial state in the first notification")
+    }
+
     // MARK: - WhoIs Endpoint Tests
 
     func testWhoIsWithSelfIP() async throws {
