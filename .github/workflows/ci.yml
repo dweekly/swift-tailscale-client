@@ -117,6 +117,7 @@ jobs:
           python3 Scripts/test-api-baseline.py
           python3 Scripts/test-release-rehearsal.py
           python3 Scripts/test-soak-verification.py
+          python3 Scripts/test-endpoint-evidence.py
           python3 Scripts/capture-ping-fixture.py --self-test
 
       - name: Check advertised versions agree
