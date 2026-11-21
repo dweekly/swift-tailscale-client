@@ -1064,10 +1064,29 @@ final class Tier1FeatureTests: XCTestCase {
   }
 
   func test_feat19_appStoreDiscoveryEnabledOnlyWithExplicitOptIn() throws {
-    let configDefault = TailscaleClientConfiguration.default
-    let configOptIn = TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)
-    XCTAssertNotNil(configDefault)
-    XCTAssertNotNil(configOptIn)
+    #if !os(macOS)
+      throw XCTSkip("macOS App Store discovery exists only on macOS")
+    #endif
+    // Hermetic: calling `.default(allowMacOSAppStoreDiscovery: true)` would run
+    // real discovery against this machine (Group Containers, TCC). Opt-in is
+    // asserted through the injected App Store locator instead.
+    let consulted = Feat19Counter()
+    let locator: @Sendable () -> (port: UInt16, token: String, source: String)? = {
+      consulted.increment()
+      return nil
+    }
+    let noSockets: @Sendable (String) -> Bool = { _ in false }
+    let missing = URL(fileURLWithPath: "/nonexistent/feat19")
+    _ = LocalAPIDiscovery(
+      environment: [:], fileExists: noSockets, allowMacOSAppStoreDiscovery: false,
+      standaloneDirectoryOverride: missing, appStoreLocator: locator
+    ).discover()
+    XCTAssertEqual(consulted.value, 0, "App Store lookup must not run without opt-in")
+    _ = LocalAPIDiscovery(
+      environment: [:], fileExists: noSockets, allowMacOSAppStoreDiscovery: true,
+      standaloneDirectoryOverride: missing, appStoreLocator: locator
+    ).discover()
+    XCTAssertEqual(consulted.value, 1, "App Store lookup runs only with opt-in")
   }
 
   func test_feat19_appStoreDiscoveryInspectsGroupContainers() throws {
@@ -1088,13 +1107,51 @@ final class Tier1FeatureTests: XCTestCase {
   }
 
   func test_feat19_appStoreDiscoveryFallsBackWhenAppStoreNotFound() throws {
+    #if !os(macOS)
+      throw XCTSkip("macOS App Store discovery exists only on macOS")
+    #endif
+    // Hermetic: the injected locator stands in for the real App Store lookup,
+    // which reads another app's Group Container and can block indefinitely on
+    // a TCC consent prompt on a headless CI runner.
+    let consulted = Feat19Counter()
     let discovery = LocalAPIDiscovery(
       environment: [:],
       fileExists: { _ in false },
-      allowMacOSAppStoreDiscovery: true
+      allowMacOSAppStoreDiscovery: true,
+      standaloneDirectoryOverride: URL(fileURLWithPath: "/nonexistent/feat19"),
+      appStoreLocator: {
+        consulted.increment()
+        return nil
+      }
     )
     let result = discovery.discover()
-    XCTAssertNotNil(result)
+    XCTAssertEqual(consulted.value, 1, "Discovery must use the injected App Store locator")
+    guard case .unixSocket = result.endpoint else {
+      return XCTFail("Expected the default-socket fallback, got \(result.endpoint)")
+    }
+    XCTAssertNil(result.authToken)
+  }
+
+  func test_feat19_appStoreDiscoveryUsesInjectedLocatorSyncAndAsync() async throws {
+    #if !os(macOS)
+      throw XCTSkip("macOS App Store discovery exists only on macOS")
+    #endif
+    let locator: @Sendable () -> (port: UInt16, token: String, source: String)? = {
+      (port: 41234, token: "token-app-store", source: "/fake/sameuserproof-41234-x")
+    }
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      allowMacOSAppStoreDiscovery: true,
+      standaloneDirectoryOverride: URL(fileURLWithPath: "/nonexistent/feat19"),
+      appStoreLocator: locator
+    )
+    let syncResult = discovery.discover()
+    XCTAssertEqual(syncResult.endpoint, .loopback(host: "127.0.0.1", port: 41234))
+    XCTAssertEqual(syncResult.authToken, "token-app-store")
+    let asyncResult = try await discovery.discoverAsync()
+    XCTAssertEqual(asyncResult.endpoint, .loopback(host: "127.0.0.1", port: 41234))
+    XCTAssertEqual(asyncResult.authToken, "token-app-store")
   }
 
   // MARK: - FEAT-20: Asynchronous Discovery Entry Point
@@ -1938,4 +1995,12 @@ final class Tier1FeatureTests: XCTestCase {
     let sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     XCTAssertEqual(sha256.count, 64)
   }
+}
+
+/// Thread-safe call counter for the injected App Store locator (FEAT-19).
+private final class Feat19Counter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+  func increment() { lock.withLock { count += 1 } }
+  var value: Int { lock.withLock { count } }
 }
