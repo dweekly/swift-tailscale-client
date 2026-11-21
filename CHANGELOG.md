@@ -14,11 +14,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
-- A reconnecting `watchIPNBusEvents` stream now follows a daemon restart that changes the
-  loopback port or proof token: when the endpoint source is automatic, each
-  reconnect attempt rediscovers the daemon once (single-flight with unary
-  requests) on a connect-stage failure or a 401/loopback 403, exactly as the
-  initial open does. Pinned configurations still never rediscover.
+- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
+  or, with a reconnect policy, on its first successful reconnect: the stream
+  continues, the line is reported through `onUndecodableLine`, and genuine
+  buffer overflow still throws `streamOverflow`.
+- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
+  now follow a daemon restart that changes the loopback port or proof token:
+  when the endpoint source is automatic, each reconnect attempt rediscovers
+  the daemon once (single-flight with unary requests) on a connect-stage
+  failure or a 401/loopback 403, as the initial open does. Pinned
+  configurations still never rediscover.
 
 ## [1.0.0] - 2026-09-20
 

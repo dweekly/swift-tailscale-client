@@ -310,41 +310,166 @@ final class WatchReconnectRecoveryTests: XCTestCase {
     XCTAssertEqual(client.configuration.authToken, "pinned-token")
   }
 
-  #if os(macOS)
-    // MARK: - watchIPNBus reconnect surfacing
+  // MARK: - watchIPNBus (IPNNotify wrapper) across reconnects
 
-    /// `watchIPNBus(reconnect:)` maps every `.stateGap` lifecycle event to
-    /// `streamOverflow`, including the `stateGap(reason: "reconnected")` the
-    /// reconnect loop emits, so a successful reconnect ends the stream with an
-    /// error. Tracked separately from rediscovery; remove the expected failure
-    /// once `watchIPNBus` stops treating a reconnect gap as overflow.
-    func testWatchIPNBusSurvivesPlainReconnect() async throws {
-      let transport = MockTransport.scriptedStreams([
-        [.jsonLine("{\"Version\":\"1.0\"}")],
-        [.jsonLine("{\"Version\":\"2.0\"}")],
-      ])
-      let client = TailscaleClient(
-        configuration: TailscaleClientConfiguration(
-          endpoint: .loopback(host: "127.0.0.1", port: 41280), authToken: "t",
-          transport: transport))
-      let stream = try await client.watchIPNBus(
-        reconnect: IPNBusReconnectPolicy(
-          maxAttempts: 2, initialDelay: .milliseconds(10), maxDelay: .milliseconds(20)))
-      var versions: [String] = []
-      var thrown: Error?
-      do {
-        for try await notify in stream {
-          versions.append(notify.version ?? "")
-          if notify.version == "2.0" { break }
+  static let fastIPNReconnect = IPNBusReconnectPolicy(
+    maxAttempts: 3, initialDelay: .milliseconds(10), maxDelay: .milliseconds(20))
+
+  /// Collects notification versions from `watchIPNBus` until `stopAt`, the
+  /// end of the stream, or two seconds. Returns the versions and any error.
+  static func collectNotifyVersions(
+    _ stream: AsyncThrowingStream<IPNNotify, Error>, stopAt: String
+  ) async -> (versions: [String], error: Error?) {
+    await withTaskGroup(of: ([String], Error?)?.self) { group in
+      group.addTask {
+        var versions: [String] = []
+        do {
+          for try await notify in stream {
+            if let version = notify.version { versions.append(version) }
+            if notify.version == stopAt { break }
+          }
+          return (versions, nil)
+        } catch {
+          return (versions, error)
         }
-      } catch {
-        thrown = error
       }
-      XCTExpectFailure("watchIPNBus reports a reconnect gap as streamOverflow")
-      XCTAssertNil(thrown)
-      XCTAssertEqual(versions, ["1.0", "2.0"])
+      group.addTask {
+        try? await Task.sleep(for: .seconds(2))
+        return nil
+      }
+      let first = await group.next() ?? nil
+      group.cancelAll()
+      return first ?? ([], TailscaleClientError.timeout(endpoint: "test-collect"))
     }
+  }
 
+  func testWatchIPNBusSurvivesPlainReconnect() async throws {
+    let transport = MockTransport.scriptedStreams([
+      [.jsonLine("{\"Version\":\"1.0\"}")],
+      [.jsonLine("{\"Version\":\"2.0\"}")],
+    ])
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .loopback(host: "127.0.0.1", port: 41280), authToken: "t",
+        transport: transport))
+
+    let stream = try await client.watchIPNBus(reconnect: Self.fastIPNReconnect)
+    let (versions, error) = await Self.collectNotifyVersions(stream, stopAt: "2.0")
+
+    XCTAssertNil(error, "A successful reconnect must not end the stream")
+    XCTAssertEqual(versions, ["1.0", "2.0"])
+  }
+
+  func testWatchIPNBusFollowsRediscoveredDaemonAcrossReconnect() async throws {
+    let transport = RestartingDaemonTransport()
+    let discovery = LocalAPIDiscovery(
+      environment: [
+        "TAILSCALE_LOCALAPI_PORT": "41291",
+        "TAILSCALE_LOCALAPI_AUTHKEY": "token-new",
+      ]
+    )
+    await transport.setStreamHandler { index, config in
+      if Self.port(of: config.endpoint) == 41290 {
+        if index == 0 { return Self.notifyStream(["old-1"], thenClose: true) }
+        throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:41290")
+      }
+      return Self.notifyStream(["new-1"], thenClose: false)
+    }
+    let config = TailscaleClientConfiguration(
+      discovery: discovery,
+      result: .init(
+        endpoint: .loopback(host: "127.0.0.1", port: 41290), authToken: "token-old",
+        capabilityVersion: 144),
+      transport: transport
+    )
+    let client = TailscaleClient(configuration: config)
+
+    let stream = try await client.watchIPNBus(reconnect: Self.fastIPNReconnect)
+    let (versions, error) = await Self.collectNotifyVersions(stream, stopAt: "new-1")
+
+    XCTAssertNil(error)
+    XCTAssertEqual(versions, ["old-1", "new-1"])
+    let last = await transport.opens.last
+    XCTAssertEqual(last?.endpoint, .loopback(host: "127.0.0.1", port: 41291))
+    XCTAssertEqual(last?.token, "token-new")
+  }
+
+  func testWatchIPNBusSkipsUndecodableLineAndReportsIt() async throws {
+    final class Reported: @unchecked Sendable {
+      private let lock = NSLock()
+      private var lines: [Data] = []
+      func append(_ line: Data) {
+        lock.lock()
+        lines.append(line)
+        lock.unlock()
+      }
+      var all: [Data] {
+        lock.lock()
+        defer { lock.unlock() }
+        return lines
+      }
+    }
+    let reported = Reported()
+    let malformed = Data("not json".utf8)
+    let transport = MockTransport.scriptedStream([
+      .jsonLine("{\"Version\":\"1.0\"}"),
+      .line(malformed),
+      .jsonLine("{\"Version\":\"2.0\"}"),
+    ])
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .loopback(host: "127.0.0.1", port: 41300), authToken: "t",
+        transport: transport))
+
+    let stream = try await client.watchIPNBus(onUndecodableLine: { line, _ in
+      reported.append(line)
+    })
+    let (versions, error) = await Self.collectNotifyVersions(stream, stopAt: "never")
+
+    XCTAssertNil(error, "An undecodable line must not end the stream")
+    XCTAssertEqual(versions, ["1.0", "2.0"])
+    XCTAssertEqual(reported.all, [malformed])
+  }
+
+  func testWatchIPNBusStillThrowsStreamOverflowWhenBufferExceeded() async throws {
+    // watchIPNBus uses `.throwing` bounds (256 events); overflow is raised by the queue itself.
+    let lines = (1...400).map { MockStreamEvent.jsonLine("{\"Version\":\"1.\($0)\"}") }
+    let transport = MockTransport.scriptedStream(lines)
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .loopback(host: "127.0.0.1", port: 41310), authToken: "t",
+        transport: transport))
+
+    let stream = try await client.watchIPNBus()
+    var iterator = stream.makeAsyncIterator()
+    _ = try await iterator.next()
+    try await Task.sleep(for: .milliseconds(200))
+    do {
+      while try await iterator.next() != nil {}
+      XCTFail("Expected streamOverflow")
+    } catch TailscaleClientError.streamOverflow {
+      // expected
+    }
+  }
+
+  func testWatchIPNBusWithoutReconnectEndsOnConnectionDrop() async throws {
+    let transport = MockTransport.scriptedStreams([
+      [.jsonLine("{\"Version\":\"1.0\"}")],
+      [.jsonLine("{\"Version\":\"2.0\"}")],
+    ])
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        endpoint: .loopback(host: "127.0.0.1", port: 41320), authToken: "t",
+        transport: transport))
+
+    let stream = try await client.watchIPNBus()
+    let (versions, error) = await Self.collectNotifyVersions(stream, stopAt: "never")
+
+    XCTAssertNil(error, "A server close without a reconnect policy ends the stream normally")
+    XCTAssertEqual(versions, ["1.0"])
+  }
+
+  #if os(macOS)
     // MARK: - Automatic source with counted discovery (macOS standalone layout)
 
     actor ProbeCounter {

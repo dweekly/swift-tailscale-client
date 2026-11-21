@@ -842,7 +842,8 @@ public actor TailscaleClient {
         // Connection established
         await queue.enqueue(.lifecycle(.connected), byteSize: 64)
         if !isFirstConnection {
-          await queue.enqueue(.lifecycle(.stateGap(reason: "reconnected")), byteSize: 64)
+          await queue.enqueue(
+            .lifecycle(.stateGap(reason: IPNBusLifecycle.reconnectedGapReason)), byteSize: 64)
         }
         isFirstConnection = false
 
@@ -860,7 +861,9 @@ public actor TailscaleClient {
               let clientErr = TailscaleClientError.decoding(
                 decodingError, body: lineData, endpoint: endpoint)
               onUndecodableLine?(lineData, clientErr)
-              await queue.enqueue(.lifecycle(.stateGap(reason: "undecodable_line")), byteSize: 64)
+              await queue.enqueue(
+                .lifecycle(.stateGap(reason: IPNBusLifecycle.undecodableLineGapReason)),
+                byteSize: 64)
             }
             if await shouldExit() {
               await queue.finish()
@@ -939,7 +942,8 @@ public actor TailscaleClient {
   ///   - reconnect: Opt-in automatic reconnection policy. `nil` (the default)
   ///     ends the stream on the first connection failure.
   ///   - onUndecodableLine: Called with the raw line and the decoding error for
-  ///     each line that could not be decoded as an ``IPNNotify``.
+  ///     each line that could not be decoded as an ``IPNNotify``. The line is
+  ///     skipped and the stream continues.
   /// - Returns: An async stream of IPN notifications.
   /// - Throws: `TailscaleClientError` if the initial connection fails.
   public func watchIPNBus(
@@ -982,7 +986,15 @@ public actor TailscaleClient {
         switch event {
         case .notification(let notify):
           return notify
-        case .lifecycle(.stateGap):
+        case .lifecycle(.stateGap(let reason)):
+          // A reconnect gap is covered by the daemon re-sending initial state, and an
+          // undecodable line is reported through `onUndecodableLine`; neither ends the
+          // stream. Any other gap means notifications were dropped.
+          if reason == IPNBusLifecycle.reconnectedGapReason
+            || reason == IPNBusLifecycle.undecodableLineGapReason
+          {
+            continue
+          }
           throw TailscaleClientError.streamOverflow
         case .lifecycle:
           continue
