@@ -71,6 +71,7 @@ Every transport/decoding change runs against this list; each item becomes a name
 - Chunk data split across reads; final `0\r\n\r\n` split across reads
 - Trailers after the last chunk
 - Response with no `Content-Length` and connection-close framing (HTTP/1.0 style)
+- Streaming response with `Content-Length` (including 0) on a connection the server holds open: the body ends after that many bytes and the stream finishes; fewer bytes then EOF is a typed framing error (`StreamingBodyFramingSocketTests`, `HTTPWireFormatTests`)
 - Status lines: 200 with empty body, 204 (e.g. `tka/modify`), 4xx/5xx with JSON and with plain-text bodies
 
 **Streaming**
@@ -124,6 +125,22 @@ The self-hosted runner gives one real macOS daemon; the version matrix and mutat
 Why headscale rather than the real control plane: hermetic, no secrets, safe on fork PRs, free to create/destroy tailnets per run. A separate, optional monthly job with an ephemeral auth key (repo secret) can sanity-check against the production control plane.
 
 **Version matrix:** {stable, previous-stable (pinned), unstable} — implemented as the headscale matrix lanes. The workflow is manual-only and outside release qualification since 2026-09-19; its last successful run (2026-09-20) was on v0.12.0 code, and its one completed run on 1.x code (2026-09-22) failed to compile on Linux. Each release's notes state which daemon versions, if any, it was tested against.
+
+### Testing against a specific daemon version (local, never in CI)
+
+`Scripts/disposable-tailscaled.sh` builds a given upstream `tailscaled` release with `go install`, runs it as a throwaway userspace daemon with its own socket and in-memory state, and stops it again. The daemon is never logged in to a tailnet (it stays in `NeedsLogin`), which is enough for status, prefs reads, and IPN bus watch behavior. It does not touch the installed Tailscale: it never uses the default socket, and both scripts refuse any socket whose directory lacks the marker file the script writes. `stop` signals only the PID it started, and only if that process's command line still names the managed socket.
+
+```bash
+Scripts/disposable-tailscaled.sh v1.104.7 start         # build once (needs go), start, print version and BackendState
+SOCK=$(Scripts/disposable-tailscaled.sh v1.104.7 sock)
+TAILSCALE_LOCALAPI_SOCKET=$SOCK swift run tailscale-swift status
+TAILSCALE_LOCALAPI_SOCKET=$SOCK swift run tailscale-swift watch
+Scripts/watch-mask-probe.sh "$SOCK"                      # TSV: which watch-ipn-bus masks this version accepts (needs curl, jq)
+Scripts/disposable-tailscaled.sh v1.104.7 stop
+pgrep -fl tailscaled                                     # confirm only the system daemon (if any) remains
+```
+
+Binaries and run state go under `.build/disposable-tailscaled/` (override with `TSD_HOME`); the socket goes in a short `mktemp -d` directory under `$TMPDIR` (override with `TSD_SOCK_ROOT`) because macOS limits Unix socket paths to about 104 bytes. Several versions can run at once. The mask table in `watch-mask-probe.sh` copies the library and CLI default masks; keep it in step when those change.
 
 ### Mutation tests for write APIs (v0.8.0+)
 
