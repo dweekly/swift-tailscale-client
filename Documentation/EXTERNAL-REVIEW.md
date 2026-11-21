@@ -1,17 +1,16 @@
 # Technical Review Record: swift-tailscale-client 1.0
 
 **Document:** `Documentation/EXTERNAL-REVIEW.md`  
-**Status:** In Progress / Open  
-**Last Updated:** 2026-09-18  
+**Status:** Open — no independent review has been conducted  
 **Scope:** Milestone 1–3 Architecture, Correctness, Framing, Resource Bounds, Concurrency, and Discovery  
 **Authoritative Plan:** `Documentation/PLAN-1.0.md § W8` (Milestone 3, PR 14)  
-**Gating Status:** **External review pending (adoption goal; not an independent 1.0 release blocker as of 2026-09-19)**
+**Gating Status:** Adoption goal; not a release gate (maintainer scope decision, 2026-09-19)
 
 ---
 
 ## 1. Review Overview & Objectives
 
-In accordance with `Documentation/PLAN-1.0.md § W8`, blocking technical findings must be resolved before 1.0; independent external review remains a separate adoption goal. The review evaluates the core guarantees and invariants of `swift-tailscale-client`:
+Under `Documentation/PLAN-1.0.md § W8`, independent external review is an adoption goal. A review should evaluate the core guarantees and invariants of `swift-tailscale-client`:
 
 1. **Transport Framing & Socket Resource Bounds (W2: PR 04, PR 05)**
 2. **Safe Configuration Writes & Concurrency Snapshot Control (W1: PR 02, PR 03)**
@@ -20,19 +19,16 @@ In accordance with `Documentation/PLAN-1.0.md § W8`, blocking technical finding
 
 ---
 
-## 2. Review Status & Retraction of Prior Attribution
+## 2. Review Status
 
-> [!IMPORTANT]
-> **Attribution Retraction**:
-> Earlier drafts of this document attributed review completion to an external persona ("Dr. E. Aris Thorne, Principal Distributed Systems Architect"). That persona was synthetic and does not represent an independently verifiable human reviewer. This attribution is formally retracted.
-
-### Current Review Posture:
-1. **Automated & Adversarial Swarm Verification**: Completed. The codebase has undergone multi-agent challenger testing, forensic source audits, and stress testing across:
+1. **In-repository adversarial tests**: The repository contains fault-injection and challenger test suites written alongside the implementation and run in required CI, including:
    - `UnixSocketFaultTests.swift`: Socket timeouts, broken pipes, truncation.
    - `TransportCancellationChallengerTests.swift`: Non-blocking socket polling and cooperative cancellation.
    - `ServeConfigLosslessTests.swift`: 64-bit integer preservation and unmodeled field round-trips.
    - `DiscoveryRecoveryTests.swift`: Single-flight rediscovery under concurrent caller stampedes.
-2. **Independent External Review**: **OPEN / PENDING**. Review by a qualified engineer independent of this implementation has not yet been conducted. It remains an upstream-adoption goal, rather than a blocker for the independent release; the release consumer check is the actual NWX integration.
+
+   These are not an independent review.
+2. **Independent external review**: **Not yet conducted.** No engineer independent of this implementation has reviewed it. This is an adoption goal, not a release gate; 1.0.0 shipped without it.
 
 ---
 

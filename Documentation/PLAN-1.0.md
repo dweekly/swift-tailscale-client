@@ -1,13 +1,11 @@
-# 1.0 release scope update — 2026-09-19
-
-The maintainer narrowed release qualification to Apple platforms: macOS runtime
-and iOS/tvOS/watchOS build checks. Linux build, daemon-matrix, binary, and parity
-requirements in the original plan below are deferred. NWX is the initial real
-consumer; additional consumers and independent review are adoption goals.
-
 # 1.0 implementation and release plan
 
-Status: proposed implementation sequence, 2026-09-17. No implementation work is marked complete by this plan.
+**Current status:** 1.0.0 shipped on 2026-09-20 (tag `v1.0.0`, commit `d0769f8`) under a scope the maintainer narrowed on 2026-09-19: macOS runtime plus iOS/tvOS/watchOS build checks. The Linux build, daemon-matrix, binary, and parity requirements below were deferred and Linux is unqualified.
+
+- **Shipped:** W0–W4, W6, and W7; W5, W8, and W9 in part (synthetic fixtures and a Go reference-struct harness; in-tree consumer simulation tests and an NWX adapter smoke test; the soak harness and a 30-second soak).
+- **Still open:** G5 compatibility evidence from real daemons across versions; G9 long soaks and release-candidate evaluation; a live-daemon integration result on a release tag. Additional consumers and independent review are adoption goals, not release gates.
+
+Evidence for each gate is in [releases/1.0.0.md](releases/1.0.0.md). The plan below is kept as written on 2026-09-17; its checkboxes are not updated.
 
 This package should reach 1.0 with a supportable Swift API for observing and controlling an existing Tailscale daemon. The release must demonstrate safe configuration updates, bounded resource use, predictable cancellation and recovery, and compatibility with explicitly supported daemon versions and installation types.
 

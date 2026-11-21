@@ -16,6 +16,8 @@ Signed-off-by: Jane Doe <jane.doe@example.com>
 
 Using `git commit -s` automatically appends this trailer. By signing off, you certify that you have the right to submit the contribution under the project's MIT license.
 
+To check a range of commits for the trailer, run `python3 Scripts/check-governance.py --dco-range origin/main..HEAD`. CI does not run this check, so a missing sign-off does not block a pull request.
+
 ## Development Workflow
 1. Fork and clone the repository.
 2. Create a feature branch off `main`.
