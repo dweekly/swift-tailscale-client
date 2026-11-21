@@ -6,11 +6,14 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Changed
 
-- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@7bf76690f09d`
-  and advance the default advertised capability from 144 to 148. Explicit
+- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
+  and advance the default advertised capability from 144 to 152. Explicit
   `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
-  still override the default. See `Documentation/COMPATIBILITY-148.md`
-  for the upstream review and compatibility evidence.
+  still override the default. The upstream `cert-status/` and
+  `resume-ipn-bus` handlers are recorded as unwrapped. See
+  `Documentation/COMPATIBILITY-148.md` and
+  `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
+  compatibility evidence.
 
 ### Documentation
 
