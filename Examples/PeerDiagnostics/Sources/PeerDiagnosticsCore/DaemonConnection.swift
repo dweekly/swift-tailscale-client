@@ -29,19 +29,16 @@ public protocol DaemonConnection: Sendable {
 /// re-read `status()`. So it asks for exactly the notifications that mean "something
 /// about the peers or the node changed":
 ///
-/// - `NotifyInitialState` (bit 1): one notification as soon as the watch opens.
-/// - `NotifyPeerChanges` (bit 12, upstream `ipn.NotifyPeerChanges`): peer additions,
-///   removals, and changes. Tailscale 1.104 and later send peer changes only to watchers
-///   that ask for this bit.
-/// - `NotifyNoNetMap` (bit 13, upstream `ipn.NotifyNoNetMap`): suppresses the large
-///   network-map notifications older daemons send; ignored by 1.104 and later.
-///
-/// Bits 12 and 13 are built from raw values because the library does not name them yet;
-/// when it does, replace them with the named options here and nowhere else.
+/// - `.initialState`: one notification as soon as the watch opens.
+/// - `.peerChanges` (upstream `ipn.NotifyPeerChanges`): peer additions, removals, and
+///   changes. Tailscale 1.104 and later send peer changes only to watchers that ask
+///   for this option.
+/// - `.noNetMap` (upstream `ipn.NotifyNoNetMap`): suppresses the large network-map
+///   notifications older daemons send; ignored by 1.104 and later.
 public let peerDiagnosticsWatchOptions: NotifyWatchOpt = [
   .initialState,
-  NotifyWatchOpt(rawValue: 1 << 12),  // NotifyPeerChanges
-  NotifyWatchOpt(rawValue: 1 << 13),  // NotifyNoNetMap
+  .peerChanges,
+  .noNetMap,
 ]
 
 /// A ``DaemonConnection`` backed by the real Tailscale daemon through `TailscaleClient`.
