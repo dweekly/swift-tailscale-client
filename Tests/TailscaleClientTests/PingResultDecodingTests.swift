@@ -5,6 +5,8 @@ import XCTest
 
 @testable import TailscaleClient
 
+/// The `ping-*-sample` fixtures used here are hand-written, not captures (see
+/// `Fixtures/ping-captured.provenance.json`); `PingPathTests` covers real replies.
 final class PingResultDecodingTests: XCTestCase {
   func testDecodesDirectPing() throws {
     let data = try fixture(named: "ping-sample", type: "json")

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 David E. Weekly
 
+import TailscaleClient
 import XCTest
 
 #if canImport(Darwin) || os(Linux)
@@ -114,6 +115,86 @@ import XCTest
         result.stdout.contains("Watching IPN bus"),
         "Diagnostics must not pollute the JSON stream")
       XCTAssertTrue(result.stderr.contains("Stream ended"), result.stderr)
+    }
+    // MARK: - ping
+
+    private func runPing(_ arguments: [String], replying body: Data) throws -> CLIResult {
+      let head =
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+        + "Content-Length: \(body.count)\r\n\r\n"
+      let server = try FaultUnixServer(behaviors: [
+        .respond(head + String(decoding: body, as: UTF8.self), closeAfterWrite: true)
+      ])
+      defer { server.stop() }
+      let result = try runCLI(["ping"] + arguments, socketPath: server.path, deadline: 20)
+      XCTAssertEqual(result.status, 0, result.stderr)
+      return result
+    }
+
+    /// Synthetic replies: no DERP or peer-relay reply has been captured, so these follow
+    /// upstream `ipnstate.PingResult`. Captured replies come from `ping-captured-*` fixtures.
+    func testPingHumanOutputNamesEachPathLikeTailscalePing() throws {
+      let cases: [(args: [String], body: Data, expected: String)] = [
+        (
+          ["100.64.0.2"], try fixture(named: "ping-captured-disco-direct", type: "json"),
+          "ping 1: example-peer - 5.28 ms via [2001:db8::a]:41641"
+        ),
+        (
+          ["100.64.0.2"],
+          Data(
+            #"{"NodeName":"example-peer","Err":"","LatencySeconds":0.01,"Endpoint":"","PeerRelay":"203.0.113.7:7777:vni:12","DERPRegionID":0,"DERPRegionCode":""}"#
+              .utf8),
+          "via peer-relay(203.0.113.7:7777:vni:12)"
+        ),
+        (
+          ["100.64.0.2"],
+          Data(
+            #"{"NodeName":"example-peer","Err":"","LatencySeconds":0.08,"Endpoint":"","PeerRelay":"","DERPRegionID":1,"DERPRegionCode":"sfo"}"#
+              .utf8),
+          "via DERP(sfo)"
+        ),
+        (
+          ["100.64.0.2"],
+          Data(
+            #"{"NodeName":"example-peer","Err":"","LatencySeconds":0.08,"DERPRegionID":7}"#.utf8),
+          "via DERP(region 7)"
+        ),
+        (
+          ["100.64.0.2", "--type", "tsmp"], try fixture(named: "ping-captured-tsmp", type: "json"),
+          "ping 1: example-peer - 4.33 ms via TSMP"
+        ),
+        (
+          ["100.64.0.2", "--type", "peerAPI"],
+          try fixture(named: "ping-captured-peerapi", type: "json"), "via peerapi"
+        ),
+        (
+          ["100.64.0.3"], try fixture(named: "ping-captured-error-expired-key", type: "json"),
+          "ping 1: error - peer's node key has expired"
+        ),
+      ]
+      for (args, body, expected) in cases {
+        let result = try runPing(args, replying: body)
+        XCTAssertTrue(result.stdout.contains(expected), "\(args): \(result.stdout)")
+        XCTAssertFalse(result.stdout.contains("via \n"), result.stdout)
+      }
+    }
+
+    /// `--json` prints the raw reply array unchanged from 1.0: the same keys, decodable by the
+    /// 1.0 `PingResult` decoder, with no derived fields added.
+    func testPingJSONKeepsOnePointZeroShape() throws {
+      let body = try fixture(named: "ping-captured-disco-direct", type: "json")
+      let result = try runPing(["100.64.0.2", "--json"], replying: body)
+      let array = try XCTUnwrap(
+        try JSONSerialization.jsonObject(with: Data(result.stdout.utf8)) as? [[String: Any]])
+      XCTAssertEqual(array.count, 1)
+      XCTAssertEqual(
+        Set(array[0].keys),
+        [
+          "IP", "NodeIP", "NodeName", "Err", "LatencySeconds", "Endpoint", "PeerRelay",
+          "DERPRegionID", "DERPRegionCode",
+        ])
+      let decoded = try JSONDecoder().decode([PingResult].self, from: Data(result.stdout.utf8))
+      XCTAssertEqual(decoded, [try JSONDecoder().decode(PingResult.self, from: body)])
     }
   }
 #endif
