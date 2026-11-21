@@ -2,21 +2,21 @@
 
 **Canonical validation and architecture record for Milestone 3 Work Item W8 (PR 14 Part 2).**
 
-This document establishes the consumer validation architecture for `swift-tailscale-client` 1.0. It documents real-world consumer patterns across two distinct architectural archetypes, presents the resolution ledger for all pre-1.0 integration friction points, and defines the verification suites that prove the public API contracts without private `@testable` imports.
+This document describes the consumer validation approach for `swift-tailscale-client` 1.0. It describes two consumer archetypes, presents the resolution ledger for pre-1.0 integration friction points, and lists the in-tree test suites that exercise the public API without `@testable` imports.
 
 ---
 
 ## 1. Executive Summary & Scope
 
-A production-grade 1.0 client library cannot be validated solely by internal unit tests or synthetic micro-benchmarks. Real consumer applications impose distinct operational pressures:
+A 1.0 client library cannot be validated solely by internal unit tests or synthetic micro-benchmarks. Real consumer applications impose distinct operational pressures:
 - **Read-Heavy Continuous Monitoring**: Long-lived background monitoring processes that stream state changes over hours and days without memory growth, file descriptor leaks, or desynchronization.
 - **Active Configuration & Lifecycle Management**: Workstation provisioning daemons and service orchestrators that perform transactional, conditional updates across multi-tenant profiles and reverse-proxy configurations.
 
-To validate `swift-tailscale-client` 1.0 against both operating profiles, this document evaluates:
-1. **Network Weather (NWX)**: A macOS menu-bar and diagnostics application serving as the primary read-heavy monitoring reference consumer.
-2. **TailscaleFleetAgent**: A workstation and server configuration management daemon exercising active mutations, profile lifecycles, and Serve/Funnel routing.
+This document covers one real consumer and one hypothetical archetype:
+1. **Network Weather (NWX)**: A real macOS menu-bar and diagnostics application and the initial consumer. Its Tailscale adapter passed a focused local read-only smoke test against this package on 2026-09-19 ([`releases/1.0.0.md` § 4](releases/1.0.0.md#4-nwx-adapter-smoke--2026-09-19)); that is not a full app trial.
+2. **TailscaleFleetAgent**: A hypothetical configuration-management agent used to model mutation-heavy use (profiles, preferences, Serve/Funnel). No such application exists; it exists only as the in-tree test suite `FleetAgentConfigurationTests`.
 
-Both consumers are validated strictly against the public interface (`import TailscaleClient`), using `import TailscaleClientMocks` for unit testing.
+Both archetypes are exercised by in-tree simulation suites (section 6) that use only the public interface (`import TailscaleClient`) and `TailscaleClientMocks`, against mock transports rather than a daemon.
 
 ---
 
@@ -108,7 +108,7 @@ The stream emits `.lifecycle(.stateGap(reason:))`. In response, NWX executes an 
 ## 3. Consumer Archetype 2: Fleet & Node Configuration Agent (TailscaleFleetAgent)
 
 ### 3.1 Consumer Profile
-`TailscaleFleetAgent` represents an enterprise workstation or server daemon that manages machine identity, configures Tailscale Serve and Funnel reverse proxies for local container workloads, switches between corporate and personal profiles, and enforces security settings (shields up, exit nodes).
+`TailscaleFleetAgent` is a hypothetical (simulated in-tree) workstation or server agent that manages machine identity, configures Tailscale Serve and Funnel reverse proxies for local container workloads, switches between corporate and personal profiles, and enforces security settings (shields up, exit nodes).
 
 ### 3.2 Exercised Workflows
 

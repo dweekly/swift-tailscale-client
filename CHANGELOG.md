@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file. The format 
   still override the default. See `Documentation/COMPATIBILITY-148.md`
   for the upstream review and compatibility evidence.
 
+### Documentation
+
+- Corrected the soak, adoption, consumer, review, support, testing, and 1.0 release documents to state only measured results: the 1-hour and 24-hour soaks are listed as not yet run, Linux as unqualified, no daemon versions as certified, and DCO sign-off as requested but not enforced in CI. The 1.0.0 release record now gives the published outcome and the gates left open.
+
 ## [1.0.0] - 2026-09-20
 
 `swift-tailscale-client` 1.0.0 is the first stable release of the unofficial Swift client library and CLI for an already-installed Tailscale daemon.
