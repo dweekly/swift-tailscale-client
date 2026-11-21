@@ -114,9 +114,11 @@ final class TailscaleClientConfigurationTests: XCTestCase {
   func testDefaultConfigurationDoesNotEnableAppStoreDiscovery() {
     // Verify that TailscaleClientConfiguration.default uses allowMacOSAppStoreDiscovery=false
     // This is a compile-time verification that the API exists
-    let _ = TailscaleClientConfiguration.default
-    let _ = TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: false)
-    let _ = TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)
+    // Referenced, not called: calling with `true` would run real App Store
+    // discovery against this machine (Group Containers, TCC prompt).
+    let factory: (Bool, any TailscaleTransport) -> TailscaleClientConfiguration =
+      TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery:transport:)
+    _ = factory
     // If this compiles, the API is correct
     XCTAssertTrue(true)
   }

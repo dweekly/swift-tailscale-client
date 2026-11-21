@@ -91,6 +91,12 @@ public struct LocalAPIDiscovery {
     (@Sendable (String) -> (isAlive: Bool, error: LocalAPIDiscoveryError?))?
   internal let standaloneDirectoryOverride: URL?
   internal let probeOverride: (@Sendable (UInt16, String) -> Bool)?
+  /// Replaces the real macOS App Store GUI lookup (libproc scan, Group
+  /// Containers read, live probe) when set. Tests must inject this whenever
+  /// they enable `allowMacOSAppStoreDiscovery`: the real lookup reads another
+  /// app's container, which TCC can gate behind a consent prompt that blocks
+  /// the calling thread on a headless machine.
+  internal let appStoreLocator: (@Sendable () -> (port: UInt16, token: String, source: String)?)?
 
   /// Creates a new LocalAPI discovery instance.
   ///
@@ -112,6 +118,7 @@ public struct LocalAPIDiscovery {
     self.socketProber = nil
     self.standaloneDirectoryOverride = nil
     self.probeOverride = nil
+    self.appStoreLocator = nil
   }
 
   init(
@@ -122,7 +129,8 @@ public struct LocalAPIDiscovery {
     allowMacOSAppStoreDiscovery: Bool = false,
     socketProber: (@Sendable (String) -> (isAlive: Bool, error: LocalAPIDiscoveryError?))? = nil,
     standaloneDirectoryOverride: URL? = nil,
-    probeOverride: (@Sendable (UInt16, String) -> Bool)? = nil
+    probeOverride: (@Sendable (UInt16, String) -> Bool)? = nil,
+    appStoreLocator: (@Sendable () -> (port: UInt16, token: String, source: String)?)? = nil
   ) {
     self.environment = environment
     self.fileExists = fileExists
@@ -130,6 +138,7 @@ public struct LocalAPIDiscovery {
     self.socketProber = socketProber
     self.standaloneDirectoryOverride = standaloneDirectoryOverride
     self.probeOverride = probeOverride
+    self.appStoreLocator = appStoreLocator
   }
 
   private func env(_ key: String) -> String? {
@@ -234,7 +243,15 @@ public struct LocalAPIDiscovery {
           Self.debugLog(
             "[LocalAPIDiscovery] attempting macOS App Store discovery (TCC popup may appear)")
         }
-        if let mac = MacClientInfo().locateSameUserProof() {
+        let located: (port: UInt16, token: String, source: String)?
+        if let appStoreLocator {
+          located = appStoreLocator()
+        } else {
+          located = MacClientInfo().locateSameUserProof().map {
+            (port: $0.port, token: $0.token, source: $0.source)
+          }
+        }
+        if let mac = located {
           if debug {
             // The token authenticates LocalAPI requests: never log any part
             // of it. Port + redacted source are enough to diagnose discovery.
@@ -390,7 +407,15 @@ public struct LocalAPIDiscovery {
           if debug {
             Self.debugLog("[LocalAPIDiscovery] attempting macOS App Store discovery")
           }
-          if let mac = await MacClientInfo().locateSameUserProofAsync() {
+          let located: (port: UInt16, token: String, source: String)?
+          if let locator = self.appStoreLocator {
+            located = locator()
+          } else {
+            located = await MacClientInfo().locateSameUserProofAsync().map {
+              (port: $0.port, token: $0.token, source: $0.source)
+            }
+          }
+          if let mac = located {
             if debug {
               Self.debugLog(
                 "[LocalAPIDiscovery] using macOS loopback port=\(mac.port) "
