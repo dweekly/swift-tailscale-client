@@ -13,3 +13,4 @@ DerivedData/
 __pycache__/
 .agents/
 soak-report-*.json
+Examples/*/.build/

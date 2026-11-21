@@ -131,7 +131,7 @@ def summary_table(data):
         "| Category | Count |",
         "|----------|-------|",
         f"| Implemented (from `endpoints.json`) | {' + '.join(parts)} |",
-        "| Planned Stable (v0.4.0–v1.3) | ~40 |",
+        "| Planned Stable | ~40 |",
         "| Planned Experimental | ~15 |",
         "| Unsupported (documented, with reasons) | 6 |",
         "| No LocalAPI equivalent (client-side features) | netcheck (implemented "

@@ -1,18 +1,57 @@
 # Roadmap
 
-This roadmap describes what remains between the current release and a complete, rigorously tested, well-documented 1.0 — and what "complete" means for a client of an API that Tailscale itself labels unstable. Shipped work lives in [`CHANGELOG.md`](CHANGELOG.md); this document tracks only what is yet to be done.
+**1.0.0 is available. We propose 1.1.0 for Mac developers who need to tell whether a peer is reachable through the user's existing Tailscale installation.** A backup app, for example, could show when it last reached the backup host, how the ping traveled, and when to try again. A successful peer ping describes the network path. The app still needs its own check for the backup service.
 
-**Detailed 1.0 execution plan:** [`Documentation/PLAN-1.0.md`](Documentation/PLAN-1.0.md) defines the implementation sequence, design decisions, acceptance tests, consumer validation, and release evidence required by the checklist below. It is a plan, not a claim that those guarantees already ship.
+The supported runtime is macOS 13+. iOS, tvOS, and watchOS receive build checks. Linux is unqualified. Network Weather (NWX) supplied a real adapter smoke test for 1.0. See the [smoke test results](Documentation/releases/1.0.0.md#4-nwx-adapter-smoke--2026-09-19), [changelog](CHANGELOG.md), and [original 1.0 plan](Documentation/PLAN-1.0.md).
 
-`swift-tailscale-client` is an unofficial, MIT-licensed project with no affiliation to Tailscale Inc.
+This unofficial, MIT-licensed package speaks LocalAPI directly from Swift. Tailscale’s Go client is the reference for daemon behavior. For an app that needs its own node identity, Tailscale provides an embedded Swift client. [Go client/local](https://pkg.go.dev/tailscale.com/client/local) · [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift)
 
-## Philosophy & Positioning
+## Try the released package
 
-This package connects to an **existing `tailscaled` daemon** and speaks its LocalAPI. It is the Swift equivalent of Tailscale's own Go [`client/local`](https://pkg.go.dev/tailscale.com/client/local) package: control and observe the Tailscale installation the user already has.
+On a Mac with Swift 6.1 or later, start with a tagged checkout:
 
-That distinguishes it from [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift) and other tsnet-based packages, which **embed a second Tailscale node** inside your app. Both are valid; they solve different problems. As of mid-2026 this is the only Swift package in the LocalAPI niche.
+```sh
+git clone --branch v1.0.0 --depth 1 https://github.com/dweekly/swift-tailscale-client.git
+cd swift-tailscale-client
+swift test --package-path Examples/Recipes --filter MockedClientTests/testStatusAgainstAFixture
+```
 
-**Primary driver:** the Network Weather (NWX) macOS diagnostics app. The roadmap favors read-heavy monitoring and diagnostics first, configuration and management second, and specialized surfaces (Taildrop, Taildrive, Tailnet Lock) after 1.0.
+The test reads a fixture and checks that the backend is running. It works without a Tailscale installation. For a live trial, start Tailscale on the Mac and run the following from the same checkout:
+
+```sh
+swift run --package-path Examples/StatusDemo StatusDemo
+```
+
+Look for the daemon version, backend state, and peer count. The demo also runs a STUN netcheck. Default discovery supports standalone Tailscale and local daemon sockets. Developers targeting the Mac App Store edition of Tailscale should review the opt-in discovery path and permission prompt. To use the library in an app, add the repository URL in Xcode and select the `TailscaleClient` product. [Integration guide](Documentation/INTEGRATING.md)
+
+If a step fails, include the command, macOS version, Tailscale install method, and first unexpected result. Use placeholders for private peer details. [Report a trial failure](https://github.com/dweekly/swift-tailscale-client/issues/new?template=bug_report.yml)
+
+## Proposed 1.1.0
+
+The [1.1.0 release plan](Documentation/PLAN-1.1.0.md) defines the test cases, live Mac trials, documentation checks, and evidence the maintainer reviews before tagging.
+
+| Deliverable | How to decide it is ready |
+|---|---|
+| **Peer Diagnostics**, a runnable SwiftUI example | A fresh checkout opens in fixture mode and shows a peer and its last ping. The user can choose live mode, select a peer, and see the measured path and time. Show offline, stale, and unavailable states. Start the watcher at launch and refresh after a stream gap or profile change. Test the same transitions with `TailscaleClientMocks`. |
+| An additive ping-path API | Prototype a typed result for direct, peer-relayed, DERP-relayed, and unknown paths. Match the official CLI's precedence when a reply has multiple fields. Exercise it in both the sample and the bundled CLI. Keep the raw fields and existing source compatibility. [Official ping implementation](https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/ping.go) |
+| First-launch discovery evidence | Run the live macOS example with endpoint and credential overrides cleared. Start with standalone Tailscale. Publish observed results for standalone, App Store, and Unix-socket installations, identifying the caller's sandbox status, prompt, failure, and recovery. Mark untried combinations explicitly. A passing shell-configured run only establishes connectivity. |
+| Compatibility evidence developers can inspect | Exercise status, ping, and watch on a named daemon version. Compare sanitized results with the official CLI or pinned Go client. Label real captures and synthetic fixtures. Reconcile the support and adoption guides with the actual platform checks and NWX evidence. Triage the upstream drift report, including what suspended watches mean for recovery. [Drift issue #45](https://github.com/dweekly/swift-tailscale-client/issues/45) |
+
+**Release decision.** Ship 1.1.0 when the additive API works in both callers, the example passes a fresh-checkout trial, and the release commit passes the existing Apple CI, API compatibility, and read-only macOS integration checks. Include a screenshot, the exact trial commands, and the tested environments in the release notes. If the trials produce only bug fixes and documentation, use the next 1.0.x patch for those changes. The maintainer tags the tested commit using the [release procedure](Documentation/RELEASING.md).
+
+## Get it into developers' hands
+
+1. **Before tagging**, invite a Mac diagnostics or remote-development app maintainer and a developer building a local preview or backup tool. Offer a short pairing session. Give each the same candidate commit SHA, a fixture-mode launch command, and one task in their own app. A fixed revision lets them retest exactly what failed. Lead with the sample and its screenshot in the README.
+2. **Collect first-run feedback** in one GitHub trial issue. Ask which Mac and Tailscale variant they used, whether the caller was sandboxed, time to the first useful result, what surprised them, and whether they would keep the integration. Request a small integration diff if shareable. For failures, link a reproducible bug from the trial and ask the reporter to retry the fix. Keep hostnames, peer addresses, and credentials out of public reports. [Issue tracker](https://github.com/dweekly/swift-tailscale-client/issues)
+3. **At release**, verify that Xcode resolves the tag, the sample runs from that tag, and Swift Package Index exposes the release and its docs. Share a short walkthrough on Swift Forums and submit the working example to Tailscale Community Projects with maintainer approval. Each post should point to the same trial instructions and feedback issue. The Homebrew tap is a second route for people who want to inspect their daemon before writing Swift. [Swift Package Index](https://swiftpackageindex.com/dweekly/swift-tailscale-client) · [Tailscale Community Projects](https://tailscale.com/community/community-projects) · [Homebrew tap](Documentation/HOMEBREW.md)
+4. **A month after release**, publish the number of independent trials, successful first connections, and downstream apps using the tag, along with the most common blocker. Aim for two independent apps shipping the package. Treat the count as an adoption goal so the release can proceed on its technical merits.
+
+## After the pilot
+
+- **Status monitoring.** Keep freshness and resynchronization logic in the sample initially. If a second app needs it, extract a snapshot sequence with defined behavior across sleep, reconnect, profile change, and event loss.
+- **Sharing a local preview with Serve.** Try one developer-tool integration. Detect an occupied route, use the existing conditional writes, and verify cleanup removes only the mapping created by the app.
+- **Endpoint backlog.** Taildrop moves out of the proposed 1.1.0 scope. Revisit file transfer, Taildrive, and Tailnet Lock when a consumer can exercise the workflow. The stable upstream gaps include a bug-report recording handle and a duplex connection abstraction for `DialTCP` / `UserDial`. Track requests and rationale in the [coverage ledger](Documentation/LOCALAPI-COVERAGE.md).
+- **Distribution.** Revisit homebrew-core once there is demand beyond the existing tap.
 
 ## Stability & Support Tiers
 
@@ -20,7 +59,7 @@ Upstream's own source says LocalAPI paths are namespaced under `/localapi/v0/` "
 
 | Tier | Where it lives | Guarantee |
 |------|----------------|-----------|
-| **Stable** | Methods on `TailscaleClient` | SemVer-protected once 1.0 ships. Covered by unit + integration tests on every supported tailscaled version. |
+| **Stable** | Methods on `TailscaleClient` | SemVer-protected since 1.0. See the endpoint manifest for the evidence available for each method. |
 | **Experimental** | `client.experimental` namespace | Compiles and works, but exempt from SemVer; tracks upstream churn (debug endpoints, log streaming, GUI push contract, self-update). May change or vanish in a minor release. |
 | **Unsupported** | Documented only | Deliberately not wrapped, with the reason recorded in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md). |
 
@@ -37,7 +76,7 @@ Standing policy for all code:
 - **Public memberwise initializers on every model**, so consumers can construct fixtures for SwiftUI previews and their own tests.
 - **Tolerant enums**: string/int enums from the wire use an `.unknown(raw)`/`.other` case rather than failing decodes when upstream adds values. Booleans upstream marks `omitempty` decode absent-as-false, never as optional.
 - **`Sendable` everywhere, `Equatable` on models**; `Encodable` where round-tripping matters.
-- **Typed errors** with actionable `recoverySuggestion`s; every request gets a configurable deadline. Typed status mapping, `Tailscale-Version` observation, and audit-reason injection apply to unary requests (streaming is documented as `.transport`-only).
+- **Typed errors** with actionable `recoverySuggestion`s; every request gets a configurable deadline. Unary and streaming requests map HTTP response status to typed errors before returning data or events.
 - **Streaming resilience**: an undecodable line in a stream is skipped and surfaced through a reporting hook, never fatal to the stream. Reconnection with exponential backoff is an explicit opt-in.
 - **Safe configuration updates**: `ServeConfig` preserves unmodeled fields losslessly, read-modify-write requires concurrency snapshots (`ServeConfigSnapshot`) and conditional updates by default, with an explicit unconditional replacement operation (`replaceServeConfigUnconditionally`).
 - **Naming follows Go `client/local`** adapted to Swift conventions — including upstream's `NetworkLock` → `TailnetLock` rename and `switchToEmptyProfile()` (`addProfile()` removed).
@@ -54,87 +93,6 @@ No endpoint is implemented from documentation alone. Every new surface follows t
 
 The spike workflow is documented in [`Documentation/TESTING.md`](Documentation/TESTING.md). Versioned fixture-capture tooling and provenance are implemented via `Scripts/capture-fixtures.py` (W5).
 
-## Version Plan (remaining)
+## Contributing to the roadmap
 
-v0.4.0 through v0.12.0 have shipped; their contents are recorded in [`CHANGELOG.md`](CHANGELOG.md). What remains:
-
-| Version | Theme | New endpoints | Key non-feature work |
-|---------|-------|---------------|----------------------|
-| **Pre-1.0 / RC** | Reliability and compatibility | — | Safe writes; transport/streaming guarantees; native discovery; exact-commit evidence; consumer evaluation |
-| **v1.0.0** | API freeze | — | All release gates below; approved API baseline, support policy, and consumer migrations |
-| **v1.1** | Taildrop | `file-put/`, `files/` (incl. long-poll), `file-targets` | Upload/download progress via IPN bus |
-| **v1.2** | Taildrive | `drive/fileserver-address`, `drive/shares` CRUD | |
-| **v1.3** | Tailnet Lock | 13 `tka/*` endpoints (`TailnetLock` naming) | |
-| **Post-1.0 (additive)** | Stable-gap ledger | `BugReportWithOpts` recording handle; `DialTCP`/`UserDial` duplex abstraction | Both tracked in the coverage ledger; see below |
-| **Ongoing** | Experimental debug surface | `debug` actions, `pprof`, `update/install|progress`, `appc-route-info`, `policy/*`, `debug-bus-*`, `prefs/service-clients` | Added on demand; never SemVer-bound |
-
-## v1.0.0 — API Freeze
-
-**Existing foundations:** the pinned handler inventory, 85% line-coverage floor, public mocks, automated multi-version Linux Headscale matrix, macOS integration lane, tutorial/examples, and distribution automation have shipped.
-
-**Release gates:** tracked via `aggregate-release-evidence.py` and `Documentation/PLAN-1.0.md`:
-
-- [ ] **G1 Safe writes:** lossless Serve updates, conditional snapshots, explicit unconditional replacement implemented; target-binding verification for ServeConfigSnapshot in progress.
-- [ ] **G2 Transport:** correct framing, head limits, chunked completion, cooperative cancellation implemented; lower-layer NewlineFramer line bounds and unary accumulation caps in progress.
-- [ ] **G3 Monitoring:** bounded queues, observable gaps/overflow, streaming metadata, and backoff implemented; transport stream buffer limits, queue overflow arithmetic, and Swift-driven soak harness in progress.
-- [x] **G4 Discovery:** native library discovery for supported macOS installation flavors and Linux, permission failures, stale candidates, restart/credential refresh verified.
-- [ ] **G5 Compatibility:** Go differential oracle harness and synthetic fixtures implemented; live daemon multi-version capture matrix and official upstream package imports pending.
-- [ ] **G6 Release gates:** required check aggregator and rehearsal scripts implemented; strict matrix member requirements and non-zero telemetry validation in progress.
-- [ ] **G7 API and docs:** removed `addProfile()`, 100% authored DocC coverage; immutable 1.0 baseline comparison gate and Swift 6.1 toolchain alignment in progress.
-- [ ] **G8 Consumers and maintenance:** in-tree simulations and focused real NWX adapter smoke verified; recorded maintenance ownership required. Additional consumers and external review are adoption goals, not release blockers.
-- [ ] **G9 Release candidate:** Swift-driven soak harness and 1.0 candidate evaluation in progress.
-
-Retain the unofficial-status disclaimer and explain the deferred stable-gap ledger in 1.0 release notes. Keep the public full-preferences replacement carrier internal unless lossless replacement semantics are established.
-
-## Post-1.0
-
-- **v1.1 Taildrop** — `file-put/<target>/<name>` (send), `files/` (inbox list, incl. `?waitfor=` long-poll), `file-targets`; progress observed via the `IncomingFiles`/`OutgoingFiles` notify fields modeled back in v0.4.0
-- **v1.2 Taildrive** — `drive/fileserver-address`, `drive/shares` list/set/rename/delete
-- **v1.3 Tailnet Lock** — the 13 `tka/*` endpoints under `TailnetLock` naming (note: `tka/modify` returns 204)
-- **Stable-gap ledger** (additive, tracked in `endpoints.json` and CI-verified as upstream-stable):
-  - `BugReportWithOpts` — a recording handle that keeps the POST body open until the caller ends the recording (upstream's contract); the experimental `record:` knob documents today's limitation
-  - `DialTCP` / `UserDial` — raw duplex streams over HTTP upgrade; needs a Swift connection abstraction design spike first (issue draft 04)
-- **Additional transport architectures** — additive after 1.0 where possible; the public transport contract and native safesocket discovery required by G2–G4 must settle before the freeze
-- **Ongoing Experimental** — `debug` (`?action=` multiplexer), `pprof`, `update/install` + `update/progress` (`update/check` shipped supported in v0.11.0), `appc-route-info`, `policy/<scope>` (MDM/syspolicy), `debug-bus-graph|queues|events`, `prefs/service-clients`, and whatever upstream adds next; wrapped on demand, never SemVer-bound
-
----
-
-## Cross-Cutting Tracks (remaining work)
-
-The operational detail lives in [`Documentation/TESTING.md`](Documentation/TESTING.md) and [`Documentation/RELEASING.md`](Documentation/RELEASING.md). Most of what these tracks originally listed has shipped; what's left:
-
-### Testing
-- Retain the 85% coverage floor; use W1–W5's failure scenarios to drive meaningful new coverage
-- Required before 1.0: framing/truncation, mutation/property, resource/cancellation, versioned-fixture, and streaming-soak evidence
-- Extend the shipped Headscale login lifecycle with native discovery and restart recovery cases
-
-### CI/CD
-- Weekly upstream drift detection and Dependabot configuration already exist; retain and review them
-- W6: supported-version PR/release gates, exact-SHA evidence, controlled skips, staged asset publication, and release rehearsal
-- Evaluate additional static analysis where it covers real supported-language risks; do not use its presence as a substitute for transport/runtime evidence
-
-### Documentation
-- W7: complete authored API abstracts/topic curation, migration guide, and updated menu-bar/write/monitoring recipes
-- Keep the AI-agent adapters (`.claude/skills/…`, `AGENTS.md`, `llms.txt`, copilot instructions) in sync with each release — INTEGRATING.md is the single source
-
-### Distribution & Discoverability
-- GitHub topics (maintainer-side): `tailscale`, `swift`, `swift-6`, `localapi`, `wireguard`, `vpn`, `macos`, `async-await`
-- Tailscale Community Projects submission — maintainer-approval gated; unblocked now that SPI shows current releases
-- Announcement wave: awesome-tailscale PR, r/Tailscale, Swift Forums; Show HN + Tailscale forum at 1.0
-- homebrew-core as a post-1.0 aspiration once the notability bar is met
-- Release mechanics: maintainer tag push on the tested release commit (single tag — >3 tags in one push suppresses GitHub push events), then the verified Homebrew tap bump
-- Homebrew formula smoke test as part of release verification: `brew install` (or `brew audit` + install from the tap) against the freshly tagged release assets before announcing
-
----
-
-## Non-Goals
-
-- **Embedded Tailscale** — creating new tailnet nodes belongs in [TailscaleKit](https://github.com/tailscale/libtailscale/tree/main/swift)
-- **CLI replacement** — `tailscale-swift` demonstrates the library; it does not compete with the official CLI
-- **Shelling out** — everything in pure Swift
-- **Wrapping everything** — `dial` (connection hijack with no clean Swift mapping — until the post-1.0 duplex abstraction exists), `conn25/state`, `alpha-set-device-attrs`, `check-so-mark-in-use`, `upload-client-metrics`, and `debug-capture` stay unsupported until a real use case appears; each has its reason recorded in the coverage matrix
-- **Pre-1.0 API stability** — APIs may change before 1.0; from 1.0 the Stable tier follows SemVer strictly
-
-## Contributing to the Roadmap
-
-Need an endpoint sooner, or one that's tiered Unsupported? Open a GitHub issue with your use case, the endpoint, and the expected request/response shapes. Community input reorders this list.
+Describe the feature you want to ship, the Mac and Tailscale installation you expect to support, and the smallest example that would let you try it. [Request an endpoint or report a problem](https://github.com/dweekly/swift-tailscale-client/issues/new/choose)

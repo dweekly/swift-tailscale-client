@@ -39,7 +39,9 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 .package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
 ```
 
-Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL.
+Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL. Select the `TailscaleClient` product.
+
+To try the released library first, [run a fixture test or connect to your Mac’s daemon](ROADMAP.md#try-the-released-package). The [proposed 1.1.0 plan](ROADMAP.md#proposed-110) describes the peer diagnostics sample and developer pilot.
 
 ## Get Tailscale status from a Swift app
 
