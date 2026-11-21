@@ -115,11 +115,57 @@ are independent of the capability number.
   `RecipeMonitoring.md`), and `watch --all-initial`. `IPNNotify` decodes
   `NetMap` but none of `SelfChange`, `InitialStatus`, `PeersChanged`,
   `PeersRemoved`, or `PeerChangedPatch`.
-- From source reading (unverified against a v1.104 daemon): on Tailscale
-  v1.104.0 or later, a watch with the default options fails with HTTP 400,
-  which this package reports as `unexpectedStatus(400, …)`.
-  `StreamRetryPolicy` classifies that status as retryable, so a watch with
-  a reconnect policy would retry the rejected request instead of failing.
+- Observed on a v1.104.7 daemon (see [Observed on real daemons](#observed-on-real-daemons)):
+  a watch with the default options fails with HTTP 400. This package now
+  reopens such a watch without bits 3 and 8, and classifies any other 400 as
+  fatal instead of retrying it.
+
+## Observed on real daemons
+
+Disposable, never-logged-in, userspace `tailscaled` builds of `v1.102.2` and
+`v1.104.7` (built with `go install`, each with its own socket and memory
+state), probed 2026-11-21 with
+`curl --unix-socket <sock> 'http://local-tailscaled.sock/localapi/v0/watch-ipn-bus?mask=<n>'`:
+
+| Mask | Bits | v1.102.2 | v1.104.7 |
+|---|---|---|---|
+| 387 (`.default`) | 0,1,7,8 | 200 | 400 `the NotifyRateLimit IPN bus subscription bit is no longer supported` |
+| 131 | 0,1,7 | 200 | 200 |
+| 8 | 3 | 200 | 400 `the NotifyInitialNetMap IPN bus subscription bit is no longer supported; seed from NotifyInitialStatus instead` |
+| 1262 (`.allInitial`) | 1,2,3,5,6,7,10 | 200 | 400 (NotifyInitialNetMap) |
+| 1254 | 1,2,5,6,7,10 | 200 | 200 |
+| 4096, 8192, 32768 | 12, 13, 15 | 200 | 200 |
+| 16384 | 14 | 200, first message has `InitialStatus` | 200, same |
+| 53250 | 1,12,14,15 | 200 | 200 |
+| 16640 | 8,14 | 400 `NotifyRateLimit is incompatible with new-style IPN bus subscription bits ipn.NotifyInitialStatus` | 400 (NotifyRateLimit) |
+| 65536 | 16 | 400 (in-process only) | 400 (in-process only) |
+
+So the upstream-source statements above hold on the released binaries: bits 3
+and 8 are rejected from v1.104 on, bits 0-2, 4-7, 9-15, 17 and 18 are accepted
+by both, and v1.102.2 already rejects bit 8 combined with bits 12-15. Every
+400 arrived with `Content-Length` on a kept-alive connection.
+
+After the fix (branch `release-1.1/watch-options`), against the same two
+daemons, each run opened and printed the initial notification (state
+`NeedsLogin`, health warning "Tailscale off"):
+
+| Run | v1.102.2 | v1.104.7 |
+|---|---|---|
+| `tailscale-swift watch` | opened | opened |
+| `tailscale-swift watch --all-initial` | opened, engine updates every ~3 s | opened, engine updates every ~2 s |
+| `tailscale-swift watch --reconnect` | opened | opened |
+| `tailscale-swift watch --events --reconnect` | `connected`, then state | `connected`, then state |
+| `watchIPNBus` with `[.initialState, .initialHealthState, .rateLimit, .noPrivateKeys]` | mask 402 -> 200 (1 request) | mask 402 -> 400, mask 146 -> 200 (2 requests) |
+| `watchIPNBus` with `[.initialState, .initialHealthState, .peerChanges, .noNetMap]`, then `status()` | mask 12418 -> 200 (1 request) | mask 12418 -> 200 (1 request) |
+
+Request counts come from a logging transport in the last two rows; the CLI
+rows did not count requests. Before the fix, every `tailscale-swift watch`
+variant against v1.104.7 printed only its banner and then hung until the
+daemon closed the connection.
+
+Not observed: a v1.104 daemon logged in to a tailnet (peer-change
+notifications with real peers), v1.104.0 through v1.104.6, and the loopback
+TCP transport.
 
 ## Validation
 
@@ -141,7 +187,8 @@ only) are kept outside the repository with the PR's working notes.
 - `TAILSCALE_INTEGRATION=1 swift test --filter TailscaleClientIntegrationTests`:
   44 tests, 39 passed, 5 skipped (4 write tests that require
   `TAILSCALE_INTEGRATION_WRITE`, and netcheck with no STUN responses),
-  0 failures. This suite does not open an IPN bus watch.
+  0 failures. That revision of the suite did not open an IPN bus watch; it
+  now includes `testDefaultWatchDeliversFirstNotification`.
 - `swift run --package-path Examples/StatusDemo StatusDemo`: connected,
   reported backend state running, 11 peers, and 18 optional daemon
   features. Netcheck reported no STUN responses.
@@ -154,7 +201,8 @@ only) are kept outside the repository with the PR's working notes.
 
 Unverified:
 
-- Behavior against a Tailscale v1.104 or later daemon. This daemon predates
-  the watch-option rejection, so the local runs above do not exercise it.
+- Behavior against a logged-in Tailscale v1.104 or later daemon. The
+  disposable-daemon runs in [Observed on real daemons](#observed-on-real-daemons)
+  cover the watch-option rejection on a logged-out v1.104.7.
 - Required Apple CI and read-only macOS integration on the final PR
   revision must pass before merge. Linux is unqualified and is not a gate.

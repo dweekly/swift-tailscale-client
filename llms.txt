@@ -9,6 +9,7 @@
 
 Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`
 Platforms: macOS 13+ and Linux connect to daemons; iOS/tvOS/watchOS build only.
+IPN bus: Tailscale 1.104+ rejects the `initialNetMap`/`rateLimit` watch options (the client drops them and retries) and sends no netmap; follow peers with `[.initialState, .peerChanges, .noNetMap]` and re-read `status()` per notification.
 
 ## Docs
 

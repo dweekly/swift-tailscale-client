@@ -25,5 +25,8 @@ Facts you need before opening the guide:
 - **Biggest gotcha:** macOS App Store Tailscale needs opt-in discovery
   (`TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`) and triggers a TCC
   popup; default unix-socket discovery never does.
+- **Watching peers:** Tailscale 1.104+ rejects `.initialNetMap`/`.rateLimit` (the client drops them
+  and retries) and never sends `IPNNotify.netMap`. Watch `[.initialState, .peerChanges, .noNetMap]` and
+  re-read `status()` on each notification and reconnect.
 - **Testing:** use the shipped `TailscaleClientMocks` product (`MockTransport`, `RequestRecorder`)
   — patterns in the guide.

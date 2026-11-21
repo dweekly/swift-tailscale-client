@@ -14,6 +14,23 @@ All notable changes to this project will be documented in this file. The format 
   `Documentation/COMPATIBILITY-148.md` and
   `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
   compatibility evidence.
+- A watch answered with HTTP 400 now ends instead of being retried:
+  `StreamRetryPolicy.classify` treats `unexpectedStatus(400, …)` as fatal, so
+  the initial open throws it and a reconnecting stream ends with it. 429, 5xx,
+  timeouts, and connection failures are still retried.
+- The monitoring recipe (`MonitorChanges`, `RecipeMonitoring`) subscribes with
+  `[.initialState, .initialHealthState, .peerChanges, .noNetMap]` and re-reads
+  `status()` on each notification, reconnect, and state gap, instead of asking
+  for `.initialNetMap`. It works on daemons before and after Tailscale 1.104.
+
+### Added
+
+- `NotifyWatchOpt.peerChanges`, `.noNetMap`, `.initialStatus`, and
+  `.peerPatches` (upstream bits 12-15), observed accepted by Tailscale
+  v1.102.2 and v1.104.7. `IPNNotify` does not yet model the fields they
+  produce; those notifications still decode.
+- `tailscale-swift watch` prints the daemon's message when it rejects a watch,
+  and its help, man page, and README describe the options it requests.
 
 ### Documentation
 
@@ -21,6 +38,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
+- Watching the IPN bus works on Tailscale 1.104 and later. Those daemons answer
+  a watch that sets `.rateLimit` or `.initialNetMap` (including
+  `NotifyWatchOpt.default` and `.allInitial`) with HTTP 400. Before this fix,
+  `watchIPNBus()` with default options against such a daemon never returned or
+  threw until the daemon closed the connection, and `tailscale-swift watch`
+  printed only its banner. Now the client releases the rejected response
+  unread, opens the watch once more without those two options, and omits them
+  from later watches and reconnects of the same client. A daemon that accepts
+  them still receives exactly the options the caller passed, in one request.
+  Callers do not need to change their options.
 - `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
   or, with a reconnect policy, on its first successful reconnect: the stream
   continues, the line is reported through `onUndecodableLine`, and genuine

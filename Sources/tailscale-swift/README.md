@@ -69,6 +69,20 @@ Peer: peer-hostname-2
   IPs: 100.64.0.3
 ```
 
+### Watch the IPN Bus
+
+Stream state changes until Ctrl+C:
+
+```bash
+.build/debug/tailscale-swift watch               # initial state, health, rate limiting
+.build/debug/tailscale-swift watch --all-initial # all initial state, engine stats
+.build/debug/tailscale-swift watch --reconnect   # reconnect when the daemon restarts
+```
+
+Tailscale 1.104 and later reject rate limiting and the initial network map; the
+watch is opened again without them. When a daemon rejects a watch, the command
+prints the daemon's message (`Daemon said: ...`) and exits non-zero.
+
 ## Help
 
 ```bash
