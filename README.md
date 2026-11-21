@@ -33,6 +33,33 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 
 > **Note:** The LocalAPI is not a formally stable interface — Tailscale namespaces it `/localapi/v0/` for a reason. This package tracks upstream, states which Tailscale versions each release was tested against, and uses tolerant decoding so upstream additions don't break your app. See the [stability policy](ROADMAP.md#stability--support-tiers).
 
+## Try it in one command
+
+From a checkout, on macOS 13 or later with Swift 6.1 or later, and no Tailscale needed:
+
+```bash
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics
+```
+
+This opens [Peer Diagnostics](Examples/PeerDiagnostics), a small sample app, with a built-in, made-up tailnet. It lists the peers and shows how a ping reached the one you select, how fast, when, after how many pings, and whether that answer is still current.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Sources/TailscaleClient/TailscaleClient.docc/Resources/peer-diagnostics-window~dark.png">
+  <img src="Sources/TailscaleClient/TailscaleClient.docc/Resources/peer-diagnostics-window.png" alt="The Peer Diagnostics window in fixture mode: seven made-up peers in the sidebar with example-laptop selected, and its last ping shown as Direct, Settled path, 11.0 ms, measured at 17:30:00, 2 of up to 5 pings, current." width="860">
+</picture>
+
+Then choose **Live** in the window to use the Tailscale daemon already running on your Mac. Live mode reads status, pings the peer you select, and watches for changes; it never changes Tailscale settings. Finding the Mac App Store edition of Tailscale is a separate opt-in, because macOS may ask for permission.
+
+How to read a result:
+
+- **Direct**: the reply came straight from the peer. Only a direct reply is labelled the peer's settled path.
+- **Peer relay**: the reply came through another node in your tailnet acting as a relay.
+- **DERP** (with a region such as `sfo`): the reply came through a Tailscale relay server. The first ping often goes this way while a direct route is found, so the sample pings up to 5 times and calls a non-direct last reply "one measurement".
+- **Unknown**: the peer answered but the reply named no path.
+- **Stale**: the data may no longer describe the present (the connection dropped, or the ping is over 30 seconds old). The peer list and the ping result go stale separately.
+
+[Recipe: Show How a Ping Reached a Peer](Sources/TailscaleClient/TailscaleClient.docc/RecipePeerDiagnostics.md) walks through the code worth copying.
+
 ## Installation
 
 ```swift
@@ -41,7 +68,7 @@ Rules of thumb: if Tailscale is already installed and you want to observe or con
 
 Or in Xcode: **File → Add Package Dependencies…** and enter the repository URL. Select the `TailscaleClient` product.
 
-To try the released library first, [run a fixture test or connect to your Mac’s daemon](ROADMAP.md#try-the-released-package). The [proposed 1.1.0 plan](ROADMAP.md#proposed-110) describes the peer diagnostics sample and developer pilot.
+To try the released library first, [run a fixture test or connect to your Mac’s daemon](ROADMAP.md#try-the-released-package).
 
 ## Get Tailscale status from a Swift app
 
@@ -129,7 +156,7 @@ Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetri
 
 > **Using an AI coding agent?** [`Documentation/INTEGRATING.md`](Documentation/INTEGRATING.md) is the canonical integration guide for humans and agents alike; this repo also ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md), a root [`AGENTS.md`](AGENTS.md), and Copilot instructions that all point there.
 
-Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS; real-daemon checks are separate. [`Examples/PeerDiagnostics`](Examples/PeerDiagnostics) lists your peers and explains how a ping reached the one you pick, with a fixture mode that needs no Tailscale.
+Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS; real-daemon checks are separate. [`Examples/PeerDiagnostics`](Examples/PeerDiagnostics) is the [one-command sample app](#try-it-in-one-command): a SwiftUI window over a tested view model, with a fixture mode that needs no Tailscale.
 
 ## API Reference
 

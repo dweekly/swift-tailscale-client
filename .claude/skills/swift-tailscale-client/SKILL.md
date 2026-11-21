@@ -25,6 +25,9 @@ Facts you need before opening the guide:
 - **Biggest gotcha:** macOS App Store Tailscale needs opt-in discovery
   (`TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`) and triggers a TCC
   popup; default unix-socket discovery never does.
+- **Start from the sample:** `swift run --package-path Examples/PeerDiagnostics PeerDiagnostics`
+  opens a window with a built-in fixture tailnet; **Live** switches to the real daemon, read-only.
+  Its App Store toggle shows how to ask for discovery consent ("Start with the sample app" in the guide).
 - **Ping interpretation (1.1.0+):** switch on `PingResult.path` (`nil` = failed; `.direct`,
   `.peerRelay`, `.derp`, `.unknown`). Raw `endpoint` is `""`, not `nil`, when absent; only disco
   pings report a path; one DERP reply is not the settled path (INTEGRATING.md gotcha 7).

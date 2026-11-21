@@ -13,6 +13,9 @@ Quick orientation:
   api.tailscale.com admin API.
 - Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`,
   product `TailscaleClient`. Test with the `TailscaleClientMocks` product.
+- Start from the sample: `swift run --package-path Examples/PeerDiagnostics PeerDiagnostics`
+  (fixture mode, no Tailscale needed; **Live** is an explicit, read-only switch). It shows
+  every pattern below; see "Start with the sample app" in INTEGRATING.md.
 - Ping path (1.1.0+): read `PingResult.path` (`.direct`, `.peerRelay`, `.derp`,
   `.unknown`; `nil` on error), not raw `endpoint`; only disco pings report a path,
   and one reply is one measurement (INTEGRATING.md gotcha 7).

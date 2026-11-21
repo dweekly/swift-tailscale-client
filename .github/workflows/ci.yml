@@ -137,9 +137,13 @@ jobs:
       - name: Check generated endpoint tables are in sync
         run: python3 Scripts/generate-endpoint-docs.py --check
 
-      # Recipe articles may only show code that Examples/Recipes compiles.
+      # Recipe articles may only show code that a CI-built package compiles
+      # (Examples/Recipes, or Examples/PeerDiagnostics for its article). The
+      # self-test proves a drifted snippet is reported.
       - name: Check recipe snippets match compiled sources
-        run: python3 Scripts/check-recipe-snippets.py
+        run: |
+          python3 Scripts/check-recipe-snippets.py
+          python3 Scripts/check-recipe-snippets.py --self-test
 
       # The upstream_maturity axis is only trustworthy if it matches what
       # tailscale/tailscale actually annotates at the pinned commit; this

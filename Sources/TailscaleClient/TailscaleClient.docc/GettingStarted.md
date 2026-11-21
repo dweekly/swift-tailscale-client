@@ -60,9 +60,22 @@ let config = TailscaleClientConfiguration(
 let client = TailscaleClient(configuration: config)
 ```
 
+## Try the sample app first
+
+`Examples/PeerDiagnostics` is a small Mac app that lists your peers and shows
+how a ping reached the one you select. It opens with a built-in, made-up
+tailnet, so it runs without Tailscale installed:
+
+```
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics
+```
+
+Choose **Live** in the window to switch to the daemon on your Mac (read-only).
+<doc:RecipePeerDiagnostics> walks through the code worth copying.
+
 ## Working example
 
-The repository ships `Examples/StatusDemo`, a standalone package that
+The repository also ships `Examples/StatusDemo`, a standalone package that
 connects, prints status, probes daemon features, and runs a netcheck — CI
 builds it on macOS, so it is
 always current. Copy it as a starting point and swap the path dependency for
