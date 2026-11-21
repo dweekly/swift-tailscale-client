@@ -18,6 +18,12 @@ All notable changes to this project will be documented in this file. The format 
 - Sanitized ping replies captured from a Tailscale 1.102.2 daemon as test
   fixtures, with provenance and digests, and `Scripts/capture-ping-fixture.py`
   to capture more.
+- `NotifyWatchOpt.peerChanges`, `.noNetMap`, `.initialStatus`, and
+  `.peerPatches` (upstream bits 12-15), observed accepted by Tailscale
+  v1.102.2 and v1.104.7. `IPNNotify` does not yet model the fields they
+  produce; those notifications still decode.
+- `tailscale-swift watch` prints the daemon's message when it rejects a watch,
+  and its help, man page, and README describe the options it requests.
 
 ### Fixed
 
@@ -30,6 +36,29 @@ All notable changes to this project will be documented in this file. The format 
   `PingType(rawValue:)` and decoding still accept `"peerAPI"`.
 - `tailscale-swift ping` no longer prints a bare `via ` for replies without an
   endpoint.
+- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
+  or, with a reconnect policy, on its first successful reconnect: the stream
+  continues, the line is reported through `onUndecodableLine`, and genuine
+  buffer overflow still throws `streamOverflow`.
+- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
+  now follow a daemon restart that changes the loopback port or proof token:
+  when the endpoint source is automatic, each reconnect attempt rediscovers
+  the daemon once (single-flight with unary requests) on a connect-stage
+  failure or a 401/loopback 403, as the initial open does. A rediscovery
+  failure during a reconnect (for example, discovery metadata briefly missing
+  mid-restart) counts as one failed attempt under the retry policy rather
+  than ending the stream; on the initial open it is still thrown. Pinned
+  configurations still never rediscover.
+- Watching the IPN bus works on Tailscale 1.104 and later. Those daemons answer
+  a watch that sets `.rateLimit` or `.initialNetMap` (including
+  `NotifyWatchOpt.default` and `.allInitial`) with HTTP 400. Before this fix,
+  `watchIPNBus()` with default options against such a daemon never returned or
+  threw until the daemon closed the connection, and `tailscale-swift watch`
+  printed only its banner. Now the client releases the rejected response
+  unread, opens the watch once more without those two options, and omits them
+  from later watches and reconnects of the same client. A daemon that accepts
+  them still receives exactly the options the caller passed, in one request.
+  Callers do not need to change their options.
 - A rejected IPN bus watch (`watchIPNBus`, `watchIPNBusEvents`, `tailscale-swift watch`) now reports its typed status error as soon as the response arrives (the error's `body` and `bodyPreview` carry the daemon's message), instead of hanging until the daemon closes the connection. Over the Unix socket, a streaming response body now ends after its `Content-Length` bytes (or at the terminal chunk, or at EOF only when neither framing is present), and the socket is closed then; a body shorter than its `Content-Length` fails with `malformedResponse`. Observed against tailscaled v1.104.7, which answers an unsupported watch mask with HTTP 400 and keeps the connection open.
 
 ### Changed
@@ -44,6 +73,14 @@ All notable changes to this project will be documented in this file. The format 
   `Documentation/COMPATIBILITY-148.md` and
   `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
   compatibility evidence.
+- A watch answered with HTTP 400 now ends instead of being retried:
+  `StreamRetryPolicy.classify` treats `unexpectedStatus(400, …)` as fatal, so
+  the initial open throws it and a reconnecting stream ends with it. 429, 5xx,
+  timeouts, and connection failures are still retried.
+- The monitoring recipe (`MonitorChanges`, `RecipeMonitoring`) subscribes with
+  `[.initialState, .initialHealthState, .peerChanges, .noNetMap]` and re-reads
+  `status()` on each notification, reconnect, and state gap, instead of asking
+  for `.initialNetMap`. It works on daemons before and after Tailscale 1.104.
 
 ### Documentation
 

@@ -27,6 +27,9 @@ Fetch and display current Tailscale status from the local daemon.
 .TP
 .B ping
 Ping a Tailscale IP and report latency and the path each reply took.
+.TP
+.B watch
+Watch the IPN bus for real-time state changes.
 .SH STATUS COMMAND
 .B tailscale-swift status
 .RI [ options ]
@@ -108,6 +111,32 @@ A failed ping prints
 .BI "error \- " message
 instead. A disco ping to an idle peer can travel over DERP before a direct
 path forms, so one reply is not the peer's settled path.
+.SH WATCH COMMAND
+.B tailscale-swift watch
+.RI [ options ]
+.PP
+Stream IPN bus notifications until interrupted. By default the watch requests
+initial state, initial health state, and rate limiting. Tailscale 1.104 and later
+reject rate limiting and the initial network map; against those daemons the
+watch is opened again without them. If the daemon rejects the watch, the command
+prints the daemon's message and exits with a non-zero status.
+.SS OPTIONS
+.TP
+.B \-j, \-\-json
+Print each notification as one line of JSON.
+.TP
+.B \-e, \-\-engine
+Also request engine statistics (traffic counters).
+.TP
+.B \-\-all\-initial
+Request all initial state (prefs, network map, health, suggested exit node,
+Taildrive shares, outgoing files) plus engine statistics and rate limiting.
+.TP
+.B \-\-reconnect
+Reconnect with backoff when the connection drops.
+.TP
+.B \-\-events
+Print connection lifecycle events as well as notifications.
 .SH EXAMPLES
 .TP
 .B tailscale-swift status

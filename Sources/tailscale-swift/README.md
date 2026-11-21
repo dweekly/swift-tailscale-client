@@ -92,6 +92,19 @@ Paths print as `via <ip:port>` (direct), `via peer-relay(<endpoint>)`,
 (`via TSMP`, `via ICMP`, `via peerapi`) when the reply names no path. Failed
 pings print `error - <message>`. `--type` takes `disco`, `tsmp`, `icmp`, or
 `peerapi` (`peerAPI` also works); `--json` prints the raw replies as an array.
+### Watch the IPN Bus
+
+Stream state changes until Ctrl+C:
+
+```bash
+.build/debug/tailscale-swift watch               # initial state, health, rate limiting
+.build/debug/tailscale-swift watch --all-initial # all initial state, engine stats
+.build/debug/tailscale-swift watch --reconnect   # reconnect when the daemon restarts
+```
+
+Tailscale 1.104 and later reject rate limiting and the initial network map; the
+watch is opened again without them. When a daemon rejects a watch, the command
+prints the daemon's message (`Daemon said: ...`) and exits non-zero.
 
 ## Help
 

@@ -8,7 +8,13 @@ import TailscaleClient
 struct WatchCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "watch",
-    abstract: "Watch the IPN bus for real-time state changes"
+    abstract: "Watch the IPN bus for real-time state changes",
+    discussion: """
+      Requests initial state, initial health state, and rate limiting \
+      (NotifyWatchOpt [.initialState, .initialHealthState, .rateLimit]). \
+      Tailscale 1.104 and later reject rate limiting and the initial network map; \
+      against those daemons the watch is opened without them.
+      """
   )
 
   @Flag(name: .shortAndLong, help: "Output raw JSON instead of formatted text")
@@ -17,7 +23,10 @@ struct WatchCommand: AsyncParsableCommand {
   @Flag(name: .shortAndLong, help: "Include engine stats (traffic counters)")
   var engine = false
 
-  @Flag(name: .long, help: "Include all initial state in first message")
+  @Flag(
+    name: .long,
+    help:
+      "Request all initial state (NotifyWatchOpt.allInitial) plus engine stats and rate limiting")
   var allInitial = false
 
   @Flag(name: .long, help: "Enable automatic reconnection on connection drop")
@@ -86,8 +95,21 @@ struct WatchCommand: AsyncParsableCommand {
       FileHandle.standardError.write(Data("Stream ended\n".utf8))
     } catch {
       FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
+      if let message = Self.daemonMessage(in: error) {
+        FileHandle.standardError.write(Data("Daemon said: \(message)\n".utf8))
+      }
       throw error
     }
+  }
+
+  /// The text the daemon sent with an unexpected status, if it is printable.
+  static func daemonMessage(in error: any Error) -> String? {
+    guard case .unexpectedStatus(_, let body, _)? = error as? TailscaleClientError,
+      let text = String(data: body.prefix(1024), encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+      !text.isEmpty
+    else { return nil }
+    return text
   }
 
   private func printEventJSON(_ event: IPNBusEvent) {
