@@ -636,8 +636,9 @@ final class WatchReconnectRecoveryTests: XCTestCase {
       )
       let client = TailscaleClient(configuration: config)
 
+      // The stream's producer reconnects on its own, so rediscovery starts
+      // without a consumer; the buffered events are collected afterwards.
       let stream = try await client.watchIPNBusEvents(retryPolicy: Self.fastReconnect)
-      let watcher = Task { await Self.collectVersions(stream, stopAt: "new-1") }
 
       await fulfillment(of: [probeStarted], timeout: 2)
       let unary = Task { try await client.status() }
@@ -646,7 +647,7 @@ final class WatchReconnectRecoveryTests: XCTestCase {
       release.signal()
 
       let status = try await unary.value
-      let (versions, error) = await watcher.value
+      let (versions, error) = await Self.collectVersions(stream, stopAt: "new-1")
 
       XCTAssertEqual(status.backendState, .running)
       XCTAssertNil(error)
