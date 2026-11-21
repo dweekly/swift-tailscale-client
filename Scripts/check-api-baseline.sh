@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Verifies that no unallowlisted API-breaking changes have been introduced
-# against the baseline release (v0.12.0) using SwiftPM's diagnose-api-breaking-changes.
+# against the baseline release (v1.0.0) using SwiftPM's diagnose-api-breaking-changes.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BASELINE_TAG="v0.12.0"
+BASELINE_TAG="v1.0.0"
 ALLOWLIST="Scripts/api-breakage-allowlist.txt"
 
 # Ensure git tags exist in shallow clones or container environments

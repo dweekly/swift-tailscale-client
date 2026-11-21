@@ -46,7 +46,7 @@ let client = TailscaleClient()  // auto-discovers the LocalAPI (unix socket firs
 let status = try await client.status()              // nodes, peers, health, backendState
 let whois  = try await client.whois(address: "100.64.0.5")
 let prefs  = try await client.prefs()               // exit node, shields, routes...
-let ping   = try await client.ping(ip: "100.64.0.5")
+let ping   = try await client.ping(ip: "100.64.0.5")  // ping.path: .direct/.peerRelay/.derp/.unknown, nil on error (1.1.0+)
 let text   = try await client.metrics()             // internal Prometheus counters
 let user   = try await client.userMetrics()         // stable user metrics (v0.6.0+)
 let derp   = try await client.derpMap()             // DERP relay regions/nodes (v0.6.0+)
@@ -117,6 +117,18 @@ or `.endpointUnavailable`) even on streaming endpoints.
 6. **Environment overrides** for testing/CI: `TAILSCALE_LOCALAPI_SOCKET`,
    `TAILSCALE_LOCALAPI_PORT`/`_HOST`, `TAILSCALE_LOCALAPI_URL`,
    `TAILSCALE_DISCOVERY_DEBUG=1` (logs discovery to stderr).
+7. **Read a ping's path from `PingResult.path` (1.1.0+), not the raw fields.**
+   The daemon always sends `Endpoint`, `PeerRelay`, `DERPRegionID`, and `Err`,
+   using `""` and `0` for "none", so `endpoint != nil` says nothing. `path` is
+   `nil` when `error` is nonempty, otherwise the first of `.peerRelay(endpoint:)`,
+   `.derp(regionID:regionCode:)`, `.direct(endpoint:)` (the precedence
+   `tailscale ping` uses), else `.unknown`. Only `.disco` pings report a path;
+   `.tsmp`, `.icmp`, and `.peerAPI` replies are always `.unknown`. One reply is
+   one measurement: the first disco ping to an idle peer is often DERP while a
+   direct path forms, which is why `tailscale ping` repeats until direct. Do not
+   present a single `.derp` reply as the peer's settled path. `isDirect` is
+   `true` exactly when `path` is `.direct`. To test the unknown case without a
+   daemon, return a `PingResult` with no path fields from a `MockTransport`.
 
 ## Endpoint quick reference
 

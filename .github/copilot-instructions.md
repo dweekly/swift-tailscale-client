@@ -10,8 +10,11 @@ Key constraints for suggestions:
 - This package connects to an already-installed tailscaled via the LocalAPI; it
   never embeds a node. Swift 6 strict concurrency, async/await only.
 - Writes: `editPrefs(_:)` patches only the `MaskedPrefs` fields that were set;
-  `setServeConfig(_:)` replaces the whole config — always snapshot with
-  `serveConfig()` first and retry on `.preconditionFailed`.
+  `setServeConfig(_:matching:)` replaces the whole config — always take a fresh
+  `serveConfigSnapshot()` first and retry on `.preconditionFailed`.
+- Ping: classify a reply with `PingResult.path` (1.1.0+; `nil` on error, else
+  `.peerRelay`, `.derp`, `.direct`, or `.unknown`), never `endpoint != nil`.
+  Only disco pings report a path; one reply is one measurement.
 - Prefer `watchIPNBus(...)` streaming over status polling.
 - Tests should inject `MockTransport` from the `TailscaleClientMocks` product,
   never hit a real daemon.

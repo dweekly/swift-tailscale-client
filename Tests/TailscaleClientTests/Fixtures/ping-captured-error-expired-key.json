@@ -1,0 +1,11 @@
+{
+  "IP": "100.64.0.3",
+  "NodeIP": "100.64.0.3",
+  "NodeName": "example-offline-peer",
+  "Err": "peer's node key has expired",
+  "LatencySeconds": 0,
+  "Endpoint": "",
+  "PeerRelay": "",
+  "DERPRegionID": 0,
+  "DERPRegionCode": ""
+}
