@@ -30,6 +30,19 @@ All notable changes to this project will be documented in this file. The format 
   `PingType(rawValue:)` and decoding still accept `"peerAPI"`.
 - `tailscale-swift ping` no longer prints a bare `via ` for replies without an
   endpoint.
+- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
+  or, with a reconnect policy, on its first successful reconnect: the stream
+  continues, the line is reported through `onUndecodableLine`, and genuine
+  buffer overflow still throws `streamOverflow`.
+- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
+  now follow a daemon restart that changes the loopback port or proof token:
+  when the endpoint source is automatic, each reconnect attempt rediscovers
+  the daemon once (single-flight with unary requests) on a connect-stage
+  failure or a 401/loopback 403, as the initial open does. A rediscovery
+  failure during a reconnect (for example, discovery metadata briefly missing
+  mid-restart) counts as one failed attempt under the retry policy rather
+  than ending the stream; on the initial open it is still thrown. Pinned
+  configurations still never rediscover.
 
 ### Changed
 
@@ -47,22 +60,6 @@ All notable changes to this project will be documented in this file. The format 
 ### Documentation
 
 - Corrected the soak, adoption, consumer, review, support, testing, and 1.0 release documents to state only measured results: the 1-hour and 24-hour soaks are listed as not yet run, Linux as unqualified, no daemon versions as certified, and DCO sign-off as requested but not enforced in CI. The 1.0.0 release record now gives the published outcome and the gates left open.
-
-### Fixed
-
-- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
-  or, with a reconnect policy, on its first successful reconnect: the stream
-  continues, the line is reported through `onUndecodableLine`, and genuine
-  buffer overflow still throws `streamOverflow`.
-- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
-  now follow a daemon restart that changes the loopback port or proof token:
-  when the endpoint source is automatic, each reconnect attempt rediscovers
-  the daemon once (single-flight with unary requests) on a connect-stage
-  failure or a 401/loopback 403, as the initial open does. A rediscovery
-  failure during a reconnect (for example, discovery metadata briefly missing
-  mid-restart) counts as one failed attempt under the retry policy rather
-  than ending the stream; on the initial open it is still thrown. Pinned
-  configurations still never rediscover.
 
 ## [1.0.0] - 2026-09-20
 
