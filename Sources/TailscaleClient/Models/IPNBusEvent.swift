@@ -50,6 +50,13 @@ public enum IPNBusLifecycle: Sendable, Equatable {
   case stateGap(reason: String)
 }
 
+extension IPNBusLifecycle {
+  /// `stateGap` reason emitted after a successful reconnect.
+  static let reconnectedGapReason = "reconnected"
+  /// `stateGap` reason emitted when a line could not be decoded as an ``IPNNotify``.
+  static let undecodableLineGapReason = "undecodable_line"
+}
+
 extension IPNBusLifecycle: CustomStringConvertible {
   /// A textual representation of the IPN bus lifecycle transition.
   public var description: String {

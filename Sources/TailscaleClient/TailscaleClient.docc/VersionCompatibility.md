@@ -33,7 +33,8 @@ installs:
 | `suggestExitNode(forceProbe:)` | `forceProbe: true` POSTs `?probe=true`, accepted since Tailscale 1.86; the default GET works on both older and newer daemons. |
 | `userMetrics()` | Endpoint appeared in Tailscale 1.78; older daemons yield `endpointUnavailable`. |
 | `userProfile(byID:)` | Endpoint added upstream in 2026. On older daemons the path itself 404s, which is indistinguishable from "user not found". |
-| `watchIPNBus` extras | `initialPrefs`/`initialNetMap` notifications decode fully since v0.4.0 of this package. |
+| `watchIPNBus` options | Tailscale 1.104 and later answer a watch that sets ``NotifyWatchOpt/initialNetMap`` or ``NotifyWatchOpt/rateLimit`` (including ``NotifyWatchOpt/default`` and ``NotifyWatchOpt/allInitial``) with HTTP 400 and no longer send ``IPNNotify/netMap``. The client opens the watch again without those two options and leaves them out of later watches from the same client; a daemon that accepts them receives exactly the options you pass. Follow peers with ``NotifyWatchOpt/peerChanges`` and re-read `status()` (see <doc:RecipeMonitoring>). |
+| `watchIPNBus` notifications | `initialPrefs` notifications decode fully since v0.4.0 of this package. On pre-1.104 daemons `initialNetMap` arrives as raw JSON in ``IPNNotify/netMap``. Fields from ``NotifyWatchOpt/initialStatus`` and the peer-change options are not modeled yet; such notifications still decode. |
 | CapMap values | Tailscale 1.98 started sending boolean arrays; any well-formed value decodes since v0.4.0. |
 
 ### Capability version

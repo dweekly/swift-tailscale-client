@@ -86,6 +86,10 @@ public struct StreamRetryPolicy: Sendable, Equatable {
   }
 
   /// Classifies an error as retryable or fatal.
+  ///
+  /// An ``TailscaleClientError/unexpectedStatus(code:body:endpoint:)`` of 400,
+  /// 401, 403, or 404 is fatal; other unexpected statuses (such as 5xx), rate
+  /// limiting (429), timeouts, and most connection-level failures are retryable.
   public static func classify(_ error: Error) -> StreamErrorClassification {
     if error is CancellationError {
       return .fatal
@@ -104,7 +108,9 @@ public struct StreamRetryPolicy: Sendable, Equatable {
           return .retryable
         }
       case .unexpectedStatus(let code, _, _):
-        if code == 401 || code == 403 || code == 404 {
+        // 400 means the daemon rejected the request itself (for a watch, its
+        // options), so repeating the same request cannot succeed.
+        if code == 400 || code == 401 || code == 403 || code == 404 {
           return .fatal
         }
         return .retryable
