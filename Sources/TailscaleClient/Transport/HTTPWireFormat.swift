@@ -16,6 +16,39 @@ enum HTTPWireFormat {
     var isChunked: Bool {
       headers["transfer-encoding"]?.lowercased().contains("chunked") == true
     }
+
+    /// Where the response body ends, following RFC 9112 section 6.3:
+    /// 1xx, 204, and 304 responses have no body; `Transfer-Encoding` takes
+    /// precedence over `Content-Length`; a body with neither ends at EOF.
+    ///
+    /// - Throws: `TailscaleTransportError.malformedResponse` for a
+    ///   `Content-Length` that is not a non-negative integer.
+    func bodyFraming() throws -> BodyFraming {
+      if (100..<200).contains(statusCode) || statusCode == 204 || statusCode == 304 {
+        return .contentLength(0)
+      }
+      if headers["transfer-encoding"] != nil {
+        return isChunked ? .chunked : .untilClose
+      }
+      if let contentLengthString = headers["content-length"] {
+        guard let expectedLength = Int(contentLengthString), expectedLength >= 0 else {
+          throw TailscaleTransportError.malformedResponse(
+            detail: "Invalid Content-Length header: '\(contentLengthString)'")
+        }
+        return .contentLength(expectedLength)
+      }
+      return .untilClose
+    }
+  }
+
+  /// How the end of a response body is found.
+  enum BodyFraming: Equatable {
+    /// `Transfer-Encoding: chunked`: the body ends at the terminal chunk.
+    case chunked
+    /// The body is exactly this many bytes.
+    case contentLength(Int)
+    /// No length information: the body ends when the server closes the connection.
+    case untilClose
   }
 
   /// Builds the HTTP/1.1 request bytes for a LocalAPI call.
@@ -104,6 +137,65 @@ enum HTTPWireFormat {
       return body
     } else {
       return body
+    }
+  }
+}
+
+/// Incremental decoder for a streaming response body: feed it bytes as they
+/// arrive, split at any boundary, and it returns the body payload, stopping
+/// where the body's framing says the body ends. Bytes after that point are
+/// not part of this response and are discarded.
+struct ResponseBodyDecoder {
+  private let framing: HTTPWireFormat.BodyFraming
+  private var chunkDecoder: ChunkedTransferDecoder?
+  private var remainingLength: Int
+
+  init(framing: HTTPWireFormat.BodyFraming) {
+    self.framing = framing
+    self.chunkDecoder = framing == .chunked ? ChunkedTransferDecoder() : nil
+    if case .contentLength(let length) = framing {
+      remainingLength = length
+    } else {
+      remainingLength = 0
+    }
+  }
+
+  /// Whether the framing has delimited the complete body. Never true for an
+  /// EOF-delimited body, which is complete only when the connection closes.
+  var isComplete: Bool {
+    switch framing {
+    case .chunked: return chunkDecoder?.isComplete == true
+    case .contentLength: return remainingLength == 0
+    case .untilClose: return false
+    }
+  }
+
+  /// Returns the body payload contained in `data`.
+  mutating func feed(_ data: Data) throws -> Data {
+    switch framing {
+    case .chunked:
+      return try chunkDecoder!.feed(data)
+    case .contentLength:
+      let take = min(remainingLength, data.count)
+      remainingLength -= take
+      return Data(data.prefix(take))
+    case .untilClose:
+      return data
+    }
+  }
+
+  /// Call when the connection reaches EOF.
+  ///
+  /// - Throws: `TailscaleTransportError.malformedResponse` if the framing
+  ///   promised more body than arrived.
+  func finishAtEOF() throws {
+    switch framing {
+    case .chunked where !isComplete:
+      throw TailscaleTransportError.malformedResponse(detail: "Incomplete chunked transfer")
+    case .contentLength where !isComplete:
+      throw TailscaleTransportError.malformedResponse(detail: "Truncated Content-Length body")
+    default:
+      return
     }
   }
 }

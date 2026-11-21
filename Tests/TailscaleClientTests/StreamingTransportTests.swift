@@ -70,7 +70,7 @@ final class StreamingTransportTests: XCTestCase {
 
     func testUnixSocketStreamingSurfacesNon200StatusWithoutThrowingTransportError() async throws {
       let errorResponse =
-        "HTTP/1.1 403 Forbidden\r\n" + "Content-Type: text/plain\r\n" + "Content-Length: 12\r\n"
+        "HTTP/1.1 403 Forbidden\r\n" + "Content-Type: text/plain\r\n" + "Content-Length: 13\r\n"
         + "Connection: close\r\n\r\n" + "access denied"
 
       let server = try FaultUnixServer(behaviors: [

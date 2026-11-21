@@ -13,7 +13,8 @@ import XCTest
 #if canImport(Darwin) || os(Linux)
   /// A minimal Unix-socket test server for exercising transport failure
   /// modes against a *real* socket — mocks cannot prove the poll and
-  /// cancellation paths in `UnixSocketTransport`.
+  /// cancellation paths in `UnixSocketTransport`. `init(loopbackBehaviors:)`
+  /// serves the same behaviors over loopback TCP instead.
   final class FaultUnixServer: @unchecked Sendable {
     enum Behavior {
       /// Accept the connection, read the request, and never send a byte.
@@ -22,7 +23,10 @@ import XCTest
       case respond(String, closeAfterWrite: Bool)
     }
 
+    /// The Unix socket path (empty for a loopback TCP server).
     let path: String
+    /// The bound 127.0.0.1 port for a loopback TCP server (nil for a Unix socket).
+    let port: UInt16?
     private let behaviors: [Behavior]
 
     /// One lock guards all lifecycle state below. Every file descriptor is
@@ -40,9 +44,8 @@ import XCTest
 
     /// - Parameter behaviors: one entry per accepted connection; the last
     ///   entry repeats for any further connections.
-    init(behaviors: [Behavior]) throws {
-      self.behaviors = behaviors
-      self.path = NSTemporaryDirectory() + "fault-\(UUID().uuidString.prefix(8)).sock"
+    convenience init(behaviors: [Behavior]) throws {
+      let path = NSTemporaryDirectory() + "fault-\(UUID().uuidString.prefix(8)).sock"
 
       let fd = socket(AF_UNIX, Self.streamType, 0)
       guard fd >= 0 else { throw POSIXError(.EIO) }
@@ -66,6 +69,43 @@ import XCTest
         close(fd)
         throw POSIXError(.EIO)
       }
+      self.init(listeningFD: fd, path: path, port: nil, behaviors: behaviors)
+    }
+
+    /// Serves the same behaviors over TCP on 127.0.0.1 with a kernel-chosen
+    /// port, for exercising the loopback (URLSession) transport against a
+    /// real connection.
+    convenience init(loopbackBehaviors behaviors: [Behavior]) throws {
+      let fd = socket(AF_INET, Self.streamType, 0)
+      guard fd >= 0 else { throw POSIXError(.EIO) }
+
+      var addr = sockaddr_in()
+      addr.sin_family = sa_family_t(AF_INET)
+      addr.sin_port = 0
+      addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+      var size = socklen_t(MemoryLayout<sockaddr_in>.size)
+      let bindResult = withUnsafePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, size) }
+      }
+      guard bindResult == 0, listen(fd, 4) == 0 else {
+        close(fd)
+        throw POSIXError(.EIO)
+      }
+      let nameResult = withUnsafeMutablePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &size) }
+      }
+      guard nameResult == 0 else {
+        close(fd)
+        throw POSIXError(.EIO)
+      }
+      self.init(
+        listeningFD: fd, path: "", port: UInt16(bigEndian: addr.sin_port), behaviors: behaviors)
+    }
+
+    private init(listeningFD fd: Int32, path: String, port: UInt16?, behaviors: [Behavior]) {
+      self.behaviors = behaviors
+      self.path = path
+      self.port = port
       listenFD = fd
 
       let thread = Thread { [weak self] in self?.acceptLoop(listenerFD: fd) }
@@ -161,7 +201,7 @@ import XCTest
         if listener >= 0 { close(listener) }
         for fd in connections { close(fd) }
       }
-      if !keepSocketFile {
+      if !keepSocketFile, !path.isEmpty {
         unlink(path)
       }
     }

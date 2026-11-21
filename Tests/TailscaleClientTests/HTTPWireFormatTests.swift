@@ -118,6 +118,79 @@ final class HTTPWireFormatTests: XCTestCase {
     }
   }
 
+  // MARK: - Streaming body framing
+
+  /// Splits a Content-Length-framed streaming response (head, body, then
+  /// bytes that belong to no response) at every byte index and runs it
+  /// through the same head buffer, body decoder, and line framer the Unix
+  /// socket streaming path uses: the lines and the completion point must not
+  /// depend on where the reads split.
+  func testContentLengthStreamingBodyEverySplitPoint() throws {
+    let body = "{\"Version\":\"t1\"}\n{\"Version\":\"t2\"}"
+    let wire = Data(
+      ("HTTP/1.1 400 Bad Request\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body
+        + "\nEXTRA\n").utf8)
+
+    for splitIndex in 0...wire.count {
+      var headBuffer = HTTPHeadBuffer()
+      var decoder: ResponseBodyDecoder?
+      var framer = NewlineFramer()
+      var lines: [String] = []
+      for piece in [wire.prefix(splitIndex), wire.suffix(wire.count - splitIndex)] {
+        var bodyBytes = Data(piece)
+        if decoder == nil {
+          guard let (head, remainder) = try headBuffer.feed(piece) else { continue }
+          let parsed = try HTTPWireFormat.parseResponseHead(head)
+          decoder = ResponseBodyDecoder(framing: try parsed.bodyFraming())
+          bodyBytes = remainder
+        }
+        for line in try framer.feed(try decoder!.feed(bodyBytes)) {
+          lines.append(String(decoding: line, as: UTF8.self))
+        }
+      }
+      let finished = try XCTUnwrap(decoder, "No head at split index \(splitIndex)")
+      XCTAssertTrue(finished.isComplete, "Not complete at split index \(splitIndex)")
+      if let remainder = try framer.flushRemainder() {
+        lines.append(String(decoding: remainder, as: UTF8.self))
+      }
+      XCTAssertEqual(
+        lines, ["{\"Version\":\"t1\"}", "{\"Version\":\"t2\"}"],
+        "Mismatch at split index \(splitIndex)")
+    }
+  }
+
+  func testBodyFramingFollowsMessageLengthRules() throws {
+    func framing(_ status: Int, _ headers: [String: String]) throws -> HTTPWireFormat.BodyFraming {
+      try HTTPWireFormat.ResponseHead(statusCode: status, headers: headers).bodyFraming()
+    }
+    XCTAssertEqual(try framing(400, ["content-length": "68"]), .contentLength(68))
+    XCTAssertEqual(try framing(500, ["content-length": "0"]), .contentLength(0))
+    XCTAssertEqual(try framing(200, ["transfer-encoding": "chunked"]), .chunked)
+    XCTAssertEqual(
+      try framing(200, ["transfer-encoding": "chunked", "content-length": "5"]), .chunked)
+    XCTAssertEqual(try framing(200, [:]), .untilClose)
+    XCTAssertEqual(try framing(204, [:]), .contentLength(0))
+    XCTAssertEqual(try framing(304, ["content-length": "10"]), .contentLength(0))
+    XCTAssertThrowsError(try framing(400, ["content-length": "abc"]))
+    XCTAssertThrowsError(try framing(400, ["content-length": "-1"]))
+  }
+
+  func testResponseBodyDecoderReportsShortBodyAtEOF() throws {
+    var decoder = ResponseBodyDecoder(framing: .contentLength(10))
+    XCTAssertEqual(try decoder.feed(Data("12345".utf8)), Data("12345".utf8))
+    XCTAssertFalse(decoder.isComplete)
+    XCTAssertThrowsError(try decoder.finishAtEOF()) { error in
+      guard case TailscaleTransportError.malformedResponse(let detail) = error else {
+        return XCTFail("Expected malformedResponse, got \(error)")
+      }
+      XCTAssertEqual(detail, "Truncated Content-Length body")
+    }
+    var untilClose = ResponseBodyDecoder(framing: .untilClose)
+    XCTAssertEqual(try untilClose.feed(Data("abc".utf8)), Data("abc".utf8))
+    XCTAssertFalse(untilClose.isComplete)
+    XCTAssertNoThrow(try untilClose.finishAtEOF())
+  }
+
   // MARK: - HTTPWireFormat.decodeResponseBody
 
   func testDecodeResponseBodyMatchingContentLength() throws {
