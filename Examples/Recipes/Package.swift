@@ -12,7 +12,7 @@ let package = Package(
     .macOS(.v13)
   ],
   dependencies: [
-    .package(path: "../..")
+    .package(name: "swift-tailscale-client", path: "../..")
   ],
   targets: [
     .target(

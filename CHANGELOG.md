@@ -6,11 +6,18 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Changed
 
-- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@7bf76690f09d`
-  and advance the default advertised capability from 144 to 148. Explicit
+- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
+  and advance the default advertised capability from 144 to 152. Explicit
   `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
-  still override the default. See `Documentation/COMPATIBILITY-148.md`
-  for the upstream review and compatibility evidence.
+  still override the default. The upstream `cert-status/` and
+  `resume-ipn-bus` handlers are recorded as unwrapped. See
+  `Documentation/COMPATIBILITY-148.md` and
+  `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
+  compatibility evidence.
+
+### Documentation
+
+- Corrected the soak, adoption, consumer, review, support, testing, and 1.0 release documents to state only measured results: the 1-hour and 24-hour soaks are listed as not yet run, Linux as unqualified, no daemon versions as certified, and DCO sign-off as requested but not enforced in CI. The 1.0.0 release record now gives the published outcome and the gates left open.
 
 ## [1.0.0] - 2026-09-20
 
