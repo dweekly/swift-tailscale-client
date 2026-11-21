@@ -18,6 +18,9 @@ All notable changes to this project will be documented in this file. The format 
 - Sanitized ping replies captured from a Tailscale 1.102.2 daemon as test
   fixtures, with provenance and digests, and `Scripts/capture-ping-fixture.py`
   to capture more.
+- `Examples/PeerDiagnostics`, the testable core of a Mac sample that lists peers and
+  explains how a ping reached the selected one, with a fixture mode that needs no
+  Tailscale and a read-only live mode (`--fixture --print`, `--live --print`).
 
 ### Fixed
 
