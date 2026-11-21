@@ -109,6 +109,7 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 
 ### Connectivity Testing
 - ``PingResult``
+- ``PingPath``
 - ``PingType``
 
 ### Network Diagnostics

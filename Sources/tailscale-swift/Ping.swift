@@ -8,7 +8,15 @@ import TailscaleClient
 struct PingCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "ping",
-    abstract: "Ping a Tailscale IP address to test connectivity"
+    abstract: "Ping a Tailscale IP address to test connectivity",
+    discussion: """
+      Each reply line names how that reply travelled, using the same rules as \
+      `tailscale ping`: "via <ip:port>" for a direct path, "via peer-relay(<endpoint>)" \
+      for a peer relay, "via DERP(<region>)" for a DERP relay. Replies that carry no \
+      path (always the case for tsmp, icmp, and peerapi pings) print the ping type, for \
+      example "via TSMP". A disco ping to an idle peer can travel over DERP before a \
+      direct path forms, so one reply is not the peer's settled path.
+      """
   )
 
   @Argument(help: "Tailscale IP address to ping")
@@ -17,7 +25,9 @@ struct PingCommand: AsyncParsableCommand {
   @Option(name: .shortAndLong, help: "Number of pings to send")
   var count: Int = 1
 
-  @Option(name: .shortAndLong, help: "Ping type: disco, tsmp, icmp, or peerAPI")
+  @Option(
+    name: .shortAndLong, help: "Ping type: disco, tsmp, icmp, or peerapi (peerAPI is also accepted)"
+  )
   var type: String = "disco"
 
   @Flag(name: [.short, .long], help: "Output raw JSON (an array of ping results).")
@@ -62,23 +72,14 @@ struct PingCommand: AsyncParsableCommand {
       do {
         let result = try await client.ping(ip: ip, type: pingType)
 
-        if let error = result.error, !error.isEmpty {
-          print("ping \(i + 1): error - \(error)")
-        } else if let latency = result.latencyDescription {
+        if let path = result.path {
           successCount += 1
           totalLatency += result.latencySeconds ?? 0
-
-          var details = [String]()
-          if result.isDirect {
-            if let endpoint = result.endpoint {
-              details.append("via \(endpoint)")
-            }
-          } else if let derpCode = result.derpRegionCode {
-            details.append("via DERP(\(derpCode))")
-          }
-
-          let detailStr = details.isEmpty ? "" : " \(details.joined(separator: " "))"
-          print("ping \(i + 1): \(result.nodeName ?? ip) - \(latency)\(detailStr)")
+          let latency = result.latencyDescription ?? "no latency reported"
+          let via = Self.describe(path, type: pingType)
+          print("ping \(i + 1): \(result.nodeName ?? ip) - \(latency) via \(via)")
+        } else {
+          print("ping \(i + 1): error - \(result.error ?? "")")
         }
 
         // Small delay between pings
@@ -99,6 +100,17 @@ struct PingCommand: AsyncParsableCommand {
         let avgLatency = totalLatency / Double(successCount) * 1000
         print(String(format: "avg latency: %.2f ms", avgLatency))
       }
+    }
+  }
+
+  /// Renders a path the way `tailscale ping` does (`cmd/tailscale/cli/ping.go`), printing
+  /// the ping type when the reply named no path.
+  static func describe(_ path: PingPath, type: PingType) -> String {
+    switch path {
+    case .direct(let endpoint): return endpoint
+    case .peerRelay(let endpoint): return "peer-relay(\(endpoint))"
+    case .derp(let regionID, let regionCode): return "DERP(\(regionCode ?? "region \(regionID)"))"
+    case .unknown: return type.rawValue
     }
   }
 }

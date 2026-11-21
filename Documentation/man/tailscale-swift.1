@@ -24,6 +24,9 @@ Show help information.
 .TP
 .B status
 Fetch and display current Tailscale status from the local daemon.
+.TP
+.B ping
+Ping a Tailscale IP and report latency and the path each reply took.
 .SH STATUS COMMAND
 .B tailscale-swift status
 .RI [ options ]
@@ -54,6 +57,57 @@ With
 .BR \-\-verbose ,
 detailed information for each peer is shown including hostname, ID, IP addresses,
 and last seen timestamp.
+.SH PING COMMAND
+.B tailscale-swift ping
+.I ip
+.RB [ \-c
+.IR count ]
+.RB [ \-t
+.IR type ]
+.RB [ \-j ]
+.PP
+Sends
+.I count
+pings (default 1), 100 ms apart.
+.I type
+is
+.BR disco " (default), " tsmp ", " icmp ", or " peerapi
+.RB ( peerAPI
+is also accepted).
+.B \-\-json
+prints the raw replies as a JSON array.
+.PP
+Each reply line ends with the path that reply took, using the same rules as
+.BR "tailscale ping" :
+.IP \(bu 2
+.B via
+.I ip:port
+for a direct path
+.IP \(bu 2
+.B via peer-relay(\c
+.I endpoint\c
+.B )
+for a peer relay
+.IP \(bu 2
+.B via DERP(\c
+.I code\c
+.B )
+for a DERP relay, or
+.B DERP(region
+.IB id )
+when the daemon sends no region code
+.IP \(bu 2
+.B via
+.I TYPE
+(for example
+.BR TSMP )
+when the reply names no path, which is always the case for tsmp, icmp, and
+peerapi pings
+.PP
+A failed ping prints
+.BI "error \- " message
+instead. A disco ping to an idle peer can travel over DERP before a direct
+path forms, so one reply is not the peer's settled path.
 .SH EXAMPLES
 .TP
 .B tailscale-swift status
@@ -61,6 +115,10 @@ Display basic Tailscale status.
 .TP
 .B tailscale-swift status \-\-verbose
 Display detailed status including all peer information.
+.TP
+.B tailscale-swift ping 100.64.0.2 \-c 5
+Ping a peer five times. A direct reply prints, for example,
+.B "ping 1: example-peer - 5.28 ms via [2001:db8::a]:41641"
 .TP
 .B tailscale-swift \-\-help
 Show general help information.

@@ -25,5 +25,8 @@ Facts you need before opening the guide:
 - **Biggest gotcha:** macOS App Store Tailscale needs opt-in discovery
   (`TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`) and triggers a TCC
   popup; default unix-socket discovery never does.
+- **Ping interpretation (1.1.0+):** switch on `PingResult.path` (`nil` = failed; `.direct`,
+  `.peerRelay`, `.derp`, `.unknown`). Raw `endpoint` is `""`, not `nil`, when absent; only disco
+  pings report a path; one DERP reply is not the settled path (INTEGRATING.md gotcha 7).
 - **Testing:** use the shipped `TailscaleClientMocks` product (`MockTransport`, `RequestRecorder`)
   — patterns in the guide.

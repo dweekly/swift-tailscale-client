@@ -24,7 +24,7 @@ Upstream's own source says LocalAPI paths are namespaced under `/localapi/v0/` "
 | **Experimental** | `client.experimental` namespace | Compiles and works, but exempt from SemVer; tracks upstream churn (debug endpoints, log streaming, GUI push contract, self-update). May change or vanish in a minor release. |
 | **Unsupported** | Documented only | Deliberately not wrapped, with the reason recorded in [`Documentation/LOCALAPI-COVERAGE.md`](Documentation/LOCALAPI-COVERAGE.md). |
 
-In accordance with DEC-5 (resolved in W7), strict source compatibility is enforced across all stable public symbols in `TailscaleClient` against baseline v0.12.0 via `Scripts/check-api-baseline.sh` and `APICompatibilityTests`. Upstream availability and Swift source compatibility remain separate promises.
+In accordance with DEC-5 (resolved in W7), strict source compatibility is enforced across all stable public symbols in `TailscaleClient` against baseline v1.0.0, with an empty breakage allowlist, via `Scripts/check-api-baseline.sh` and `APICompatibilityTests`. Upstream availability and Swift source compatibility remain separate promises.
 
 "Complete coverage" means **every LocalAPI endpoint has a documented status** — implemented, planned, experimental, or unsupported-with-reason — not that every endpoint has a wrapper. Connection-hijacking endpoints (`dial`), alpha endpoints, and Tailscale-internal plumbing stay unsupported until there is a real use case.
 

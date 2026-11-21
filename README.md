@@ -164,6 +164,16 @@ Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDem
 |----------|-------------|
 | `StatusResponse.interfaceName` | The TUN interface name (e.g., "utun16") discovered by matching Tailscale IPs |
 | `StatusResponse.interfaceInfo` | Full interface details including up/running state and interface type |
+| `PingResult.path` | How one ping reply reached the peer (`PingPath`), or `nil` if the ping failed (1.1.0+) |
+
+**Reading a ping result.** `PingResult.path` classifies a reply the way `tailscale ping` does:
+
+- `.direct(endpoint:)`: the reply came straight from the peer's UDP endpoint.
+- `.peerRelay(endpoint:)`: the reply came through a Tailscale peer relay.
+- `.derp(regionID:regionCode:)`: the reply came through a DERP relay server.
+- `.unknown`: the ping succeeded but named no path. TSMP, ICMP, and peerAPI pings always give this; only disco pings report a path.
+
+One reply is one measurement. The first disco ping to an idle peer often goes over DERP while a direct path forms, which is why `tailscale ping` repeats until it sees a direct reply. `isDirect` is `true` exactly when `path` is `.direct`.
 
 All methods are async and throw `TailscaleClientError` on failure. Errors include actionable recovery suggestions.
 

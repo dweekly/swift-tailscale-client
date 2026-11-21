@@ -13,6 +13,9 @@ Quick orientation:
   api.tailscale.com admin API.
 - Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`,
   product `TailscaleClient`. Test with the `TailscaleClientMocks` product.
+- Ping path (1.1.0+): read `PingResult.path` (`.direct`, `.peerRelay`, `.derp`,
+  `.unknown`; `nil` on error), not raw `endpoint`; only disco pings report a path,
+  and one reply is one measurement (INTEGRATING.md gotcha 7).
 - Release scope: macOS 13+ runtime; iOS/tvOS/watchOS build only. Linux is unqualified and not part of required CI.
 
 Working **on** this repository (not just consuming it): build/test commands and

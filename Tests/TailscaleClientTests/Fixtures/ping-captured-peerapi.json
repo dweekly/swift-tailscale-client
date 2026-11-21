@@ -1,0 +1,12 @@
+{
+  "IP": "100.64.0.2",
+  "NodeIP": "100.64.0.2",
+  "NodeName": "example-peer.example.ts.net.",
+  "Err": "",
+  "LatencySeconds": 0.023189166,
+  "Endpoint": "",
+  "PeerRelay": "",
+  "DERPRegionID": 0,
+  "DERPRegionCode": "",
+  "PeerAPIURL": "http://100.64.0.2:42272"
+}

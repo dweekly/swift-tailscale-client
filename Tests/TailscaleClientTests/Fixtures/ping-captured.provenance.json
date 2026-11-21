@@ -1,0 +1,100 @@
+{
+  "_about": "Provenance for ping fixtures. Files under 'captured' are real /localapi/v0/ping replies from one standalone Tailscale daemon, sanitized; their bytes match 'sha256'. Files under 'synthetic' were written by hand and are not captures. Capturing from 1.102.2 does not add it to the tested daemon-version matrix in LocalAPI/manifest.json.",
+  "captured": {
+    "ping-captured-disco-direct.json": {
+      "capture_command": "spike tool that Scripts/capture-ping-fixture.py was adapted from (same request and sanitization rules)",
+      "captured_utc": "2026-11-21T22:16:56Z",
+      "daemon": {
+        "commit": "6cac918179d4d673bfebe2fc74f81183ddd73fea",
+        "long": "1.102.2-t6cac91817-g6ff0ddc72",
+        "short": "1.102.2"
+      },
+      "http_status": 200,
+      "os": "macOS 27.2.1 (26B131)",
+      "request": "POST /localapi/v0/ping?ip=<target-ip>&type=disco",
+      "sha256": "fa1b1a8db8739dd9a6fec4c5d8e8f2a0d28c2f72dd5ebb840c5958c03a86ac77",
+      "type": "disco"
+    },
+    "ping-captured-error-expired-key.json": {
+      "capture_command": "spike tool that Scripts/capture-ping-fixture.py was adapted from (same request and sanitization rules)",
+      "captured_utc": "2026-11-21T22:19:52Z",
+      "daemon": {
+        "commit": "6cac918179d4d673bfebe2fc74f81183ddd73fea",
+        "long": "1.102.2-t6cac91817-g6ff0ddc72",
+        "short": "1.102.2"
+      },
+      "http_status": 200,
+      "os": "macOS 27.2.1 (26B131)",
+      "request": "POST /localapi/v0/ping?ip=<offline-ip>&type=disco",
+      "sha256": "b0b32cb66e0a086d2330bd03a58f50e350df6605090eb26d959f8d522b36da59",
+      "type": "disco"
+    },
+    "ping-captured-error-self-ip.json": {
+      "capture_command": "spike tool that Scripts/capture-ping-fixture.py was adapted from (same request and sanitization rules)",
+      "captured_utc": "2026-11-21T22:17:15Z",
+      "daemon": {
+        "commit": "6cac918179d4d673bfebe2fc74f81183ddd73fea",
+        "long": "1.102.2-t6cac91817-g6ff0ddc72",
+        "short": "1.102.2"
+      },
+      "http_status": 200,
+      "os": "macOS 27.2.1 (26B131)",
+      "request": "POST /localapi/v0/ping?ip=<self-ip>&type=disco",
+      "sha256": "1ab63524352d0a0b14bbc63e2e0d78f45616ba0af4b12242ab194bff0566d480",
+      "type": "disco"
+    },
+    "ping-captured-icmp.json": {
+      "capture_command": "spike tool that Scripts/capture-ping-fixture.py was adapted from (same request and sanitization rules)",
+      "captured_utc": "2026-11-21T22:16:58Z",
+      "daemon": {
+        "commit": "6cac918179d4d673bfebe2fc74f81183ddd73fea",
+        "long": "1.102.2-t6cac91817-g6ff0ddc72",
+        "short": "1.102.2"
+      },
+      "http_status": 200,
+      "os": "macOS 27.2.1 (26B131)",
+      "request": "POST /localapi/v0/ping?ip=<target-ip>&type=ICMP",
+      "sha256": "3d550c85613eab4d648a2f088eb8fb92aae96fcf1fd340a4e5dd534a2bc8eb1a",
+      "type": "ICMP"
+    },
+    "ping-captured-peerapi.json": {
+      "capture_command": "spike tool that Scripts/capture-ping-fixture.py was adapted from (same request and sanitization rules)",
+      "captured_utc": "2026-11-21T22:19:51Z",
+      "daemon": {
+        "commit": "6cac918179d4d673bfebe2fc74f81183ddd73fea",
+        "long": "1.102.2-t6cac91817-g6ff0ddc72",
+        "short": "1.102.2"
+      },
+      "http_status": 200,
+      "os": "macOS 27.2.1 (26B131)",
+      "request": "POST /localapi/v0/ping?ip=<target-ip>&type=peerapi",
+      "sha256": "c2b697ff0670edfb81a3787d377917440d3be9efefad208451d9851c9c94230e",
+      "type": "peerapi"
+    },
+    "ping-captured-tsmp.json": {
+      "capture_command": "spike tool that Scripts/capture-ping-fixture.py was adapted from (same request and sanitization rules)",
+      "captured_utc": "2026-11-21T22:16:57Z",
+      "daemon": {
+        "commit": "6cac918179d4d673bfebe2fc74f81183ddd73fea",
+        "long": "1.102.2-t6cac91817-g6ff0ddc72",
+        "short": "1.102.2"
+      },
+      "http_status": 200,
+      "os": "macOS 27.2.1 (26B131)",
+      "request": "POST /localapi/v0/ping?ip=<target-ip>&type=TSMP",
+      "sha256": "f190de2b3166a64f430b889d2d4e173bcbba4b5cc3c607fc195d1c9b9d58a483",
+      "type": "TSMP"
+    }
+  },
+  "sanitization": [
+    "Tailscale IPv4/IPv6 of this node, the target peer, and the offline peer -> 100.64.0.1-3 / fd7a:115c:a1e0::1-3",
+    "host names -> example-self, example-peer, example-offline-peer; MagicDNS FQDN -> example-peer.example.ts.net. (trailing dot kept)",
+    "RFC 1918 endpoint address -> 192.0.2.N; public IPv4 -> 203.0.113.N; global IPv6 -> 2001:db8::N (brackets and port kept)",
+    "ports, region IDs and codes, latencies, error strings, key names, key order, and JSON value types unchanged"
+  ],
+  "synthetic": {
+    "ping-derp-sample.json": "hand-written DERP reply; no DERP reply has been captured",
+    "ping-error-sample.json": "hand-written error reply; the error string is illustrative",
+    "ping-sample.json": "hand-written direct disco reply; omits Err and PeerRelay, which real replies always carry"
+  }
+}
