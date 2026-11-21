@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Fixed
+
+- A rejected IPN bus watch (`watchIPNBus`, `watchIPNBusEvents`, `tailscale-swift watch`) now reports its typed status error as soon as the response arrives (the error's `body` and `bodyPreview` carry the daemon's message), instead of hanging until the daemon closes the connection. Over the Unix socket, a streaming response body now ends after its `Content-Length` bytes (or at the terminal chunk, or at EOF only when neither framing is present), and the socket is closed then; a body shorter than its `Content-Length` fails with `malformedResponse`. Observed against tailscaled v1.104.7, which answers an unsupported watch mask with HTTP 400 and keeps the connection open.
+
 ### Changed
 
 - Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`

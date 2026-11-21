@@ -137,7 +137,7 @@ struct UnixSocketTransport {
     let socket: ManagedSocketFD
     let statusCode: Int
     let headers: [String: String]
-    let isChunked: Bool
+    let bodyFraming: HTTPWireFormat.BodyFraming
     let initialBody: Data
 
     var fd: Int32 { socket.fd }
@@ -169,7 +169,7 @@ struct UnixSocketTransport {
           socket: socket,
           statusCode: head.statusCode,
           headers: head.headers,
-          isChunked: head.isChunked,
+          bodyFraming: try head.bodyFraming(),
           initialBody: bodyRemainder)
       }
     } catch {
@@ -178,36 +178,32 @@ struct UnixSocketTransport {
     }
   }
 
+  /// Delivers the body as newline-delimited frames until the body's framing
+  /// says it is complete (after `Content-Length` bytes, or at the terminal
+  /// chunk) or, for an EOF-delimited body, until the server closes the
+  /// connection. Returning lets the caller close the socket without waiting
+  /// for the server to close its side.
   private func streamBody(
     _ connection: StreamConnection,
     queue: TransportByteBoundedQueue
   ) async throws {
     var framer = NewlineFramer()
-    var chunkDecoder = connection.isChunked ? ChunkedTransferDecoder() : nil
+    var decoder = ResponseBodyDecoder(framing: connection.bodyFraming)
     var buffer = [UInt8](repeating: 0, count: 4096)
     var pending = connection.initialBody
 
     while !Task.isCancelled {
       if !pending.isEmpty {
-        let payload: Data
-        if chunkDecoder != nil {
-          payload = try chunkDecoder!.feed(pending)
-          if chunkDecoder!.isComplete {
-            for line in try framer.feed(payload) {
-              try await queue.enqueue(line)
-            }
-            if let remainder = try framer.flushRemainder() {
-              try await queue.enqueue(remainder)
-            }
-            return
-          }
-        } else {
-          payload = pending
-        }
-        for line in try framer.feed(payload) {
+        for line in try framer.feed(try decoder.feed(pending)) {
           try await queue.enqueue(line)
         }
         pending = Data()
+      }
+      if decoder.isComplete {
+        if let remainder = try framer.flushRemainder() {
+          try await queue.enqueue(remainder)
+        }
+        return
       }
 
       guard try waitReadable(connection.fd, timeoutMilliseconds: 500) else { continue }
@@ -217,9 +213,7 @@ struct UnixSocketTransport {
     }
 
     try Task.checkCancellation()
-    if let chunkDecoder, !chunkDecoder.isComplete {
-      throw TailscaleTransportError.malformedResponse(detail: "Incomplete chunked transfer")
-    }
+    try decoder.finishAtEOF()
     if let remainder = try framer.flushRemainder() {
       try await queue.enqueue(remainder)
     }
