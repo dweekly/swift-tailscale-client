@@ -40,6 +40,12 @@ import XCTest
 
     /// Must exceed `promptBound` so a hang shows up as a failed bound, not
     /// as a pass caused by the watchdog's EOF.
+    /// Options a daemon rejection is reported for directly. A watch that asks
+    /// for `.rateLimit` or `.initialNetMap` is opened a second time without
+    /// them before a 400 is reported, which these single-response servers do
+    /// not script.
+    private static let optionsWithoutRetry: NotifyWatchOpt = [.initialState]
+
     private static let watchdogDelay: Duration = .seconds(3)
     private static let promptBound: Duration = .seconds(2)
 
@@ -252,7 +258,9 @@ import XCTest
       defer { watchdog.cancel() }
       let client = makeClient(.unixSocket(path: server.path))
 
-      await assertPromptRejection { _ = try await client.watchIPNBus() }
+      await assertPromptRejection {
+        _ = try await client.watchIPNBus(options: Self.optionsWithoutRetry)
+      }
     }
 
     func testWatchIPNBusEventsReportsRejectionPromptly() async throws {
@@ -265,7 +273,8 @@ import XCTest
       let client = makeClient(.unixSocket(path: server.path))
 
       await assertPromptRejection {
-        _ = try await client.watchIPNBusEvents(retryPolicy: .none)
+        _ = try await client.watchIPNBusEvents(
+          options: Self.optionsWithoutRetry, retryPolicy: .none)
       }
     }
 
@@ -282,7 +291,9 @@ import XCTest
         let port = try XCTUnwrap(server.port)
         let client = makeClient(.loopback(host: "127.0.0.1", port: port))
 
-        await assertPromptRejection { _ = try await client.watchIPNBus() }
+        await assertPromptRejection {
+          _ = try await client.watchIPNBus(options: Self.optionsWithoutRetry)
+        }
       }
     #endif
 
