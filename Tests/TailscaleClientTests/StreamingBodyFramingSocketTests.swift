@@ -44,8 +44,10 @@ import XCTest
     private static let promptBound: Duration = .seconds(2)
 
     private func armWatchdog(_ server: FaultUnixServer) -> Task<Void, any Error> {
-      Task {
-        try await Task.sleep(for: Self.watchdogDelay)
+      // Read the delay before the task starts so the closure captures a plain value.
+      let delay = Self.watchdogDelay
+      return Task {
+        try await Task.sleep(for: delay)
         server.stop()
       }
     }
