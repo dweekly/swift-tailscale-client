@@ -1,6 +1,6 @@
 # 1.0 Support Policy & Compatibility Matrix
 
-Status: **1.0 Baseline Support Matrix**, 2026-09-17.
+Status: **1.0 support matrix**, applies to 1.0.x (Apple-only release scope set 2026-09-19).
 Authoritative documents: [PLAN-1.0.md](PLAN-1.0.md) | [DECISIONS-1.0.md](DECISIONS-1.0.md) | [endpoints.json](endpoints.json).
 
 This document establishes the official platform, toolchain, and daemon compatibility matrix for `swift-tailscale-client` 1.0, along with the support lifecycle and security maintenance policy.
@@ -21,11 +21,10 @@ All public APIs require Swift 6 concurrency mode (`Sendable` annotations, actor 
 | Operating System | Architectures | Daemon Runtime Support | Notes |
 |---|---|---|---|
 | **macOS 13.0+** (Ventura, Sonoma, Sequoia) | `arm64`, `x86_64` | **Full Support** | Unix domain sockets, standalone `.pkg`, App Store GUI (opt-in) |
-| **Linux** (kernel 5.4+, glibc 2.31+ / musl) | `x86_64`, `aarch64` | **Full Support** | Unix domain socket (`/var/run/tailscale/tailscaled.sock`), loopback |
+| **Linux** | — | **Unqualified** | Outside the 1.0 release scope: no required Linux CI lane and no Linux binary. Portability code exists (Unix domain socket `/var/run/tailscale/tailscaled.sock`, loopback) but is not tested. |
 | **iOS 16.0+** | `arm64` | *Build Only* | Client models, requests, mocks; no daemon runtime |
 | **tvOS 16.0+** | `arm64` | *Build Only* | Client models, requests, mocks; no daemon runtime |
 | **watchOS 9.0+** | `arm64_32`, `arm64` | *Build Only* | Client models, requests, mocks; no daemon runtime |
-| **visionOS 1.0+** | `arm64` | *Build Only* | Client models, requests, mocks; no daemon runtime |
 
 ---
 
@@ -33,12 +32,11 @@ All public APIs require Swift 6 concurrency mode (`Sendable` annotations, actor 
 
 `swift-tailscale-client` interacts with an **already installed and running** `tailscaled` daemon over its LocalAPI.
 
-| Daemon Track | Version Range | CI Status | Availability Guarantee |
-|---|---|---|---|
-| **Supported Floor** | `1.76.0` | Blocking gate | Minimum version supporting baseline status, prefs, and core APIs |
-| **Mainline Supported** | `1.76.x` – `1.96.x` | Blocking gate | Full support for all stable endpoints in `endpoints.json` |
-| **Latest Stable** | Latest release | Blocking gate | Continuously verified against official Tailscale stable releases |
-| **Unstable / Nightly** | Upstream `main` | Non-blocking signal | Weekly automated drift detection; catches upcoming breaks early |
+- **Compatibility target**: Tailscale `1.76.0` and later, subject to per-endpoint availability (`min_tailscaled` in [endpoints.json](endpoints.json)).
+- **Certified versions**: None. No daemon version matrix has been run against 1.x code.
+- **Real-daemon CI**: A read-only integration suite runs against the daemon installed on a self-hosted Mac (`.github/workflows/integration.yml`); for example tailscaled 1.102.2 on 2026-09-22. This is one version at a time and is not a required release check.
+- **Hermetic daemon lanes**: `.github/workflows/integration-linux.yml` (headscale with stable, previous-stable, and unstable tailscaled) is manual-only and outside release qualification.
+- **Upstream drift**: A weekly job (`.github/workflows/upstream-drift.yml`) compares the endpoint manifest with current upstream `tailscale/tailscale` source. It does not run a daemon.
 
 ### Feature Availability and Older Daemons
 When communicating with a daemon that does not implement an endpoint or feature (e.g. ACME certificates or DNS configuration on certain builds):

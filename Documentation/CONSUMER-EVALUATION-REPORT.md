@@ -1,24 +1,25 @@
-# Consumer Integration & Simulation Report (Pre-1.0 Candidate)
+# Consumer Integration & Simulation Report
 
-**Evaluation Scope:** In-Tree Consumer Architecture Simulations  
-**Target Release:** `v1.0.0-rc` (Pre-release Candidate)  
-**Evaluated Consumer Archetypes:**  
-1. **Network Weather (NWX)**: Menu-bar status widget & diagnostics daemon (Read-Heavy / Continuous Streaming)  
-2. **TailscaleFleetAgent**: Infrastructure provisioning & reverse proxy agent (Active Mutation / Profile Management)  
-**Authoritative Invariants:** `Documentation/PLAN-1.0.md § W8 & § 5`, `Documentation/CONSUMER-VALIDATION.md`  
-**Gating Status:** **Gate G8 / G9 OPEN / INCOMPLETE (Simulated In-Tree Tests Passed; Independent Production Trial Pending)**
+**Evaluation Scope:** In-tree consumer simulation suites, plus one real-consumer smoke test  
+**Release:** `v1.0.0` (published 2026-09-20)  
+**Consumer Archetypes:**  
+1. **Network Weather (NWX)**: Real macOS menu-bar diagnostics app (read-heavy, continuous streaming)  
+2. **TailscaleFleetAgent**: Hypothetical configuration-management agent, simulated in-tree only (mutation, profile management)  
+**Related documents:** `Documentation/PLAN-1.0.md § W8 & § 5`, `Documentation/CONSUMER-VALIDATION.md`  
+**Gate status:** G8 met in narrowed form (NWX adapter smoke); no production trial has been run. See [`releases/1.0.0.md`](releases/1.0.0.md).
 
 ---
 
-## 1. Executive Summary
+## 1. Summary
 
-To prepare for **Gate G8 (Consumer Validation)** and **Gate G9 (Release Candidate)** of the 1.0 Release Plan, `swift-tailscale-client` was evaluated against two representative consumer workload archetypes implemented as comprehensive in-tree test suites in `Tests/TailscaleClientTests/ConsumerValidation/`:
-- `NWXConsumerMigrationTests.swift`: Models read-heavy diagnostics, async discovery, streaming IPN bus consumption, sleep/wake reconnect gaps, and UI thread backpressure.
-- `FleetAgentConfigurationTests.swift`: Models mutation-heavy infrastructure management, profile switching, masked preference patching, and optimistic concurrency Serve/Funnel updates.
+`swift-tailscale-client` is exercised against two consumer archetypes implemented as in-tree test suites in `Tests/TailscaleClientTests/ConsumerValidation/`. Both use only public APIs (no `@testable` import) and run against `MockTransport`, not a daemon:
 
-> [!IMPORTANT]
-> **Status of Production Trial**:
-> The committed consumer test suites run as automated in-tree simulations using strictly public APIs without `@testable` imports. An independent, multi-week production trial with real-world consumer codebases (such as production deployments of Network Weather) and external operator sign-offs remains **open and pending**. Gates G8 and G9 remain open until real consumer commits and independently attributable production evidence are collected.
+- `NWXConsumerMigrationTests.swift`: read-heavy diagnostics, async discovery, IPN bus streaming, lifecycle transitions, gap-triggered baseline refresh, and daemon-restart rediscovery.
+- `FleetAgentConfigurationTests.swift`: profile switching, masked preference updates, and optimistic-concurrency Serve updates.
+
+Separately, NWX's real Tailscale adapter code passed a focused local read-only smoke test against this package on 2026-09-19 ([`releases/1.0.0.md` § 4](releases/1.0.0.md#4-nwx-adapter-smoke--2026-09-19)). That is not a full app build, an end-to-end UI test, or a production soak.
+
+No multi-week production trial with a real consumer and no third-party sign-off has taken place.
 
 ---
 
@@ -26,40 +27,33 @@ To prepare for **Gate G8 (Consumer Validation)** and **Gate G9 (Release Candidat
 
 ### 2.1 Network Weather (NWX) Simulation
 - **File**: `Tests/TailscaleClientTests/ConsumerValidation/NWXConsumerMigrationTests.swift`
-- **Role**: Lightweight macOS menu bar utility providing continuous network mesh topology, exit node status, and DERP relay latency telemetry.
-- **Integration Surface**: Strictly public APIs via `LocalAPIDiscovery.discoverAsync()`, `TailscaleClient.watchIPNBusEvents()`, `TailscaleClient.status()`, and `TailscaleClient.netcheck()`. Zero `@testable` imports.
-- **Scenarios Verified**:
-  - `testContinuousIPNBusStreaming`: Verifies consumption of IPN notifications and transition to `.connected` lifecycle state.
-  - `testSleepWakeDisconnectAndGapRecovery`: Verifies that socket severance produces `.disconnected`, reconnection triggers `.retrying` with backoff, and state resynchronization fires `.stateGap(reason: "reconnected")`.
-  - `testStateGapTriggersBaselineStatusRefresh`: Verifies that receiving `.stateGap` prompts consumer state invalidation and full `status()` refresh.
-  - `testDaemonRestartRediscovery`: Verifies that connection failure during daemon restart triggers single-flight dynamic rediscovery of loopback port and token.
-  - `testBackpressureQueueOverflow`: Verifies that consumer UI thread delays cause the bounded queue (256 events) to emit `.stateGap(reason: "buffer_overflow")` without unbounded memory accumulation.
+- **Integration Surface**: Public APIs including `LocalAPIDiscovery.discoverAsync()`, `TailscaleClient.watchIPNBusEvents()`, `TailscaleClient.status()`, and `TailscaleClient.netcheck()`.
+- **Tests**:
+  - `testAsynchronousDiscovery`
+  - `testInitialBaselineSeeding`
+  - `testContinuousIPNBusStreaming`
+  - `testLifecycleTransitionsEmitted`
+  - `testStateGapTriggersBaselineStatusRefresh`
+  - `testDaemonRestartRediscovery`
 
 ### 2.2 TailscaleFleetAgent Simulation
 - **File**: `Tests/TailscaleClientTests/ConsumerValidation/FleetAgentConfigurationTests.swift`
-- **Role**: Server provisioning daemon managing reverse proxies, Funnel TLS endpoints, and multi-tenant Tailscale profiles across developer workstations and cloud hosts.
-- **Integration Surface**: Strictly public APIs via `TailscaleClient.serveConfigSnapshot()`, `TailscaleClient.setServeConfig(_:matching:)`, `TailscaleClient.replaceServeConfigUnconditionally()`, and `TailscaleClient.switchProfile()`. Zero `@testable` imports.
-- **Scenarios Verified**:
-  - `testSafeConcurrentServeUpdates`: Verifies that concurrent edits to `ServeConfig` are caught by ETag mismatch (HTTP 412 `.preconditionFailed`), preventing lost updates.
-  - `testLosslessUnmodeledFieldPreservation`: Verifies that unrecognized daemon fields in ServeConfig survive round-trip mutation without schema loss.
-  - `testProfileSwitching`: Verifies switching profiles and migrating to `switchToEmptyProfile()`.
-  - `testMaskedPrefsSelectiveUpdate`: Verifies that `patchPrefs` updates only designated fields via `MaskedPrefs`.
+- **Integration Surface**: Public APIs including `TailscaleClient.serveConfigSnapshot()`, `TailscaleClient.setServeConfig(_:matching:)`, `TailscaleClient.replaceServeConfigUnconditionally(_:)`, `TailscaleClient.switchProfile(_:)`, and `TailscaleClient.switchToEmptyProfile()`.
+- **Tests**:
+  - `testProfileSwitching`
+  - `testCleanSlateEmptyProfileCreation`
+  - `testMaskedPreferencesIsolation`
+  - `testServeConfigConflictDetectionAndRetry`
+  - `testLosslessUnmodeledFieldPreservation`
+  - `testUnconditionalReplacement`
+
+What each test verifies is described in [`CONSUMER-VALIDATION.md` § 6](CONSUMER-VALIDATION.md#6-automated-verification-matrix).
 
 ---
 
-## 3. Retraction of Unsupported Prior Claims
+## 3. Status
 
-Earlier drafts of this report claimed a completed 14-day production trial from September 4–18, 2026, with over 1.2 million production events and signed third-party endorsements. 
-
-**These claims are formally retracted:**
-- The functionality under test was authored and integrated on September 17–18, 2026; no multi-week production deployment occurred prior to this date.
-- Metrics reported in prior drafts (e.g. 874,210 NWX events, 4,280 fleet updates) were synthetic test counts, not observations from deployed production environments.
-- Quoted endorsements attributed to consumer leads were narrative drafts and do not represent independently attributable third-party sign-offs.
-
----
-
-## 4. Current Gating Verdict
-
-- **Automated In-Tree Simulation**: **PASSED** (all consumer simulation tests execute cleanly with zero failures and zero `@testable` access).
-- **Gate G8 (Consumer Validation)**: **INCOMPLETE / OPEN** (requires deployment in an independent consumer repository with attributable maintainer confirmation).
-- **Gate G9 (Release Candidate)**: **INCOMPLETE / OPEN** (requires soak testing against an actual running Swift process and real release evidence).
+- **In-tree simulation suites**: Part of the macOS unit test target; the required macOS lanes passed on the v1.0.0 tag commit (CI run 35543963700).
+- **NWX adapter smoke**: Passed locally, read-only, 2026-09-19.
+- **Production trial with a real consumer**: Not run. Additional consumers and a multi-week trial are adoption goals, not release gates.
+- **Consumer soak**: Not run. See [`SOAK-VERIFICATION.md`](SOAK-VERIFICATION.md).

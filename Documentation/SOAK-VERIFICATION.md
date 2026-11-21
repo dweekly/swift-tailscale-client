@@ -1,377 +1,160 @@
-# Soak Verification Protocol & Empirical Test Record
+# Soak Verification Protocol and Test Record
 
-**Document Version:** 1.0.0  
-**Target Release:** `v1.0.0`  
-**Authoritative Invariants:** `Documentation/PLAN-1.0.md § W9 & § 5`, `Documentation/DECISIONS-1.0.md § 3`  
-**Audited Components:** `IPNBusBoundedQueue`, `TailscaleClient.watchIPNBusEvents`, `StreamingResponse`, `UnixSocketTransport`
+**Related plan sections:** `Documentation/PLAN-1.0.md § W9 & § 5`, `Documentation/DECISIONS-1.0.md` (Decision 3)  
+**Components under test:** `IPNBusBoundedQueue`, `TailscaleClient.watchIPNBusEvents`, `StreamingResponse`, `UnixSocketTransport`
 
 ---
 
-## 1. Executive Summary
+## 1. Summary
 
-This document records the verification methodology, architectural invariants, and empirical telemetry logs demonstrating memory, resource, and transport stability under continuous streaming load for `swift-tailscale-client` 1.0.0.
+This document describes how `swift-tailscale-client` is soak-tested for memory, descriptor, and reconnect stability under continuous streaming, and records the soak runs that have actually been measured.
 
-In accordance with **Gate G3 (Monitoring)** and **Gate G9 (Release Candidate)** of `Documentation/PLAN-1.0.md`, the library has undergone both:
-1. **Accelerated Synthetic Stream & Fault Testing**: High-throughput bursts, forced socket disconnects, malformed frames, and consumer backpressure.
-2. **1-Hour Synthetic Stream Soak**: 180,000+ events evaluating queue ceiling bounds, memory plateaus, and cooperative task cancellation.
-3. **24-Hour Continuous Live Monitoring Soak**: Multi-device operational tailnet monitoring across sleep/wake cycles, network interface transitions (Wi-Fi/Ethernet/Cellular), and daemon restarts.
+| Run | Status | Result |
+|---|---|---|
+| Short synthetic fault soak (30 seconds), 2026-09-18 | Measured locally | 5,271 notifications processed; peak RSS 15,072 KiB; zero net file and socket descriptor growth. |
+| 1-hour synthetic soak | **Not yet run** | No report exists. |
+| 24-hour live-daemon soak | **Not yet run** | No report exists. |
 
-**Verification Conclusion**:
-- **Memory Ceiling**: Strict conformance to the 256-event / 16 MB bounded queue ceiling (`IPNBusBoundedQueue`). Process RSS memory plateaus after warmup with zero monotonic growth.
-- **Resource Ownership**: Zero file descriptor leaks ($\Delta\text{FD} = 0$) and zero socket descriptor leaks ($\Delta\text{Socket} = 0$) verified via kernel introspection (`proc_pidinfo` on Darwin, `/proc/<pid>/fd` on Linux).
-- **Observable Recovery**: 100% of buffer overflows, reconnects, and undecodable lines correctly emit `.stateGap(reason:)`, triggering automated state re-synchronization without hanging or data corruption.
+The 30-second run is a local working-tree result, not exact-tag qualification, and it does not satisfy the long-soak gate in `Documentation/PLAN-1.0.md` (W9). The 1.0.0 release shipped with the long soaks open; see [`Documentation/releases/1.0.0.md`](releases/1.0.0.md) and the 1.0.0 "Validation and limitations" section of `CHANGELOG.md`.
 
----
-
-## 2. Streaming Architecture & Invariants Under Stress
-
-### 2.1 Bounded Queue Mechanics (`IPNBusBoundedQueue`)
-Unbounded streaming buffers pose critical out-of-memory risks for long-running system daemons and menu bar utilities when consumers process events slower than the daemon emits them. `swift-tailscale-client` enforces two hard ceilings:
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   IPNBusBoundedQueue Memory Safety                     │
-├────────────────────────────────────────────────────────────────────────┤
-│ Max Event Count Ceiling: 256 events                                    │
-│ Max Event Byte Ceiling:  16,777,216 bytes (16 MB)                      │
-│                                                                        │
-│ Incoming Event ──> [ Size > 16 MB ? ] ──YES──> Drop & Emit .stateGap   │
-│                          │                                             │
-│                         NO                                             │
-│                          ▼                                             │
-│               [ Queue Count >= 256 OR                                  │
-│                 Queue Bytes + Event > 16 MB ? ]                        │
-│                          │                                             │
-│                   YES ───┴─── NO                                       │
-│                    │           │                                       │
-│                    ▼           ▼                                       │
-│         Flush Stale Buffer   Enqueue Event                             │
-│         Emit .stateGap       Update High-Water Mark                    │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-- When configured with `.reportGap` (default), reaching either limit flushes stale buffered notifications, resets the memory counter to zero, and yields an `IPNBusEvent.lifecycle(.stateGap(reason: "buffer_overflow"))`.
-- Single oversized events exceeding 16 MB are immediately rejected without buffer retention.
-- Memory consumption is physically bounded: the buffer cannot exceed 16 MB under any workload.
-
-### 2.2 Dual Event Classification (`IPNBusEvent`)
-Data updates and transport lifecycle events are cleanly segregated:
-- `.notification(IPNNotify)`: Tailscale daemon state updates (NetMap, peers, health, routes).
-- `.lifecycle(IPNBusLifecycle)`: Connection status transitions (`.connected`, `.disconnected(underlying:)`, `.retrying(attempt:delay:)`, `.stateGap(reason:)`).
-This guarantees consumers can observe disconnections and reconnect intervals without mistaking transport changes for empty or mutated daemon configurations.
-
-### 2.3 Classified Backoff with Full Jitter
-Transient network interruptions or daemon upgrades trigger classified retry:
-- **Delay Formula**: $t_n = \min(100\text{ms} \times 2^{n-1}, 10\text{s}) \times (1 \pm 0.20)$
-- Minimum retry interval is bounded at $\ge 80\text{ms}$ to eliminate tight spin loops.
-- **Terminal Classification**: HTTP 401 (Unauthorized) and HTTP 403 (Forbidden without valid Unix socket credentials) are classified as permanent fatal errors, halting retries immediately to avoid auth spamming.
-
-### 2.4 State Gap Recovery Protocol
-When an `IPNBusEvent.lifecycle(.stateGap(reason:))` event is received:
-1. The consumer marks its cached peer and status models as potentially stale.
-2. The consumer schedules an out-of-band unary `status()` and `netcheck()` query.
-3. The response seamlessly re-seeds the local cache, eliminating desynchronization caused by dropped delta events.
+Soak reports are written as `soak-report-*.json` files, which are gitignored. A run counts as evidence only when its report is attached to the release record or PR that cites it.
 
 ---
 
-## 3. Soak Verification Harness (`Scripts/run-soak-verification.py`)
+## 2. Streaming design under stress
 
-A dedicated, zero-dependency Python 3 harness executes and audits soak runs:
-- **Child Swift Process**: Launches and drives the compiled `tailscale-swift watch --json --events --reconnect` binary, verifying real Swift runtime execution, memory stability, and stream consumption.
-- **Darwin Introspection**: Directly invokes `/usr/lib/libproc.dylib` (`proc_pidinfo` with `PROC_PIDLISTFDS` and `PROX_FDTYPE_SOCKET`) to inspect real kernel descriptor tables of the child Swift process.
-- **Linux Introspection**: Scans `/proc/<pid>/fd` to inspect descriptor targets and socket inodes of the child Swift process.
-- **Fault Injection Engine**: Periodically terminates socket connections, injects bursts exceeding 256 events, and transmits invalid JSON to test recovery pathways.
-- **Execution Modes**:
-  - `--mode accelerated`: 5–10 minute run with high-frequency event generation (200–500 evt/s) and adversarial fault injection for CI and release rehearsal.
-  - `--mode extended`: 1-hour or 24-hour endurance test against live or synthetic daemons.
+These are the behaviors a soak run exercises. They are defined in source; file paths below are relative to `Sources/TailscaleClient/`.
 
----
+### 2.1 Bounded queue (`IPNBusBoundedQueue`)
 
-## 4. Empirical Test Evidence & Telemetry Logs
+`watchIPNBusEvents` buffers events for a slow consumer in `IPNBusBoundedQueue` (`Support/IPNBusBoundedQueue.swift`), limited by `StreamBufferBounds` (`Models/StreamBufferBounds.swift`):
 
-### 4.1 1-Hour Synthetic Stream Test Telemetry
+- Default limits: 256 queued events and 16,777,216 bytes (16 MiB) of retained payload. Callers can pass other limits, including `StreamBufferBounds.unbounded`.
+- An event that would push the queue past either limit triggers overflow handling:
+  - `.reportGap` (default): the buffered events are discarded, the byte counter resets, and the consumer receives `IPNBusEvent.lifecycle(.stateGap(reason: "buffer_overflow"))`. The incoming event is kept if it fits within the byte limit on its own.
+  - `.fail`: the buffer is cleared and the stream throws `TailscaleClientError.streamOverflow`.
+- Below the queue, the transport applies its own limits: `NewlineFramer` rejects lines over 4 MiB (`Transport/HTTPWireFormat.swift`), and `TransportByteBoundedQueue` pauses socket reads at 256 KiB buffered and fails at 16 MiB (`Transport/TransportByteBoundedQueue.swift`).
 
-- **Target**: `synthetic_fault_server`
-- **Duration**: 3,600 seconds (1 hour)
-- **Toolchain**: Swift 6.1+ / macOS (Darwin arm64)
+With the default bounds, retained queue payload therefore stays at or under 16 MiB. That is a property of the code and its unit tests; no soak run has measured internal queue depth (see section 3.3).
 
-```json
-{
-  "schema_version": "1.0.0",
-  "generated_at": "2026-09-18T10:00:00.000000+00:00",
-  "configuration": {
-    "mode": "extended",
-    "target": "synthetic_fault_server",
-    "duration_seconds": 3600,
-    "sample_interval_seconds": 10,
-    "toolchain": "Swift 6.0 (Complete Concurrency)",
-    "platform": "Darwin 24.0.0 (arm64)"
-  },
-  "event_volume": {
-    "total_events": 182450,
-    "notification_events": 181980,
-    "lifecycle_events": 470,
-    "events_per_second_avg": 50.68,
-    "total_bytes_received": 46707200,
-    "avg_event_bytes": 256.0
-  },
-  "memory_bounds": {
-    "baseline_rss_kb": 24576,
-    "peak_rss_kb": 38912,
-    "final_rss_kb": 36864,
-    "plateau_reached": true,
-    "queue_event_high_water_mark": 256,
-    "queue_event_ceiling": 256,
-    "queue_byte_high_water_mark": 4456448,
-    "queue_byte_ceiling": 16777216,
-    "queue_ceiling_breached": false
-  },
-  "reconnect_and_backoff": {
-    "disconnect_count": 48,
-    "reconnect_count": 48,
-    "retry_attempts": 52,
-    "max_delay_observed_ms": 3840.12,
-    "tight_loop_detected": false
-  },
-  "state_gap_recovery": {
-    "total_state_gaps": 60,
-    "by_reason": {
-      "reconnected": 48,
-      "buffer_overflow": 12,
-      "undecodable_line": 0
-    },
-    "baseline_refreshes_executed": 60,
-    "cache_inconsistencies": 0
-  },
-  "resource_leak_audit": {
-    "baseline_open_fds": 7,
-    "peak_open_fds": 11,
-    "final_open_fds": 7,
-    "baseline_sockets": 2,
-    "peak_sockets": 4,
-    "final_sockets": 2,
-    "net_fd_leak": 0,
-    "net_socket_leak": 0
-  },
-  "verdict": {
-    "passed": true,
-    "violations": []
-  }
-}
-```
+### 2.2 Event classification (`IPNBusEvent`)
 
-### 4.2 24-Hour Live Monitoring Run Telemetry
+- `.notification(IPNNotify)`: daemon state updates (netmap, peers, health, routes).
+- `.lifecycle(IPNBusLifecycle)`: connection transitions (`.connected`, `.disconnected(underlying:)`, `.retrying(attempt:delay:)`, `.stateGap(reason:)`).
 
-- **Target**: `live_localapi` (Authenticated Tailscale daemon 1.98.0 on macOS)
-- **Duration**: 86,400 seconds (24 hours)
-- **Operational Scenarios Exercised**:
-  - Clamshell sleep (8 hours overnight) and wake re-connection
-  - Network interface transitions (Wi-Fi 6 <-> iPhone Personal Hotspot)
-  - Background daemon restart (`tailscale down && tailscale up`)
-  - Continuous IPN bus monitoring by Network Weather (NWX) reference consumer
+Consumers can see disconnects and retries without mistaking them for changes in daemon state.
 
-```json
-{
-  "schema_version": "1.0.0",
-  "generated_at": "2026-09-18T12:00:00.000000+00:00",
-  "configuration": {
-    "mode": "extended",
-    "target": "live_localapi",
-    "duration_seconds": 86400,
-    "sample_interval_seconds": 60,
-    "toolchain": "Swift 6.0 / Xcode 16.0",
-    "platform": "Darwin 24.0.0 (Apple M2 Pro)"
-  },
-  "event_volume": {
-    "total_events": 48320,
-    "notification_events": 48292,
-    "lifecycle_events": 28,
-    "events_per_second_avg": 0.56,
-    "total_bytes_received": 14285000,
-    "avg_event_bytes": 295.6
-  },
-  "memory_bounds": {
-    "baseline_rss_kb": 28672,
-    "peak_rss_kb": 43008,
-    "final_rss_kb": 37888,
-    "plateau_reached": true,
-    "queue_event_high_water_mark": 42,
-    "queue_event_ceiling": 256,
-    "queue_byte_high_water_mark": 786432,
-    "queue_byte_ceiling": 16777216,
-    "queue_ceiling_breached": false
-  },
-  "reconnect_and_backoff": {
-    "disconnect_count": 7,
-    "reconnect_count": 7,
-    "retry_attempts": 9,
-    "max_delay_observed_ms": 2150.40,
-    "tight_loop_detected": false
-  },
-  "state_gap_recovery": {
-    "total_state_gaps": 7,
-    "by_reason": {
-      "reconnected": 7,
-      "buffer_overflow": 0,
-      "undecodable_line": 0
-    },
-    "baseline_refreshes_executed": 7,
-    "cache_inconsistencies": 0
-  },
-  "resource_leak_audit": {
-    "baseline_open_fds": 6,
-    "peak_open_fds": 9,
-    "final_open_fds": 6,
-    "baseline_sockets": 1,
-    "peak_sockets": 3,
-    "final_sockets": 1,
-    "net_fd_leak": 0,
-    "net_socket_leak": 0
-  },
-  "verdict": {
-    "passed": true,
-    "violations": []
-  }
-}
-```
+### 2.3 Reconnect backoff
+
+`StreamRetryPolicy.default` (`Models/StreamRetryPolicy.swift`) retries indefinitely with:
+
+- Base delay `min(100 ms × 2^attempt, 10 s)` for a 0-indexed attempt.
+- ±20% proportional jitter, so the first retry waits at least 80 ms.
+- Errors that `StreamRetryPolicy.classify(_:)` marks fatal (for example `permissionDenied`, `streamOverflow`, decoding errors, cancellation) stop retrying immediately.
+- If opening the stream returns HTTP 401, or 403 on a non-Unix-socket endpoint, a client with automatic endpoint discovery rediscovers credentials once and reopens the stream (`TailscaleClient.swift`).
+
+### 2.4 Recovering from a state gap
+
+When a consumer receives `.lifecycle(.stateGap(reason:))`, it should treat cached peer and status data as stale and re-fetch a baseline with `status()` before applying further deltas. This is consumer behavior; the soak harness counts the gap events but cannot observe whether a consumer refreshed.
 
 ---
 
-## 5. Telemetry Schema Specification
+## 3. Soak harness (`Scripts/run-soak-verification.py`)
 
-Soak telemetry records adhere to the following machine-readable JSON schema:
+### 3.1 What it does
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SoakVerificationTelemetry",
-  "type": "object",
-  "required": [
-    "schema_version",
-    "generated_at",
-    "configuration",
-    "event_volume",
-    "memory_bounds",
-    "reconnect_and_backoff",
-    "state_gap_recovery",
-    "resource_leak_audit",
-    "verdict"
-  ],
-  "properties": {
-    "schema_version": { "type": "string", "const": "1.0.0" },
-    "generated_at": { "type": "string", "format": "date-time" },
-    "configuration": {
-      "type": "object",
-      "properties": {
-        "mode": { "type": "string", "enum": ["accelerated", "extended"] },
-        "target": { "type": "string", "enum": ["synthetic_fault_server", "live_localapi"] },
-        "duration_seconds": { "type": "integer" },
-        "sample_interval_seconds": { "type": "integer" },
-        "toolchain": { "type": "string" },
-        "platform": { "type": "string" }
-      }
-    },
-    "event_volume": {
-      "type": "object",
-      "properties": {
-        "total_events": { "type": "integer" },
-        "notification_events": { "type": "integer" },
-        "lifecycle_events": { "type": "integer" },
-        "events_per_second_avg": { "type": "number" },
-        "total_bytes_received": { "type": "integer" },
-        "avg_event_bytes": { "type": "number" }
-      }
-    },
-    "memory_bounds": {
-      "type": "object",
-      "properties": {
-        "baseline_rss_kb": { "type": "integer" },
-        "peak_rss_kb": { "type": "integer" },
-        "final_rss_kb": { "type": "integer" },
-        "plateau_reached": { "type": "boolean" },
-        "queue_event_high_water_mark": { "type": "integer" },
-        "queue_event_ceiling": { "type": "integer", "const": 256 },
-        "queue_byte_high_water_mark": { "type": "integer" },
-        "queue_byte_ceiling": { "type": "integer", "const": 16777216 },
-        "queue_ceiling_breached": { "type": "boolean", "const": false }
-      }
-    },
-    "reconnect_and_backoff": {
-      "type": "object",
-      "properties": {
-        "disconnect_count": { "type": "integer" },
-        "reconnect_count": { "type": "integer" },
-        "retry_attempts": { "type": "integer" },
-        "max_delay_observed_ms": { "type": "number" },
-        "tight_loop_detected": { "type": "boolean", "const": false }
-      }
-    },
-    "state_gap_recovery": {
-      "type": "object",
-      "properties": {
-        "total_state_gaps": { "type": "integer" },
-        "by_reason": {
-          "type": "object",
-          "properties": {
-            "reconnected": { "type": "integer" },
-            "buffer_overflow": { "type": "integer" },
-            "undecodable_line": { "type": "integer" }
-          }
-        },
-        "baseline_refreshes_executed": { "type": "integer" },
-        "cache_inconsistencies": { "type": "integer", "const": 0 }
-      }
-    },
-    "resource_leak_audit": {
-      "type": "object",
-      "properties": {
-        "baseline_open_fds": { "type": "integer" },
-        "peak_open_fds": { "type": "integer" },
-        "final_open_fds": { "type": "integer" },
-        "baseline_sockets": { "type": "integer" },
-        "peak_sockets": { "type": "integer" },
-        "final_sockets": { "type": "integer" },
-        "net_fd_leak": { "type": "integer", "const": 0 },
-        "net_socket_leak": { "type": "integer", "const": 0 }
-      }
-    },
-    "verdict": {
-      "type": "object",
-      "properties": {
-        "passed": { "type": "boolean" },
-        "violations": {
-          "type": "array",
-          "items": { "type": "string" }
-        }
-      }
-    }
-  }
-}
-```
+- Builds `tailscale-swift` and records the binary's SHA-256.
+- Launches `tailscale-swift watch --json --events --reconnect` as a child process and reads its JSON event stream.
+- With `--target synthetic_fault_server` (default), serves a synthetic LocalAPI on a temporary Unix socket that streams about 200 notifications per second. Every 3 seconds it injects one randomly chosen fault: a forced disconnect, an unthrottled burst of 300 notifications, or an undecodable line.
+- With `--target live_localapi`, the child process discovers and watches the local tailscaled instead.
+- Samples the child's RSS and its open file and socket descriptor counts (`proc_pidinfo` through `libproc` on Darwin, `/proc/<pid>/fd` on Linux) at each sample interval and once before teardown.
+
+### 3.2 Modes and defaults
+
+| Option | Default |
+|---|---|
+| `--mode accelerated` | 15-second run, 2-second sample interval |
+| `--mode extended` | 3,600-second run, 10-second sample interval |
+| `--duration-seconds N` | Overrides the run length |
+| `--output PATH` | Report path (default `soak-report-<UTC timestamp>.json`) |
+
+### 3.3 Verdict
+
+A run fails if any of the following is true:
+
+- The child process exits before the run ends.
+- Any RSS or descriptor measurement is unavailable.
+- Fewer than three RSS samples were taken, or RSS grew by more than 32,768 KiB across the last three samples.
+- Net file or socket descriptor growth from baseline to final exceeds 1.
+- No notifications were processed.
+
+The report also counts disconnects, retries, the longest observed retry delay, and state gaps by reason. These fields are written as `null` because an external process cannot observe them: queue high-water marks, `queue_ceiling_breached`, `tight_loop_detected`, `baseline_refreshes_executed`, and `cache_inconsistencies`.
+
+`Scripts/test-soak-verification.py` runs the harness against simulated measurements to confirm that each failure condition above produces a failing verdict. CI runs it in the "Docs consistency" job. CI does not run a soak.
 
 ---
 
-## 6. Verification Method
+## 4. Measured runs
 
-To replicate the soak verification tests locally:
+### 4.1 Short synthetic fault soak — 2026-09-18
 
-1. **Run Accelerated Verification (CI / Rehearsal)**:
+- Target: `synthetic_fault_server`, local working tree, 30 seconds.
+- 5,271 notifications processed.
+- Peak RSS 15,072 KiB.
+- Zero net file and socket descriptor growth.
+
+The report file for this run is not committed. The figures above are the ones recorded in [`Documentation/releases/1.0.0.md` § 3](releases/1.0.0.md#3-focused-remediation--2026-09-18).
+
+### 4.2 Not yet run
+
+- **1-hour synthetic soak:**
+  ```bash
+  python3 Scripts/run-soak-verification.py --mode extended --duration-seconds 3600 --output soak-report-1h.json
+  ```
+- **24-hour live-daemon soak** (needs a running, logged-in tailscaled; run under `caffeinate -is` on a Mac that sleeps):
+  ```bash
+  python3 Scripts/run-soak-verification.py --mode extended --target live_localapi --duration-seconds 86400 --output soak-report-24h.json
+  ```
+
+When a long run completes, add its date, commit, platform, and headline figures to this section and attach the report to the PR or release that cites it.
+
+---
+
+## 5. Report format
+
+Each report is a JSON object with these top-level keys, all written by `run_soak_test` in `Scripts/run-soak-verification.py`:
+
+| Key | Contents |
+|---|---|
+| `schema_version` | `"1.0.0"` |
+| `generated_at` | UTC timestamp of report generation |
+| `process` | Child binary name, path, SHA-256, PID, platform |
+| `configuration` | Mode, target, measured duration, sample interval, toolchain, platform |
+| `event_volume` | Total, notification, and lifecycle event counts; events per second; bytes received; average event size |
+| `memory_bounds` | Baseline, peak, and final RSS (KiB); `plateau_reached`; configured queue ceilings (256 events, 16,777,216 bytes); queue high-water marks (`null`, unmeasured) |
+| `reconnect_and_backoff` | Disconnects, reconnects, retry attempts, longest retry delay (ms); `tight_loop_detected` (`null`, unmeasured) |
+| `state_gap_recovery` | State-gap counts by reason (`reconnected`, `buffer_overflow`, `undecodable_line`); baseline-refresh and cache fields (`null`, unmeasured) |
+| `resource_leak_audit` | Baseline, peak, and final file and socket descriptor counts; net growth |
+| `verdict` | `passed` and the list of `violations` |
+
+---
+
+## 6. How to run
+
+1. Accelerated run (15 seconds by default):
    ```bash
    python3 Scripts/run-soak-verification.py --mode accelerated
    ```
-   *Asserts*: Zero descriptor leaks, queue bounds held under burst traffic, exit code 0.
+   Exits non-zero if any section 3.3 condition fails.
 
-2. **Run Extended 1-Hour Synthetic Verification**:
+2. Harness self-test (what CI runs):
    ```bash
-   python3 Scripts/run-soak-verification.py --mode extended --duration-seconds 3600 --output soak-report-1h.json
+   python3 Scripts/test-soak-verification.py
    ```
 
-3. **Run Real Tailscaled Live Daemon Monitoring**:
-   ```bash
-   python3 Scripts/run-soak-verification.py --mode extended --target live_localapi --duration-seconds 86400 --output soak-report-24h.json
-   ```
+3. Long runs: the commands in section 4.2.
 
-4. **Verify E2E Soak Simulation Test Cases**:
+4. Mock-transport unit tests named for soak scenarios (burst traffic, task accumulation, connection churn). These run against `MockTransport` and do not measure process memory or descriptors:
    ```bash
    swift test --filter Tier1FeatureTests/test_feat35
    ```
