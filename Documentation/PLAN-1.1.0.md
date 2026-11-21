@@ -10,18 +10,25 @@ A Mac developer evaluating this package has no runnable answer to "can my app te
 
 ## Decisions
 
-- **Path type.** `PingResult.path` returns `nil` for a failed ping and a `PingPath` otherwise: `.direct(endpoint:)`, `.peerRelay(endpoint:)`, `.derp(regionID:regionCode:)`, or `.unknown`. Precedence follows `cmd/tailscale/cli/ping.go` at the pinned revision: nonempty `PeerRelay`, then nonzero `DERPRegionID`, then nonempty `Endpoint`. Empty strings and zero IDs count as absent.
+- **Path type.** `PingResult.path` returns `nil` for a failed ping and a `PingPath` otherwise: `.direct(endpoint:)`, `.peerRelay(endpoint:)`, `.derp(regionID:regionCode:)`, or `.unknown`. `PingPath` is `Sendable`, `Equatable`, and `Hashable`. `regionCode` is optional and is `nil` when upstream sends an empty code. Precedence follows `cmd/tailscale/cli/ping.go` at the pinned revision: nonempty `PeerRelay`, then nonzero `DERPRegionID`, then nonempty `Endpoint`. Empty strings and zero IDs count as absent.
 - **What `.unknown` means.** The reply succeeded and named no path this release understands. TSMP, ICMP, and peerAPI pings never report one, so only a disco ping can produce the other cases. The symbol documentation says so, and the CLI prints the ping type in that case as upstream does.
-- **`isDirect` is corrected, and ships in this release.** It becomes `path == .direct`. The regression test decodes a reply with every upstream field present, which the trimmed fixtures never did.
-- **One ping is one measurement.** The official CLI repeats a disco ping until a direct endpoint appears. The sample sends a short burst with the same stop rule, shows the last reply with its time and the number of pings sent, and never presents a single DERP reply as the peer's settled path. The burst lives in the sample. The library gains no retry helper.
-- **Upstream pin.** Re-pin provenance to the revision in drift issue #45 before capturing fixtures, so the ping contract is compared against the revision that ships. Record `cert-status/` and `resume-ipn-bus` in the endpoint manifest. Wrap `resume-ipn-bus` only if an existing `watchIPNBus` consumer would otherwise stall on a current daemon.
+- **`isDirect` is corrected, and ships in this release.** It is `true` exactly when `path` is `.direct`. The regression test decodes a captured disco reply with every field that reply carried, including the always-encoded empty ones. Separately labeled synthetic inputs cover combinations a captured reply does not contain.
+- **peerAPI pings are corrected.** `PingType.peerAPI` sends `peerapi`, upstream's `tailcfg.PingPeerAPI` value. The daemon never answers the old spelling, so the call ran until the request timeout. A test asserts the query string sent for each ping type.
+- **One ping is one measurement.** The official CLI repeats a disco ping until a direct endpoint appears. The sample sends a bounded burst and stops at the first reply classified `.direct`. Its maximum count, spacing, and per-ping timeout are named constants with their upstream source cited (`tailscale ping` defaults to a 5-second timeout, and the daemon sends no reply at all for an offline peer until the request ends), and selecting another peer or leaving live mode cancels it. The sample shows the last reply with its time and the number of pings sent, and never presents a single DERP reply as the peer's settled path. A ping result keeps its own timestamp: a later status refresh or watch reconnect does not make an old measurement look new. The burst lives in the sample. The library gains no retry helper.
+- **Upstream pin.** Provenance is pinned to `tailscale/tailscale@1db8e79a8b00d9ea3a7459c92df07e3d565a8811`, capability 152, the head of upstream `main` when drift issue #45 was triaged. The daemon does not read the capability this client advertises, so the number changes no daemon behavior. `cert-status/` and `resume-ipn-bus` are recorded as unwrapped. [COMPATIBILITY-152.md](COMPATIBILITY-152.md) holds the review.
+- **Watching works on current daemons.** Tailscale 1.104 and later answer HTTP 400 to a watch whose options include `NotifyRateLimit` (bit 8) or `NotifyInitialNetMap` (bit 3). This was observed on a `tailscaled` v1.104.7 binary; v1.102.2 accepts both. `NotifyWatchOpt.default` includes bit 8. When a watch is rejected with 400 and its options include either bit, the client opens it once more without them and remembers that for later watches. A daemon that accepts the bits receives exactly what the caller asked for. Any other 400 ends the stream instead of being retried.
+- **A rejected stream is reported at once.** A streaming response ends where its `Content-Length` or chunk framing says it ends. Today a rejected watch on a kept-open connection is reported only when the daemon closes the connection.
+- **`watchIPNBus(reconnect:)` survives a reconnect and an undecodable line**, as its documentation says. Buffer overflow still ends it with `streamOverflow`.
+- **New watch options, no new notification fields.** `NotifyWatchOpt` gains named options for upstream bits 12 to 15 (`NotifyPeerChanges`, `NotifyNoNetMap`, `NotifyInitialStatus`, `NotifyPeerPatches`), which both v1.102.2 and v1.104.7 accept. Upstream removed `Notify.NetMap` in 1.104. `IPNNotify` does not model the fields that replace it in this release, because no capture from a logged-in 1.104 daemon exists yet. A notification that carries only those fields still arrives and decodes.
+- **How the sample learns that peers changed.** It subscribes with initial state, peer changes, and no-netmap, and treats every notification, reconnect, and state gap as a reason to re-read `status()`, debounced. It does not interpret notification payloads to track peers. That holds on daemons before and after the 1.104 change.
 - **API baseline.** `Scripts/check-api-baseline.sh` compares against `v1.0.0` with an empty allowlist. The 1.0 symbol freeze check already accepts additions.
-- **The sample is a SwiftPM package** under `Examples/PeerDiagnostics`, launched with `swift run`, with its view model in a testable library target. No Xcode project file.
+- **A reconnecting watcher rediscovers the daemon.** `watchIPNBus` applies the same credential recovery when it reconnects as when it first connects, for automatically discovered endpoints only. This is a library correction with its own changed-port and changed-token test, so the sample does not carry recovery logic that every other consumer would need too.
+- **The sample is a SwiftPM package** under `Examples/PeerDiagnostics`, launched with `swift run`, with its view model in a testable library target. No Xcode project file. It builds with Swift 6.1 and declares the library's macOS 13 minimum, using only APIs available there. Documentation snippets that quote it are checked by `Scripts/check-recipe-snippets.py`, extended to read that package.
 - **Claims match measurements.** `SOAK-VERIFICATION.md`, `ADOPTION.md`, and the 1.0.0 release record state only what was run. Where a document asserts a soak run or a commit-signing rate that no artifact supports, rewrite it to the measured result.
 
 ## What blocks the tag
 
-Each item is a command or run that passes or fails on the candidate SHA.
+Each item is a command or run that passes or fails on the candidate SHA. The candidate is the merged release-preparation commit on `main`. Nothing lands after it. All nine results for that exact SHA go in the release pull request, since a file in the tree cannot name the commit that contains it. `Documentation/releases/1.1.0.md` holds the earlier qualification runs, each labeled with the SHA it ran on, and links to that pull request.
 
 1. `swift test` passes, including path classification from a captured disco reply and the full-field regression for `isDirect`.
 2. `./Scripts/check-api-baseline.sh` passes against `v1.0.0` with an empty allowlist.
@@ -31,6 +38,7 @@ Each item is a command or run that passes or fails on the candidate SHA.
 6. A consumer in an empty directory resolves the candidate by SHA from GitHub and builds against `TailscaleClient` and `TailscaleClientMocks` with public imports.
 7. One standalone-Tailscale Mac, with discovery overrides cleared, reads status, pings an online remote peer, and receives an initial watch notification. The classification of that captured reply equals the official CLI's for the same fields.
 8. `./Scripts/check-release-consistency.sh v1.1.0` passes on the prepared commit.
+9. Against disposable, never-logged-in `tailscaled` v1.102.2 and v1.104.7 started by `Scripts/disposable-tailscaled.sh`, `tailscale-swift watch` with default options and the sample's own subscription each open and print an initial notification.
 
 Everything else in this plan is recorded as verified, failed, or untested with its scope, and does not hold the tag: the remaining discovery-matrix rows, live daemon restart and profile switching, the agent trial, pilot feedback, and the post-tag Swift Package Index and Homebrew checks.
 
@@ -46,12 +54,18 @@ One branch and pull request per row below, each based on `main` in its own workt
 
 | Change | Ready for the next step when |
 |---|---|
-| 1. Reconcile claims and re-pin upstream | Soak, adoption, and 1.0 release documents state measured results. The endpoint manifest matches the upstream revision named in drift issue #45, with the capability review recorded beside [COMPATIBILITY-148.md](COMPATIBILITY-148.md). `python3 Scripts/verify-upstream-maturity.py` and `python3 Scripts/generate-endpoint-docs.py --check` pass. |
-| 2. Establish the ping contract | Compare the pinned Go client's wire fields and official CLI's display order. Capture a sanitized disco reply from a named daemon with every field upstream sends. Record the source revision and fixture provenance. [Endpoint manifest](endpoints.json) · [Spike practice](TESTING.md) |
-| 3. Add the API and CLI output | `PingResult.path` and `PingPath` exist with the semantics under Decisions, the CLI calls the same classifier, and `isDirect` is corrected. Preserve 1.0 source compatibility and the existing CLI JSON shape. Add the regression cases below. Retarget the API baseline to `v1.0.0`. Update [INTEGRATING.md](INTEGRATING.md) and its adapters in the same pull request. |
-| 4. Deliver the SwiftUI example | Provide one documented launch command from a clean checkout. Start in fixture mode with a visible peer. Make live mode an explicit action. Use async discovery, start the watcher at launch, show last observation time, and clear or mark old results on loss of freshness. Add the example build and its tests to macOS CI. Commit a fixture-mode screenshot. |
-| 5. Qualify the candidate | Run the hosted checks, independent consumer build, and real-daemon trials below. Finish source, website, and agent docs in the same release. Record every result in `Documentation/releases/1.1.0.md` with the candidate SHA. |
-| 6. Prepare the release commit | Changelog section, `packageVersion`, documented pins, tested daemon versions, and limitations agree. Items 4, 5, and 8 under "What blocks the tag" pass on the merged commit. |
+| ~~Reconcile claims~~ | Merged in #47. |
+| ~~Re-pin upstream~~ | Merged in #49. |
+| ~~Examples build from any folder name~~ | Merged in #50. |
+| Ping path API and CLI output (#51) | `PingResult.path` and `PingPath` exist with the semantics under Decisions, the CLI calls the same classifier, `isDirect` and `PingType.peerAPI` are corrected, and the API baseline targets `v1.0.0`. Captured fixtures carry provenance. [INTEGRATING.md](INTEGRATING.md) and its adapters move in the same pull request. |
+| Watch streams survive reconnects and rediscover (#48) | The reconnect path shares the first open's credential recovery, and the simple stream continues across a reconnect and an undecodable line. |
+| Rejected streams are reported at once | A streaming response with `Content-Length` ends at its declared length through the real transport. The disposable-daemon scripts are checked in. |
+| Watch options that current daemons accept | The obsolete-option retry, the fatal 400, the new option names, the monitoring recipe, and the CLI help are in place. A read-only live test opens a default watch. Item 9 under "What blocks the tag" passes. |
+| The self-hosted integration lane completes | The lane's unit-suite step finishes on `main` as it did in September. |
+| Endpoint manifest evidence | `endpoints.json` and its generated tables tell apart synthetic decoding coverage, comparison with pinned upstream source, and behavior observed on a real daemon. |
+| Deliver the SwiftUI example | Provide one documented launch command from a clean checkout. Start in fixture mode with a visible peer. Make live mode an explicit action. Use async discovery, start the watcher at launch, show last observation time, and clear or mark old results on loss of freshness. Add the example build and its tests to macOS CI. Commit a fixture-mode screenshot. |
+| Qualify the candidate | Run the hosted checks, independent consumer build, and real-daemon trials below. Finish source, website, and agent docs in the same release. Record every result in `Documentation/releases/1.1.0.md` with the SHA it ran on. |
+| Prepare the release commit | Changelog section, `packageVersion`, documented pins, tested daemon versions, and limitations agree. After the merge, all nine items under "What blocks the tag" pass on the merged commit and are recorded in the release pull request. |
 
 ## Test acceptance
 
@@ -67,16 +81,16 @@ One branch and pull request per row below, each based on `main` in its own workt
 
 The current self-hosted job runs `TAILSCALE_INTEGRATION=1 swift test --filter TailscaleClientIntegrationTests` and StatusDemo after shell discovery supplies the endpoint. Keep that coverage. Add a separate native-discovery step or record an equivalent manual run on the same candidate. The live workflow runs independently of `All Required Checks`. Record both run links. [Integration workflow](../.github/workflows/integration.yml)
 
-1. **First launch.** Use a Mac with standalone Tailscale running and an online second node. In a fresh process clear the discovery overrides before launching the candidate. For the existing StatusDemo, the following command exercises the library's default configuration. Repeat the clean-environment launch with Peer Diagnostics and explicitly select live mode.
+1. **First launch.** Use a Mac with standalone Tailscale running and an online second node. In a fresh process clear every discovery override before launching the candidate. For the existing StatusDemo, the following command exercises the library's default configuration. Repeat the clean-environment launch with Peer Diagnostics and explicitly select live mode.
 
    ```sh
    (
-     unset TAILSCALE_LOCALAPI_URL TAILSCALE_LOCALAPI_SOCKET TAILSCALE_LOCALAPI_HOST
-     unset TAILSCALE_LOCALAPI_PORT TAILSCALE_LOCALAPI_AUTHKEY TAILSCALE_LOCALAPI_CAPABILITY
-     unset TAILSCALE_STANDALONE_DIR TAILSCALE_SAMEUSER_PATH TAILSCALE_SAMEUSER_DIR TAILSCALE_SKIP_LIBPROC
+     for v in $(env | grep -E '^(TAILSCALE|TS)_' | cut -d= -f1); do unset "$v"; done
      swift run --package-path Examples/StatusDemo StatusDemo
    )
    ```
+
+   Discovery reads every `TAILSCALE_` variable and its `TS_` alias, so the loop clears both prefixes. Use the same loop for Peer Diagnostics and any native-discovery CI step.
 
 2. **Peer and watch.** Read status, select the online remote peer, obtain a successful ping and consume an initial watch notification with a bounded timeout. Compare status identity and ping interpretation with the official client on the same Mac. Consecutive pings can change routes. Use the fields from the same captured reply for an exact classification comparison. Save the observed path and daemon version. Label other path types as fixture-tested until observed live. A self-ping, a skipped peer test, or an empty tailnet leaves this trial open.
 3. **Recovery.** Exercise disconnect, stream gap, reconnect, and profile change deterministically in the sample tests. Run them live only on a disposable installation: interrupt and restore the daemon connection, then switch profiles if available, and verify the sample marks the old result stale, rediscovers the daemon, refreshes peers, and cannot attach an old result to a new profile. A Mac whose Tailscale connection other work depends on is not disposable, so record those live transitions as untested there. Keep the shared real-tailnet CI lane read-only and leave its write-test flag unset.
