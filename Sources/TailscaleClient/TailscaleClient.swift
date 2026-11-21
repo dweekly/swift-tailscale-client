@@ -698,31 +698,37 @@ public actor TailscaleClient {
       }
     }
 
-    var initialResponse: StreamingResponse
+    // Opens the stream, and when the endpoint source is automatic and the open
+    // fails at the connect stage or is rejected with 401 (or 403 off a Unix
+    // socket), rediscovers once and opens again against the refreshed
+    // configuration. Used by the initial open and by every reconnect attempt.
+    let openStreamRecovering: @Sendable () async throws -> StreamingResponse = {
+      let firstAttempt: StreamingResponse
+      do {
+        firstAttempt = try await openStream()
+      } catch let transportError as TailscaleTransportError {
+        guard Self.isConnectStageError(transportError),
+          case .automatic = client.configuration.endpointSource
+        else { throw transportError }
+        _ = try await client.singleFlightRediscovery()
+        return try await openStream()
+      }
+      if firstAttempt.statusCode == 401
+        || (firstAttempt.statusCode == 403
+          && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
+        case .automatic = client.configuration.endpointSource
+      {
+        _ = try await client.singleFlightRediscovery()
+        return try await openStream()
+      }
+      return firstAttempt
+    }
+
+    let initialResponse: StreamingResponse
     do {
-      let resp = try await openStream()
-      if resp.statusCode == 401
-        || (resp.statusCode == 403 && !Self.isUnixSocketEndpoint(client.configuration.endpoint)),
-        case .automatic = client.configuration.endpointSource
-      {
-        _ = try await client.singleFlightRediscovery()
-        initialResponse = try await openStream()
-      } else {
-        initialResponse = resp
-      }
+      initialResponse = try await openStreamRecovering()
     } catch let transportError as TailscaleTransportError {
-      if Self.isConnectStageError(transportError),
-        case .automatic = client.configuration.endpointSource
-      {
-        _ = try await client.singleFlightRediscovery()
-        do {
-          initialResponse = try await openStream()
-        } catch let retryErr as TailscaleTransportError {
-          throw TailscaleClientError.transport(retryErr)
-        }
-      } else {
-        throw TailscaleClientError.transport(transportError)
-      }
+      throw TailscaleClientError.transport(transportError)
     }
 
     recordObservedDaemonVersion(from: initialResponse.headers)
@@ -783,7 +789,7 @@ public actor TailscaleClient {
               await queue.finish()
               return
             }
-            let resp = try await openStream()
+            let resp = try await openStreamRecovering()
             if await shouldExit() {
               await queue.finish()
               return
@@ -819,7 +825,16 @@ public actor TailscaleClient {
               await queue.finish()
               return
             }
-            if StreamRetryPolicy.classify(error) == .fatal {
+            // A watch that has already connected treats any rediscovery failure as a
+            // failed attempt: mid-restart, discovery metadata can be briefly missing
+            // or unreadable, and the retry policy bounds further attempts.
+            let isDiscoveryFailure: Bool
+            if case TailscaleClientError.discovery = error {
+              isDiscoveryFailure = true
+            } else {
+              isDiscoveryFailure = false
+            }
+            if !isDiscoveryFailure, StreamRetryPolicy.classify(error) == .fatal {
               await queue.fail(error)
               return
             }
@@ -836,7 +851,8 @@ public actor TailscaleClient {
         // Connection established
         await queue.enqueue(.lifecycle(.connected), byteSize: 64)
         if !isFirstConnection {
-          await queue.enqueue(.lifecycle(.stateGap(reason: "reconnected")), byteSize: 64)
+          await queue.enqueue(
+            .lifecycle(.stateGap(reason: IPNBusLifecycle.reconnectedGapReason)), byteSize: 64)
         }
         isFirstConnection = false
 
@@ -854,7 +870,9 @@ public actor TailscaleClient {
               let clientErr = TailscaleClientError.decoding(
                 decodingError, body: lineData, endpoint: endpoint)
               onUndecodableLine?(lineData, clientErr)
-              await queue.enqueue(.lifecycle(.stateGap(reason: "undecodable_line")), byteSize: 64)
+              await queue.enqueue(
+                .lifecycle(.stateGap(reason: IPNBusLifecycle.undecodableLineGapReason)),
+                byteSize: 64)
             }
             if await shouldExit() {
               await queue.finish()
@@ -933,7 +951,8 @@ public actor TailscaleClient {
   ///   - reconnect: Opt-in automatic reconnection policy. `nil` (the default)
   ///     ends the stream on the first connection failure.
   ///   - onUndecodableLine: Called with the raw line and the decoding error for
-  ///     each line that could not be decoded as an ``IPNNotify``.
+  ///     each line that could not be decoded as an ``IPNNotify``. The line is
+  ///     skipped and the stream continues.
   /// - Returns: An async stream of IPN notifications.
   /// - Throws: `TailscaleClientError` if the initial connection fails.
   public func watchIPNBus(
@@ -976,7 +995,15 @@ public actor TailscaleClient {
         switch event {
         case .notification(let notify):
           return notify
-        case .lifecycle(.stateGap):
+        case .lifecycle(.stateGap(let reason)):
+          // A reconnect gap is covered by the daemon re-sending initial state, and an
+          // undecodable line is reported through `onUndecodableLine`; neither ends the
+          // stream. Any other gap means notifications were dropped.
+          if reason == IPNBusLifecycle.reconnectedGapReason
+            || reason == IPNBusLifecycle.undecodableLineGapReason
+          {
+            continue
+          }
           throw TailscaleClientError.streamOverflow
         case .lifecycle:
           continue
