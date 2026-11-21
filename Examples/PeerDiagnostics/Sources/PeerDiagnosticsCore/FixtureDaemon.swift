@@ -40,6 +40,10 @@ public actor FixtureDaemon: DaemonConnection {
 
   public nonisolated let connectionSummary = "built-in fixture tailnet (no daemon)"
 
+  /// The peer the window selects first and the screenshot shows: its burst is the one that
+  /// best illustrates the sample, a DERP reply followed by a direct one.
+  public static let showcasePeerName = "example-laptop"
+
   public init() {
     peers = FixtureDaemon.makePeers()
   }

@@ -106,6 +106,9 @@ jobs:
           swift build --package-path Examples/PeerDiagnostics
           swift test --package-path Examples/PeerDiagnostics
           swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --fixture --print
+          # The README and DocC screenshot comes from this command; render it to prove the
+          # offscreen path still works without a visible window.
+          swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --fixture --snapshot "$RUNNER_TEMP/peer-diagnostics.png"
 
   docs-consistency:
     name: Docs consistency

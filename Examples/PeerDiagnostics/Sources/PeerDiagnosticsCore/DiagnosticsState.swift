@@ -128,6 +128,17 @@ public struct PingOutcome: Sendable, Equatable {
   /// Whether the burst is still running and, if not, why it stopped.
   public let status: BurstStatus
 
+  /// Makes a result directly, for previews and tests of code that displays one.
+  public init(
+    peerID: String, reply: PingReply, measuredAt: Date, pingsSent: Int, status: BurstStatus
+  ) {
+    self.peerID = peerID
+    self.reply = reply
+    self.measuredAt = measuredAt
+    self.pingsSent = pingsSent
+    self.status = status
+  }
+
   /// `true` when the result describes the path the peer settled on (a direct reply). When
   /// `false`, a UI should word a successful reply as "this ping went via ...".
   public var isSettledPath: Bool { status == .stoppedAtDirect }
