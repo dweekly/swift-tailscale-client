@@ -29,7 +29,10 @@ All notable changes to this project will be documented in this file. The format 
   now follow a daemon restart that changes the loopback port or proof token:
   when the endpoint source is automatic, each reconnect attempt rediscovers
   the daemon once (single-flight with unary requests) on a connect-stage
-  failure or a 401/loopback 403, as the initial open does. Pinned
+  failure or a 401/loopback 403, as the initial open does. A rediscovery
+  failure during a reconnect (for example, discovery metadata briefly missing
+  mid-restart) counts as one failed attempt under the retry policy rather
+  than ending the stream; on the initial open it is still thrown. Pinned
   configurations still never rediscover.
 
 ## [1.0.0] - 2026-09-20

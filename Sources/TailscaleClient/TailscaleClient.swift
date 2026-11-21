@@ -825,7 +825,16 @@ public actor TailscaleClient {
               await queue.finish()
               return
             }
-            if StreamRetryPolicy.classify(error) == .fatal {
+            // A watch that has already connected treats any rediscovery failure as a
+            // failed attempt: mid-restart, discovery metadata can be briefly missing
+            // or unreadable, and the retry policy bounds further attempts.
+            let isDiscoveryFailure: Bool
+            if case TailscaleClientError.discovery = error {
+              isDiscoveryFailure = true
+            } else {
+              isDiscoveryFailure = false
+            }
+            if !isDiscoveryFailure, StreamRetryPolicy.classify(error) == .fatal {
               await queue.fail(error)
               return
             }

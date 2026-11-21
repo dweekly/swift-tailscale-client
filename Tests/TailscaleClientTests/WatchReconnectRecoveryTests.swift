@@ -656,5 +656,121 @@ final class WatchReconnectRecoveryTests: XCTestCase {
       let unaryCalls = await transport.unaryCalls
       XCTAssertEqual(unaryCalls.last?.token, "token-new")
     }
+
+    // MARK: - Discovery metadata missing mid-restart
+
+    func testReconnectRetriesWhileDiscoveryMetadataIsMissingThenRecovers() async throws {
+      // The standalone directory starts empty, so rediscovery reports `.notInstalled`
+      // until the third reconnect attempt writes `ipnport` and the proof file.
+      let oldPort: UInt16 = 41330
+      let newPort: UInt16 = 41331
+      let dir: URL = tempDir
+      let counter = ProbeCounter()
+      let transport = RestartingDaemonTransport()
+      await transport.setStreamHandler { index, config in
+        if Self.port(of: config.endpoint) == oldPort {
+          if index == 0 { return Self.notifyStream(["old-1"], thenClose: true) }
+          if index == 3 { try Self.writeStandalone(in: dir, port: newPort, token: "token-new") }
+          throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(oldPort)")
+        }
+        return Self.notifyStream(["new-1"], thenClose: false)
+      }
+      let config = TailscaleClientConfiguration(
+        discovery: countedDiscovery(counter: counter),
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: oldPort), authToken: "token-old",
+          capabilityVersion: 144),
+        transport: transport
+      )
+      let client = TailscaleClient(configuration: config)
+      let policy = StreamRetryPolicy(
+        maxAttempts: 5, initialDelay: .milliseconds(10), maxDelay: .milliseconds(20), jitter: 0)
+
+      let stream = try await client.watchIPNBusEvents(retryPolicy: policy)
+      var labels: [String] = []
+      var thrown: Error?
+      do {
+        for try await event in stream {
+          switch event {
+          case .notification(let notify): labels.append("notify:\(notify.version ?? "")")
+          case .lifecycle(.retrying(let attempt, _)): labels.append("retrying:\(attempt)")
+          case .lifecycle(.connected): labels.append("connected")
+          case .lifecycle(.stateGap(let reason)): labels.append("gap:\(reason)")
+          case .lifecycle(.disconnected): labels.append("disconnected")
+          }
+          if labels.last == "notify:new-1" || labels.count > 30 { break }
+        }
+      } catch {
+        thrown = error
+      }
+
+      XCTAssertNil(thrown, "Missing discovery metadata on reconnect must be retried, not fatal")
+      XCTAssertEqual(
+        labels,
+        [
+          "connected", "notify:old-1", "disconnected", "retrying:1", "retrying:2", "retrying:3",
+          "connected", "gap:reconnected", "notify:new-1",
+        ])
+      let last = await transport.opens.last
+      XCTAssertEqual(last?.endpoint, .loopback(host: "127.0.0.1", port: newPort))
+      XCTAssertEqual(last?.token, "token-new")
+    }
+
+    func testReconnectGivesUpPerPolicyWhenDiscoveryMetadataStaysMissing() async throws {
+      let port: UInt16 = 41340
+      let transport = RestartingDaemonTransport()
+      await transport.setStreamHandler { index, _ in
+        if index == 0 { return Self.notifyStream(["old-1"], thenClose: true) }
+        throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(port)")
+      }
+      let config = TailscaleClientConfiguration(
+        discovery: countedDiscovery(counter: ProbeCounter()),
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: port), authToken: "token-a",
+          capabilityVersion: 144),
+        transport: transport
+      )
+      let client = TailscaleClient(configuration: config)
+      let policy = StreamRetryPolicy(
+        maxAttempts: 3, initialDelay: .milliseconds(20), maxDelay: .milliseconds(40), jitter: 0)
+      let minimumPacing = (0..<3).reduce(Duration.zero) { $0 + policy.delay(forAttempt: $1) }
+
+      let clock = ContinuousClock()
+      let start = clock.now
+      let stream = try await client.watchIPNBusEvents(retryPolicy: policy)
+      let (versions, error) = await Self.collectVersions(stream, stopAt: "never")
+      let elapsed = clock.now - start
+
+      XCTAssertEqual(versions, ["old-1"])
+      XCTAssertNil(error, "Exhausted retries finish the stream")
+      let opens = await transport.opens
+      XCTAssertEqual(opens.count, 1 + 3, "Initial open plus maxAttempts reconnects")
+      XCTAssertGreaterThanOrEqual(elapsed, minimumPacing, "Reconnects must follow policy delays")
+    }
+
+    func testInitialOpenSurfacesDiscoveryFailure() async throws {
+      let port: UInt16 = 41350
+      let transport = RestartingDaemonTransport()
+      await transport.setStreamHandler { _, _ in
+        throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(port)")
+      }
+      let config = TailscaleClientConfiguration(
+        discovery: countedDiscovery(counter: ProbeCounter()),
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: port), authToken: "token-a",
+          capabilityVersion: 144),
+        transport: transport
+      )
+      let client = TailscaleClient(configuration: config)
+
+      await assertThrowsErrorAsync(
+        try await client.watchIPNBusEvents(retryPolicy: Self.fastReconnect)
+      ) { error in
+        guard case TailscaleClientError.discovery(.notInstalled) = error else {
+          XCTFail("Expected discovery(.notInstalled), got \(error)")
+          return
+        }
+      }
+    }
   #endif
 }
