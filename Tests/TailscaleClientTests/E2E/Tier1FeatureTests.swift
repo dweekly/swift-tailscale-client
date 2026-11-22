@@ -11,7 +11,7 @@ import XCTest
 /// Tier 1: Feature Coverage E2E Test Suite.
 ///
 /// Asserts primary behavior (happy-path isolation) across all 36 features (FEAT-01 through FEAT-36)
-/// defined in PROJECT.md, with at least 5 dedicated test cases per feature (180 tests total).
+/// defined in Documentation/1.0/PROJECT.md, with at least 5 dedicated test cases per feature (180 tests total).
 final class Tier1FeatureTests: XCTestCase {
 
   // MARK: - FEAT-01: Recursive Lossless Unknown Field Preservation in ServeConfig

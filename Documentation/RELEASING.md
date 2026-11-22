@@ -2,7 +2,7 @@
 
 How versions are cut, tagged, published, and distributed.
 
-For the proposed 1.1.0 release, use the [candidate acceptance plan](PLAN-1.1.0.md) for peer diagnostics, native discovery, and documentation checks alongside this publication procedure. The commands below use `v1.1.0`; substitute the version being released.
+The commands below use `v1.1.0`, the most recent release; substitute the version being released. A release can add its own acceptance plan, as [PLAN-1.1.0.md](PLAN-1.1.0.md) did for 1.1.0.
 
 ## Versioning
 

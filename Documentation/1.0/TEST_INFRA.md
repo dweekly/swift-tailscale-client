@@ -1,7 +1,7 @@
 # E2E Test Infrastructure Specification: swift-tailscale-client 1.0
 
 Status: **Active Master Test Specification**, 2026-09-18.  
-Governing Specs: [PROJECT.md](PROJECT.md) | [Documentation/PLAN-1.0.md](Documentation/PLAN-1.0.md) | [Documentation/DECISIONS-1.0.md](Documentation/DECISIONS-1.0.md) | [Documentation/SUPPORT.md](Documentation/SUPPORT.md).
+Governing Specs: [PROJECT.md](PROJECT.md) | [Documentation/PLAN-1.0.md](../PLAN-1.0.md) | [Documentation/DECISIONS-1.0.md](../DECISIONS-1.0.md) | [Documentation/SUPPORT.md](../SUPPORT.md).
 
 ---
 
