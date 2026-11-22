@@ -35,6 +35,13 @@ import XCTest
       return acceptedCount
     }
 
+    /// The first read of each accepted connection's request, in accept order.
+    var receivedRequests: [String] {
+      lock.lock()
+      defer { lock.unlock() }
+      return requests
+    }
+
     /// Connections the client closed while a `respondThenLater` behavior was
     /// waiting to send its second write.
     var peerClosedConnections: Int {
@@ -61,6 +68,7 @@ import XCTest
     private var stopped = false
     private var acceptedCount = 0
     private var peerClosedCount = 0
+    private var requests: [String] = []
 
     private var thread: Thread?
 
@@ -155,7 +163,11 @@ import XCTest
 
         // Drain whatever request bytes arrive first.
         var buffer = [UInt8](repeating: 0, count: 4096)
-        _ = read(fd, &buffer, buffer.count)
+        let requestCount = read(fd, &buffer, buffer.count)
+        let request = String(decoding: buffer.prefix(max(0, requestCount)), as: UTF8.self)
+        lock.lock()
+        requests.append(request)
+        lock.unlock()
 
         let behavior =
           connectionIndex < behaviors.count ? behaviors[connectionIndex] : behaviors.last!
