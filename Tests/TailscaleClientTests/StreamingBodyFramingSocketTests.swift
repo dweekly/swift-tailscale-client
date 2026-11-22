@@ -88,7 +88,7 @@ import XCTest
 
       // The server holds only its listener now; once the client connects it
       // also holds the accepted descriptor, which it keeps open throughout.
-      let baseline = openDescriptorCount()
+      let baseline = openSocketDescriptorCount()
       let start = ContinuousClock.now
       let response = try await UnixSocketTransport(path: server.path).sendStreaming(
         TailscaleRequest(path: "/localapi/v0/watch-ipn-bus"), capabilityVersion: 1)
@@ -100,11 +100,11 @@ import XCTest
       // Client descriptor closed: only the server's accepted descriptor remains.
       let expected = baseline + 1
       let settle = ContinuousClock.now
-      while openDescriptorCount() > expected, settle.duration(to: .now) < .seconds(1) {
+      while openSocketDescriptorCount() > expected, settle.duration(to: .now) < .seconds(1) {
         try await Task.sleep(for: .milliseconds(10))
       }
       XCTAssertEqual(
-        openDescriptorCount(), expected,
+        openSocketDescriptorCount(), expected,
         "Client socket must be closed once the framed body is complete")
     }
 
@@ -296,21 +296,5 @@ import XCTest
         }
       }
     #endif
-
-    // MARK: - Descriptor counting
-
-    private func openDescriptorCount() -> Int {
-      #if os(Linux)
-        if let entries = try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd") {
-          return entries.count
-        }
-      #endif
-      let limit = min(getdtablesize(), 4096)
-      var count = 0
-      for fd in 0..<limit where fcntl(fd, F_GETFD) >= 0 {
-        count += 1
-      }
-      return count
-    }
   }
 #endif

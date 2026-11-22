@@ -383,7 +383,7 @@ import XCTest
     // MARK: - 4. High-Concurrency Cancellation Storm
 
     func testConcurrentCancellationStormNoDescriptorLeaks() async throws {
-      let baselineFDs = openFDCount()
+      let baselineFDs = openSocketDescriptorCount()
 
       let server = try FaultUnixServer(behaviors: [.acceptThenSilence])
       defer { server.stop() }
@@ -409,11 +409,11 @@ import XCTest
 
       // Allow background cleanups of client detached tasks to finish
       let deadline = ContinuousClock.now + .seconds(3)
-      while openFDCount() > baselineFDs && ContinuousClock.now < deadline {
+      while openSocketDescriptorCount() > baselineFDs && ContinuousClock.now < deadline {
         try await Task.sleep(for: .milliseconds(50))
       }
 
-      let finalFDs = openFDCount()
+      let finalFDs = openSocketDescriptorCount()
       XCTAssertEqual(
         finalFDs, baselineFDs,
         "Concurrent cancellation storm leaked descriptors: baseline=\(baselineFDs), final=\(finalFDs)"
@@ -475,7 +475,7 @@ import XCTest
         let list = darwinFDList()
         return list.filter { $0.procFDType == proxFDTypeSocket }.count
       #else
-        return 0
+        return openSocketDescriptorCount()
       #endif
     }
   }
