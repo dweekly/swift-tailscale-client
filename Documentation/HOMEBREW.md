@@ -66,8 +66,9 @@ Notes:
 
 - `--disable-sandbox` is required because SwiftPM's own sandbox conflicts with
   Homebrew's build sandbox.
-- The formula builds from source; no binary artifacts are attached to GitHub
-  Releases yet. If build times become a complaint, prebuilt bottles are the
+- The formula builds from source. GitHub Releases also attach a universal
+  macOS CLI tarball and `SHA256SUMS.txt`, but the formula does not use them;
+  if build times become a complaint, bottles or the attached binary are the
   next step.
 - Man pages can be generated with ArgumentParser's plugin
   (`swift package generate-manual tailscale-swift` from a checkout, or

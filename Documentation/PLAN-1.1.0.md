@@ -1,6 +1,6 @@
 # 1.1.0 release plan
 
-**Decision pending.** Ship 1.1.0 when a Mac developer can open Peer Diagnostics on a clean checkout, try it with fixtures, select a real peer on an existing Tailscale installation, and explain the result using the public Swift API and published docs. The minor-version change is an additive ping-path API used by both the SwiftUI sample and `tailscale-swift ping`. If only fixes and documentation are ready, ship those as 1.0.x. The current release is 1.0.0. [Roadmap](../ROADMAP.md#110)
+**Shipped as `v1.1.0` on 2026-11-22** (tag on `548cf0e`; results in [#63](https://github.com/dweekly/swift-tailscale-client/pull/63)). The release criterion was: ship 1.1.0 when a Mac developer can open Peer Diagnostics on a clean checkout, try it with fixtures, select a real peer on an existing Tailscale installation, and explain the result using the public Swift API and published docs. The minor-version change is an additive ping-path API used by both the SwiftUI sample and `tailscale-swift ping`. If only fixes and documentation were ready, those would have shipped as 1.0.x. [Roadmap](../ROADMAP.md#110)
 
 The release owner gathers the evidence below against the candidate commit and makes the tag decision. The feature author supplies fixtures, tests, source comments, and examples with the implementation. CI supplies build reports. A maintainer or pilot tester records observations that require a real Mac. The [release procedure](RELEASING.md) governs tagging and publication.
 

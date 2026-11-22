@@ -48,7 +48,7 @@ swift test --package-path Examples/PeerDiagnostics
 
 ## Get it into developers' hands
 
-Nothing in this section has happened for 1.1.0 yet: nobody has been invited and nothing has been posted. Ready to send are the candidate commit, the fixture-mode command above, the sample's screenshot in its [README](Examples/PeerDiagnostics/README.md), and the [integration guide](Documentation/INTEGRATING.md).
+Nothing in this section has happened for 1.1.0 yet: nobody has been invited and nothing has been posted. Ready to send are the `v1.1.0` tag, the fixture-mode command above, the sample's screenshot in its [README](Examples/PeerDiagnostics/README.md), and the [integration guide](Documentation/INTEGRATING.md).
 
 1. **Before tagging**, invite a Mac diagnostics or remote-development app maintainer and a developer building a local preview or backup tool. Offer a short pairing session. Give each the same candidate commit SHA, a fixture-mode launch command, and one task in their own app. A fixed revision lets them retest exactly what failed. Lead with the sample and its screenshot in the README.
 2. **Collect first-run feedback** in one GitHub trial issue. Ask which Mac and Tailscale variant they used, whether the caller was sandboxed, time to the first useful result, what surprised them, and whether they would keep the integration. Request a small integration diff if shareable. For failures, link a reproducible bug from the trial and ask the reporter to retry the fix. Keep hostnames, peer addresses, and credentials out of public reports. [Issue tracker](https://github.com/dweekly/swift-tailscale-client/issues)
@@ -87,6 +87,7 @@ Follow-ups 1.1.0 surfaced, most important first. Each names what was observed.
 19. **Decide whether Linux gets a lane in required CI.** The package compiles and its unit suite passes in Swift 6.1 and 6.4 Linux containers, and the manual Headscale workflow passes on five daemon versions, but both run only by hand. A self-hosted Linux runner was deferred by the maintainer.
 20. **Give hermetic runs a place in the endpoint manifest.** `endpoints.json` records live evidence from the macOS lane and historical evidence from the pre-1.0 matrix; a current Headscale run has only a lane record, so write endpoints that only that workflow exercises cannot show that they passed.
 21. **Linux gaps found while reviving the build:** Thread Sanitizer does not run under Docker's default security profile, arm64 is untried, and `PeerDiagnosticsCore` imports Combine, so the sample's core does not build there.
+22. **Docs deploy race.** `docc.yml` builds, uploads, and deploys in one job; twice on 2026-11-22 the deploy step read the Pages artifact in the same second it was uploaded and failed, and re-running the job cannot succeed ([#69](https://github.com/dweekly/swift-tailscale-client/issues/69)).
 
 ## Stability & Support Tiers
 
