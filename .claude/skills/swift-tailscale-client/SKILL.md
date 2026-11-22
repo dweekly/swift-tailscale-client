@@ -20,17 +20,19 @@ Facts you need before opening the guide:
 - **Right tool?** This package observes/controls an *existing* Tailscale install via its LocalAPI.
   If the app must BE its own tailnet node → TailscaleKit (tailscale/libtailscale). If managing the
   tailnet itself from a server → api.tailscale.com. No Tailscale installed → this package is useless.
-- **Dependency:** `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`,
-  product `TailscaleClient`. macOS 13+/Linux connect to daemons; iOS/tvOS/watchOS compile only.
+- **Dependency:** `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.1.0")`,
+  product `TailscaleClient` (tests add `TailscaleClientMocks`); Swift 6.1+. macOS 13+ connects to
+  daemons; iOS/tvOS/watchOS compile only; Linux is unqualified.
 - **Biggest gotcha:** macOS App Store Tailscale needs opt-in discovery
   (`TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)`) and triggers a TCC
-  popup; default unix-socket discovery never does.
+  popup; default discovery (overrides, unix sockets, the standalone app's loopback port) never does.
 - **Start from the sample:** `swift run --package-path Examples/PeerDiagnostics PeerDiagnostics`
   opens a window with a built-in fixture tailnet; **Live** switches to the real daemon, read-only.
   Its App Store toggle shows how to ask for discovery consent ("Start with the sample app" in the guide).
 - **Ping interpretation (1.1.0+):** switch on `PingResult.path` (`nil` = failed; `.direct`,
   `.peerRelay`, `.derp`, `.unknown`). Raw `endpoint` is `""`, not `nil`, when absent; only disco
-  pings report a path; one DERP reply is not the settled path (INTEGRATING.md gotcha 7).
+  pings report a path; a failed ping returns normally (check `path == nil` / `error`); one DERP
+  reply is not the settled path (INTEGRATING.md gotcha 7).
 - **Watching peers:** Tailscale 1.104+ rejects `.initialNetMap`/`.rateLimit` (the client drops them
   and retries) and never sends `IPNNotify.netMap`. Watch `[.initialState, .peerChanges, .noNetMap]` and
   re-read `status()` on each notification and reconnect.

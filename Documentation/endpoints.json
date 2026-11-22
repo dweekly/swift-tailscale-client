@@ -6,11 +6,11 @@
       "trigger": "automatic",
       "description": "Tailscale app on a real tailnet; read-only, because the write-gated tests skip there",
       "last_success": {
-        "run": 35675929980,
-        "commit": "6602ddc8454e",
-        "date": "2026-09-22",
+        "run": 44968061763,
+        "commit": "77fedf49b501",
+        "date": "2026-11-22",
         "daemons": "1.102.2",
-        "executed": 44,
+        "executed": 45,
         "skipped": 5,
         "failed": 0
       }
@@ -52,8 +52,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testStatusAgainstLiveDaemon, testStatusWithPeers, testStatusWithoutPeers"
         },
         "historical": {
@@ -90,8 +90,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testServicesAgainstLiveDaemon"
         },
         "historical": {
@@ -129,8 +129,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testWhoIsWithSelfIP, testWhoIsWithInvalidIP, testWhoIsProtoVariantAgainstLiveDaemon"
         },
         "historical": {
@@ -168,8 +168,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testPrefsAgainstLiveDaemon"
         },
         "historical": {
@@ -206,8 +206,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testPingToSelfIP, testPingWithDifferentTypes, testPingToPeer"
         },
         "historical": {
@@ -243,8 +243,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testMetricsAgainstLiveDaemon, testMetricsContainsExpectedMetrics"
         },
         "historical": {
@@ -280,8 +280,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testUserMetricsAgainstLiveDaemon"
         },
         "historical": {
@@ -314,7 +314,14 @@
       "min_tailscaled": "not established",
       "evidence": {
         "unit": "wire-shape",
-        "live": null,
+        "live": {
+          "lane": "macos-self-hosted",
+          "daemon": "1.102.2",
+          "mode": "read",
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
+          "tests": "testDefaultWatchDeliversFirstNotification"
+        },
         "historical": {
           "lane": "headscale-matrix",
           "run": 35513916288,
@@ -349,8 +356,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testDaemonFeaturesAgainstLiveDaemon"
         },
         "historical": {
@@ -387,8 +394,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testDERPMapAgainstLiveDaemon"
         },
         "historical": {
@@ -425,8 +432,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testSuggestExitNodeAgainstLiveDaemon"
         },
         "historical": null,
@@ -459,8 +466,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testDNSOSConfigAgainstLiveDaemon"
         },
         "historical": null,
@@ -493,8 +500,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testDNSQueryAgainstLiveDaemon"
         },
         "historical": {
@@ -530,8 +537,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testCheckIPForwardingAgainstLiveDaemon"
         },
         "historical": {
@@ -567,8 +574,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testCheckUDPGROForwardingAgainstLiveDaemon"
         },
         "historical": {
@@ -606,8 +613,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testDNSConfigAgainstLiveDaemon"
         },
         "historical": {
@@ -645,8 +652,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testPeerAndUserProfileLookupAgainstLiveDaemon"
         },
         "historical": {
@@ -931,8 +938,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testCheckUpdateAgainstLiveDaemon"
         },
         "historical": {
@@ -1025,8 +1032,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testProfilesAgainstLiveDaemon"
         },
         "historical": {
@@ -1095,8 +1102,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testServeConfigAgainstLiveDaemon"
         },
         "historical": {
@@ -1137,8 +1144,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testCertDomainsAgainstLiveDaemon"
         },
         "historical": {
@@ -1227,8 +1234,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testQueryFeatureAgainstLiveDaemon"
         },
         "historical": null,
@@ -1286,8 +1293,8 @@
           "lane": "macos-self-hosted",
           "daemon": "1.102.2",
           "mode": "read",
-          "last_passed": "2026-09-22",
-          "run": 35675929980,
+          "last_passed": "2026-11-22",
+          "run": 44968061763,
           "tests": "testGoroutinesAgainstLiveDaemon"
         },
         "historical": {

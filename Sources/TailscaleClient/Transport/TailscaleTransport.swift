@@ -195,7 +195,7 @@ extension TailscaleTransportError: LocalizedError {
       return "Check your network connection and ensure the Tailscale daemon is running."
     case .socketNotFound:
       return
-        "Run 'tailscale status' to verify tailscaled is running. For macOS App Store version, the client auto-discovers the loopback API."
+        "Run 'tailscale status' to verify tailscaled is running. For the Mac App Store version, opt in to its discovery with TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)."
     case .connectionRefused:
       return
         "Start the Tailscale daemon or app. On macOS, open Tailscale from Applications. On Linux, run 'sudo systemctl start tailscaled'."

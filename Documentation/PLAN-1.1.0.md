@@ -1,6 +1,6 @@
 # 1.1.0 release plan
 
-**Decision pending.** Ship 1.1.0 when a Mac developer can open Peer Diagnostics on a clean checkout, try it with fixtures, select a real peer on an existing Tailscale installation, and explain the result using the public Swift API and published docs. The minor-version change is an additive ping-path API used by both the SwiftUI sample and `tailscale-swift ping`. If only fixes and documentation are ready, ship those as 1.0.x. The current release is 1.0.0. [Roadmap](../ROADMAP.md#proposed-110)
+**Decision pending.** Ship 1.1.0 when a Mac developer can open Peer Diagnostics on a clean checkout, try it with fixtures, select a real peer on an existing Tailscale installation, and explain the result using the public Swift API and published docs. The minor-version change is an additive ping-path API used by both the SwiftUI sample and `tailscale-swift ping`. If only fixes and documentation are ready, ship those as 1.0.x. The current release is 1.0.0. [Roadmap](../ROADMAP.md#110)
 
 The release owner gathers the evidence below against the candidate commit and makes the tag decision. The feature author supplies fixtures, tests, source comments, and examples with the implementation. CI supplies build reports. A maintainer or pilot tester records observations that require a real Mac. The [release procedure](RELEASING.md) governs tagging and publication.
 
@@ -57,13 +57,13 @@ One branch and pull request per row below, each based on `main` in its own workt
 | ~~Reconcile claims~~ | Merged in #47. |
 | ~~Re-pin upstream~~ | Merged in #49. |
 | ~~Examples build from any folder name~~ | Merged in #50. |
-| Ping path API and CLI output (#51) | `PingResult.path` and `PingPath` exist with the semantics under Decisions, the CLI calls the same classifier, `isDirect` and `PingType.peerAPI` are corrected, and the API baseline targets `v1.0.0`. Captured fixtures carry provenance. [INTEGRATING.md](INTEGRATING.md) and its adapters move in the same pull request. |
-| Watch streams survive reconnects and rediscover (#48) | The reconnect path shares the first open's credential recovery, and the simple stream continues across a reconnect and an undecodable line. |
-| Rejected streams are reported at once | A streaming response with `Content-Length` ends at its declared length through the real transport. The disposable-daemon scripts are checked in. |
-| Watch options that current daemons accept | The obsolete-option retry, the fatal 400, the new option names, the monitoring recipe, and the CLI help are in place. A read-only live test opens a default watch. Item 9 under "What blocks the tag" passes. |
-| The self-hosted integration lane completes | The lane's unit-suite step finishes on `main` as it did in September. |
-| Endpoint manifest evidence | `endpoints.json` and its generated tables tell apart synthetic decoding coverage, comparison with pinned upstream source, and behavior observed on a real daemon. |
-| Deliver the SwiftUI example | Provide one documented launch command from a clean checkout. Start in fixture mode with a visible peer. Make live mode an explicit action. Use async discovery, start the watcher at launch, show last observation time, and clear or mark old results on loss of freshness. Add the example build and its tests to macOS CI. Commit a fixture-mode screenshot. |
+| ~~Ping path API and CLI output~~ | Merged in #51. |
+| ~~Watch streams survive reconnects and rediscover~~ | Merged in #48; loopback failures classified so watches rediscover in #60. |
+| ~~Rejected streams are reported at once~~ | Merged in #53. |
+| ~~Watch options that current daemons accept~~ | Merged in #54; quiet loopback watches stay open in #58. |
+| ~~The self-hosted integration lane completes~~ | Merged in #52. |
+| ~~Endpoint manifest evidence~~ | Merged in #56. |
+| ~~Deliver the SwiftUI example~~ | Merged in #55 and #59. |
 | Qualify the candidate | Run the hosted checks, independent consumer build, and real-daemon trials below. Finish source, website, and agent docs in the same release. Record every result in `Documentation/releases/1.1.0.md` with the SHA it ran on. |
 | Prepare the release commit | Changelog section, `packageVersion`, documented pins, tested daemon versions, and limitations agree. After the merge, all nine items under "What blocks the tag" pass on the merged commit and are recorded in the release pull request. |
 

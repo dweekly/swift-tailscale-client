@@ -7,15 +7,15 @@
 > that) and not the api.tailscale.com admin API. MIT; not affiliated with
 > Tailscale Inc.
 
-Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`
-Platforms: macOS 13+ and Linux connect to daemons; iOS/tvOS/watchOS build only.
+Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.1.0")`
+Platforms: macOS 13+ connects to daemons; iOS/tvOS/watchOS build only; Linux is unqualified. Swift 6.1+. The `TailscaleClient` library has no third-party dependencies (resolving the package also fetches swift-argument-parser for the CLI).
 IPN bus: Tailscale 1.104+ rejects the `initialNetMap`/`rateLimit` watch options (the client drops them and retries) and sends no netmap; follow peers with `[.initialState, .peerChanges, .noNetMap]` and re-read `status()` per notification.
 
 ## Docs
 
 - [Integration guide (canonical)](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/INTEGRATING.md): usage patterns, gotchas, testing with mocks
 - [Peer Diagnostics sample](https://github.com/dweekly/swift-tailscale-client/tree/main/Examples/PeerDiagnostics): runnable SwiftUI app with a fixture mode (no Tailscale needed) and a read-only live mode; shows ping-path classification, a bounded ping burst, staleness, and App Store discovery consent
-- Ping path (1.1.0+): `PingResult.path` is `nil` on error, else `.peerRelay`, `.derp`, `.direct`, or `.unknown` (TSMP/ICMP/peerAPI pings); see gotcha 7 in the integration guide
+- Ping path (1.1.0+): `PingResult.path` is `nil` on error, else `.peerRelay`, `.derp`, `.direct`, or `.unknown` (TSMP/ICMP/peerAPI pings); a failed ping returns normally rather than throwing. See gotcha 7 and the ping mock body under "Testing an app that uses this package" in the integration guide
 - [Endpoint manifest (JSON)](https://raw.githubusercontent.com/dweekly/swift-tailscale-client/main/Documentation/endpoints.json): machine-readable per-endpoint facts — symbol, read/write risk, feature gate, minimum tailscaled version, stability
 - [API reference (DocC)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/): full symbol documentation and articles (Getting Started, Streaming, Writing Safely, Login Flow, Serve & Funnel) and recipes, including the Peer Diagnostics walkthrough
 - [LocalAPI coverage](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/LOCALAPI-COVERAGE.md): the package's position on every LocalAPI endpoint

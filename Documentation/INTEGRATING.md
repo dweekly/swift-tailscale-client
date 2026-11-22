@@ -5,8 +5,8 @@ agent adapters in this repo (`.claude/skills/…`, `AGENTS.md`,
 `.github/copilot-instructions.md`, `llms.txt`) all point here; examples live here
 once instead of drifting across copies.
 
-`swift-tailscale-client` is an unofficial, MIT-licensed, zero-dependency Swift 6
-package that speaks the Tailscale **LocalAPI** — the HTTP API tailscaled serves
+`swift-tailscale-client` is an unofficial, MIT-licensed Swift 6 package that
+speaks the Tailscale **LocalAPI** — the HTTP API tailscaled serves
 over its unix socket / loopback port. It is the Swift analog of Go's
 `tailscale.com/client/local`. Not affiliated with Tailscale Inc.
 
@@ -22,11 +22,42 @@ over its unix socket / loopback port. It is the Swift analog of Go's
 If Tailscale is not installed on the target machine, this package cannot do
 anything — it has no embedded node.
 
+## Add the dependency
+
+Requires Swift 6.1 or later (`swift-tools-version: 6.1` in `Package.swift`).
+
+```swift
+// Package.swift
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.1.0")
+// app target dependency:
+.product(name: "TailscaleClient", package: "swift-tailscale-client")
+// test target dependencies (see "Testing an app that uses this package"):
+dependencies: [
+    .product(name: "TailscaleClient", package: "swift-tailscale-client"),
+    .product(name: "TailscaleClientMocks", package: "swift-tailscale-client"),
+]
+```
+
+`PingResult.path`, `PingPath`, and the watch options `.peerChanges`,
+`.noNetMap`, `.initialStatus`, and `.peerPatches` are 1.1.0 additions.
+
+The `TailscaleClient` and `TailscaleClientMocks` libraries have no
+third-party dependencies. Resolving the package also fetches
+swift-argument-parser, which the `tailscale-swift` CLI product uses, so it
+appears in your `Package.resolved`.
+
+Release platforms: macOS 13+ connects to installed daemons; iOS 16+/tvOS 16+/watchOS 9+
+are build-verified only — there is no reachable daemon on those devices. Linux
+is unqualified: it is not built or tested in required CI. Swift 6 strict
+concurrency throughout.
+
 ## Start with the sample app
 
-From a checkout, on macOS 13+ with Swift 6.1+:
+The sample needs a checkout of this repository, on macOS 13+ with Swift 6.1+:
 
 ```bash
+git clone https://github.com/dweekly/swift-tailscale-client.git
+cd swift-tailscale-client
 swift run --package-path Examples/PeerDiagnostics PeerDiagnostics             # window
 swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --fixture --print  # headless
 ```
@@ -53,19 +84,6 @@ a ping reached the selected one. Copy its patterns:
 The DocC article `RecipePeerDiagnostics` quotes the compiled code for each
 pattern, and the sample's README explains every label in the window.
 
-## Add the dependency
-
-```swift
-// Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
-// target dependency:
-.product(name: "TailscaleClient", package: "swift-tailscale-client")
-```
-
-Release platforms: macOS 13+ connects to installed daemons; iOS 16+/tvOS 16+/watchOS 9+
-are build-verified only — there is no reachable daemon on those devices. Linux
-is outside 1.0 release qualification. Swift 6 strict concurrency throughout.
-
 ## Core usage patterns
 
 ```swift
@@ -77,7 +95,7 @@ let client = TailscaleClient()  // auto-discovers the LocalAPI (unix socket firs
 let status = try await client.status()              // nodes, peers, health, backendState
 let whois  = try await client.whois(address: "100.64.0.5")
 let prefs  = try await client.prefs()               // exit node, shields, routes...
-let ping   = try await client.ping(ip: "100.64.0.5")  // ping.path: .direct/.peerRelay/.derp/.unknown, nil on error (1.1.0+)
+let ping   = try await client.ping(ip: "100.64.0.5")  // type defaults to .disco; ping.path (1.1.0+): .direct/.peerRelay/.derp/.unknown, nil on error
 let text   = try await client.metrics()             // internal Prometheus counters
 let user   = try await client.userMetrics()         // stable user metrics (v0.6.0+)
 let derp   = try await client.derpMap()             // DERP relay regions/nodes (v0.6.0+)
@@ -125,8 +143,10 @@ or `.endpointUnavailable`) even on streaming endpoints.
 ## Critical integration gotchas
 
 1. **macOS App Store Tailscale requires opt-in discovery and triggers a TCC
-   popup.** Default discovery uses unix sockets only (Homebrew
-   `/var/run/tailscaled.socket`, system daemon paths) — no popups. If users run
+   popup.** Default discovery checks environment overrides, unix sockets
+   (Homebrew `/var/run/tailscaled.socket`, system daemon paths), and the
+   standalone `.pkg` app's loopback port (`/Library/Tailscale/ipnport`) — no
+   popups. If users run
    the App Store GUI app, you must explicitly use
    `TailscaleClientConfiguration.default(allowMacOSAppStoreDiscovery: true)` and
    expect a "wants to access data from other apps" permission prompt. Explain it
@@ -158,7 +178,9 @@ or `.endpointUnavailable`) even on streaming endpoints.
    `.preconditionFailed` (someone else wrote concurrently).
 6. **Environment overrides** for testing/CI: `TAILSCALE_LOCALAPI_SOCKET`,
    `TAILSCALE_LOCALAPI_PORT`/`_HOST`, `TAILSCALE_LOCALAPI_URL`,
-   `TAILSCALE_DISCOVERY_DEBUG=1` (logs discovery to stderr).
+   `TAILSCALE_DISCOVERY_DEBUG=1` (logs discovery to stderr). A Unix socket
+   path must fit the platform's limit (about 104 bytes on macOS); a longer
+   `TAILSCALE_LOCALAPI_SOCKET` fails with "File name too long".
 7. **Read a ping's path from `PingResult.path` (1.1.0+), not the raw fields.**
    The daemon always sends `Endpoint`, `PeerRelay`, `DERPRegionID`, and `Err`,
    using `""` and `0` for "none", so `endpoint != nil` says nothing. `path` is
@@ -169,8 +191,14 @@ or `.endpointUnavailable`) even on streaming endpoints.
    one measurement: the first disco ping to an idle peer is often DERP while a
    direct path forms, which is why `tailscale ping` repeats until direct. Do not
    present a single `.derp` reply as the peer's settled path. `isDirect` is
-   `true` exactly when `path` is `.direct`. To test the unknown case without a
-   daemon, return a `PingResult` with no path fields from a `MockTransport`.
+   `true` exactly when `path` is `.direct`. The other fields a caller needs are
+   `latencySeconds: Double?` and `error: String?` (nil or empty means the ping
+   succeeded); the DERP case is `.derp(regionID: Int, regionCode: String?)`.
+   `ping(ip:type:size:)` defaults to `type: .disco`. It **returns normally when
+   the daemon reports a failed ping** (check `path == nil` or `error`) and
+   throws only for transport, HTTP-status, decoding, or request-timeout failures. To test each
+   case without a daemon, see the ping example under "Testing an app that uses
+   this package".
 
 ## Endpoint quick reference
 
@@ -193,7 +221,7 @@ drifts from it.
 | `ping(ip:type:size:)` | `ping` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; observed live on tailscaled 1.102.2 (read) |
 | `metrics()` | `metrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; observed live on tailscaled 1.102.2 (read); absent on builds without `HasClientMetrics || HasDebug` |
 | `userMetrics()` | `usermetrics` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.78; observed live on tailscaled 1.102.2 (read); absent on builds without `HasUserMetrics` |
-| `watchIPNBus(options:reconnect:onUndecodableLine:), watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer; not yet observed on a live daemon by 1.x tests; absent on builds without `HasIPNBus` |
+| `watchIPNBus(options:reconnect:onUndecodableLine:), watchIPNBusEvents(options:retryPolicy:bounds:onUndecodableLine:)` | `watch-ipn-bus` | read | upstream unstable; supported Swift normalization layer; observed live on tailscaled 1.102.2 (read); absent on builds without `HasIPNBus` |
 | `daemonFeatures()` | `debug-optional-features` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; needs tailscaled 1.86; observed live on tailscaled 1.102.2 (read); absent on builds without `HasDebug` |
 | `derpMap()` | `derpmap` | read | upstream stable; supported Swift API; observed live on tailscaled 1.102.2 (read) |
 | `suggestExitNode(forceProbe:)` | `suggest-exit-node` | read | no upstream maturity note (assume unstable); supported Swift normalization layer; observed live on tailscaled 1.102.2 (read); absent on builds without `HasUseExitNode` |
@@ -238,7 +266,9 @@ test-target dependency:
 ```swift
 import TailscaleClientMocks
 
-let transport = MockTransport { request, _ in
+// fixtureJSON is the response body as Data. The closure receives the request
+// and the client's TailscaleClientConfiguration; return a TailscaleResponse.
+let transport = MockTransport { request, configuration in
     TailscaleResponse(statusCode: 200, data: fixtureJSON)
 }
 // Streaming: MockTransport.scriptedStream([.jsonLine("{\"State\":6}"), .delay(.seconds(1))])
@@ -247,6 +277,21 @@ let config = TailscaleClientConfiguration(
     endpoint: .url(URL(string: "http://mock.local")!), authToken: nil, transport: transport)
 let client = TailscaleClient(configuration: config)
 ```
+
+**Ping replies.** The mock returns the daemon's JSON, not a `PingResult`. A
+disco reply always carries these fields, with `""` and `0` meaning "none":
+
+```json
+{"IP":"100.64.0.5","NodeIP":"100.64.0.5","NodeName":"example-peer","Err":"","LatencySeconds":0.005,"Endpoint":"","PeerRelay":"","DERPRegionID":0,"DERPRegionCode":""}
+```
+
+Set `Endpoint` (for example `"192.0.2.10:41641"`) for `.direct`,
+`DERPRegionID` and `DERPRegionCode` for `.derp`, `PeerRelay` for
+`.peerRelay`, and `Err` for a failed ping (`path == nil`); leave them all
+empty for `.unknown`. The compiled versions are
+[`Examples/Recipes/Sources/Recipes/PingPath.swift`](../Examples/Recipes/Sources/Recipes/PingPath.swift)
+and `testPingWithNoPathIsUnknown` in
+[`MockedClientTests.swift`](../Examples/Recipes/Tests/RecipesTests/MockedClientTests.swift).
 
 `RequestRecorder` (an actor) captures requests for assertions. On older
 versions, conform your own stub to the public `TailscaleTransport` protocol

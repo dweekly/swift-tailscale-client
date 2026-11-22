@@ -1,6 +1,6 @@
 # Roadmap
 
-**1.0.0 is available. We propose 1.1.0 for Mac developers who need to tell whether a peer is reachable through the user's existing Tailscale installation.** A backup app, for example, could show when it last reached the backup host, how the ping traveled, and when to try again. A successful peer ping describes the network path. The app still needs its own check for the backup service.
+**1.1.0 is the current release. It is for Mac developers who need to tell whether a peer is reachable through the user's existing Tailscale installation.** A backup app, for example, could show when it last reached the backup host, how the ping traveled, and when to try again. A successful peer ping describes the network path. The app still needs its own check for the backup service.
 
 The supported runtime is macOS 13+. iOS, tvOS, and watchOS receive build checks. Linux is unqualified. Network Weather (NWX) supplied a real adapter smoke test for 1.0. See the [smoke test results](Documentation/releases/1.0.0.md#4-nwx-adapter-smoke--2026-09-19), [changelog](CHANGELOG.md), and [original 1.0 plan](Documentation/PLAN-1.0.md).
 
@@ -11,7 +11,7 @@ This unofficial, MIT-licensed package speaks LocalAPI directly from Swift. Tails
 On a Mac with Swift 6.1 or later, start with a tagged checkout:
 
 ```sh
-git clone --branch v1.0.0 --depth 1 https://github.com/dweekly/swift-tailscale-client.git
+git clone --branch v1.1.0 --depth 1 https://github.com/dweekly/swift-tailscale-client.git
 cd swift-tailscale-client
 swift test --package-path Examples/Recipes --filter MockedClientTests/testStatusAgainstAFixture
 ```
@@ -26,20 +26,29 @@ Look for the daemon version, backend state, and peer count. The demo also runs a
 
 If a step fails, include the command, macOS version, Tailscale install method, and first unexpected result. Use placeholders for private peer details. [Report a trial failure](https://github.com/dweekly/swift-tailscale-client/issues/new?template=bug_report.yml)
 
-## Proposed 1.1.0
+## 1.1.0
 
-The [1.1.0 release plan](Documentation/PLAN-1.1.0.md) defines the test cases, live Mac trials, documentation checks, and evidence the maintainer reviews before tagging.
+1.1.0 contains what the [1.1.0 release plan](Documentation/PLAN-1.1.0.md) set out to build. The [changelog](CHANGELOG.md#110---2026-11-21) lists every change, and the [1.1.0 release record](Documentation/releases/1.1.0.md) says what was run to qualify it and what remains untested.
 
-| Deliverable | How to decide it is ready |
+| Deliverable | What it is |
 |---|---|
-| **Peer Diagnostics**, a runnable SwiftUI example | A fresh checkout opens in fixture mode and shows a peer and its last ping. The user can choose live mode, select a peer, and see the measured path and time. Show offline, stale, and unavailable states. Start the watcher at launch and refresh after a stream gap or profile change. Test the same transitions with `TailscaleClientMocks`. |
-| An additive ping-path API | Prototype a typed result for direct, peer-relayed, DERP-relayed, and unknown paths. Match the official CLI's precedence when a reply has multiple fields. Exercise it in both the sample and the bundled CLI. Keep the raw fields and existing source compatibility. [Official ping implementation](https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/ping.go) |
-| First-launch discovery evidence | Run the live macOS example with endpoint and credential overrides cleared. Start with standalone Tailscale. Publish observed results for standalone, App Store, and Unix-socket installations, identifying the caller's sandbox status, prompt, failure, and recovery. Mark untried combinations explicitly. A passing shell-configured run only establishes connectivity. |
-| Compatibility evidence developers can inspect | Exercise status, ping, and watch on a named daemon version. Compare sanitized results with the official CLI or pinned Go client. Label real captures and synthetic fixtures. Reconcile the support and adoption guides with the actual platform checks and NWX evidence. Triage the upstream drift report, including what suspended watches mean for recovery. [Drift issue #45](https://github.com/dweekly/swift-tailscale-client/issues/45) |
+| **Peer Diagnostics**, a runnable SwiftUI example | `Examples/PeerDiagnostics` opens in fixture mode with a made-up tailnet, so it needs no Tailscale. **Live** reads the local daemon without changing it, lists peers, and shows how a ping reached the selected one, when it was measured, and whether it is still current. Its view model is a tested library target. |
+| A ping-path API | `PingResult.path` returns `.direct`, `.peerRelay`, `.derp`, or `.unknown` with the official CLI's precedence, and `nil` for a failed ping. `tailscale-swift ping` prints the same classification. `isDirect` and `PingType.peerAPI` are corrected. |
+| Watches on current daemons | Watches open on Tailscale 1.104 and later, report a rejection at once, stay open through quiet periods on loopback, and rediscover a daemon that restarted. |
+| Inspectable evidence | Ping fixtures captured from a real daemon with provenance; an endpoint manifest that separates synthetic, source-checked, and live-observed evidence; and a script that runs disposable daemons of any upstream version. |
 
-**Release decision.** Ship 1.1.0 when the additive API works in both callers, the example passes a fresh-checkout trial, and the release commit passes the existing Apple CI, API compatibility, and read-only macOS integration checks. Include a screenshot, the exact trial commands, and the tested environments in the release notes. If the trials produce only bug fixes and documentation, use the next 1.0.x patch for those changes. The maintainer tags the tested commit using the [release procedure](Documentation/RELEASING.md).
+To try it from a checkout of the `v1.1.0` tag:
+
+```sh
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics                    # window, fixture mode
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --fixture --print  # headless, no Tailscale needed
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --live --print     # headless, reads your daemon
+swift test --package-path Examples/PeerDiagnostics
+```
 
 ## Get it into developers' hands
+
+Nothing in this section has happened for 1.1.0 yet: nobody has been invited and nothing has been posted. Ready to send are the candidate commit, the fixture-mode command above, the sample's screenshot in its [README](Examples/PeerDiagnostics/README.md), and the [integration guide](Documentation/INTEGRATING.md).
 
 1. **Before tagging**, invite a Mac diagnostics or remote-development app maintainer and a developer building a local preview or backup tool. Offer a short pairing session. Give each the same candidate commit SHA, a fixture-mode launch command, and one task in their own app. A fixed revision lets them retest exactly what failed. Lead with the sample and its screenshot in the README.
 2. **Collect first-run feedback** in one GitHub trial issue. Ask which Mac and Tailscale variant they used, whether the caller was sandboxed, time to the first useful result, what surprised them, and whether they would keep the integration. Request a small integration diff if shareable. For failures, link a reproducible bug from the trial and ask the reporter to retry the fix. Keep hostnames, peer addresses, and credentials out of public reports. [Issue tracker](https://github.com/dweekly/swift-tailscale-client/issues)
@@ -52,6 +61,29 @@ The [1.1.0 release plan](Documentation/PLAN-1.1.0.md) defines the test cases, li
 - **Sharing a local preview with Serve.** Try one developer-tool integration. Detect an occupied route, use the existing conditional writes, and verify cleanup removes only the mapping created by the app.
 - **Endpoint backlog.** Taildrop moves out of the proposed 1.1.0 scope. Revisit file transfer, Taildrive, and Tailnet Lock when a consumer can exercise the workflow. The stable upstream gaps include a bug-report recording handle and a duplex connection abstraction for `DialTCP` / `UserDial`. Track requests and rationale in the [coverage ledger](Documentation/LOCALAPI-COVERAGE.md).
 - **Distribution.** Revisit homebrew-core once there is demand beyond the existing tap.
+
+### Hardening
+
+Follow-ups 1.1.0 surfaced, most important first. Each names what was observed.
+
+1. **Live trials not yet run.** A logged-in Tailscale 1.104+ daemon, a real daemon restart, the Mac App Store edition, and a sandboxed caller have not been exercised live; every 1.1.0 live run used a logged-in 1.102.2 daemon or never-logged-in disposable daemons ([release record](Documentation/releases/1.1.0.md)).
+2. **Model the notification fields that replaced `NetMap`** (`SelfChange`, `InitialStatus`, peer deltas) after capturing them from a logged-in 1.104+ daemon. Today a peer-change notification decodes with no modelled field, so a consumer cannot tell it from any other notification.
+3. **Suspended watches** (`NotifySuspendWhenBehind`, `resume-ipn-bus`) are unwrapped; upstream added them at the 152 pin ([COMPATIBILITY-152.md](Documentation/COMPATIBILITY-152.md)).
+4. **Expose which discovery mechanism found the daemon.** `TailscaleClientConfiguration` gives the endpoint but not whether it came from an override, a socket, `libproc`, or the standalone app's port file; the Peer Diagnostics sample can only print the endpoint kind.
+5. **An option to keep retrying the first watch open.** A failed first open throws while later drops retry, so an app that wants to wait for Tailscale to start has to loop itself.
+6. **Unary rediscovery over loopback has no end-to-end test.** The refused-port path is covered only by error classification.
+7. **The loopback watch's 7-day limit.** `URLSession.shared`'s `timeoutIntervalForResource` still ends a stream after 7 days; shown only with a 1.5-second session value.
+8. **Scope the remembered obsolete-option rejection to the daemon, not the client.** After rediscovery lands on an older daemon, the client keeps omitting `.rateLimit` and `.initialNetMap` (harmless, since both are optional).
+9. **Drop `.rateLimit` and `.initialNetMap` from `.default` and `.allInitial` in 2.0.** Current daemons reject them, and the client strips them on every such daemon.
+10. **A too-long `TAILSCALE_LOCALAPI_SOCKET` reports "File name too long"** instead of an actionable message about the platform's Unix socket path limit (about 104 bytes on macOS).
+11. **Refresh the manifest's live-evidence records from the integration lane automatically.** Today `evidence_lanes` and per-endpoint `live` records in `endpoints.json` are updated by hand; the check keeps them consistent with each other, not current.
+12. **Seed the generative tests and record failing seeds.** The JSON round-trip generator is unseeded, so a failure cannot be replayed.
+13. **An injectable clock for mock stream delays and retry backoff.** `MockTransport` delays and `StreamRetryPolicy` backoff use real time, so a consumer's reconnect test cannot use an injected clock.
+14. **`attach-binaries.yml` attaches only the archive**, not the checksums or evidence file the release workflow publishes.
+15. **Other loopback `URLError` codes.** Only `.cannotConnectToHost` counts as a connect-stage failure; `.cannotFindHost` and `.dnsLookupFailed` stay `networkFailure`, which matters only for a `.url` endpoint with a host name.
+16. **A multi-line streaming error body is joined into one line** because it passes through the line framer.
+17. **CLI parity for a DERP reply with no region code**: upstream prints `DERP()`, `tailscale-swift` prints `DERP(region <id>)`.
+18. **Decide whether DCO sign-off is enforced.** `Scripts/check-governance.py` fails on most 1.1 commits and on every merge commit; nothing in CI runs it.
 
 ## Stability & Support Tiers
 
@@ -91,7 +123,7 @@ No endpoint is implemented from documentation alone. Every new surface follows t
 3. **Capture fixtures from the spike.** Real (sanitized) responses become the versioned fixtures the unit tests decode — not hand-typed JSON guessed from docs.
 4. **Then implement**, with the fixtures and the spike findings encoding the corner cases (empty bodies, 204s/201s, ETags, chunked framing) into tests before the API is considered done.
 
-The spike workflow is documented in [`Documentation/TESTING.md`](Documentation/TESTING.md). Versioned fixture-capture tooling and provenance are implemented via `Scripts/capture-fixtures.py` (W5).
+The spike workflow is documented in [`Documentation/TESTING.md`](Documentation/TESTING.md). Ping replies are captured from a real daemon, sanitized, and recorded with provenance by `Scripts/capture-ping-fixture.py`.
 
 ## Contributing to the roadmap
 

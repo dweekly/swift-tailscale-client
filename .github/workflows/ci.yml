@@ -8,7 +8,10 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded pull-request runs only. A run on main that has started
+  # finishes, so the release workflow can find a successful run on its commit.
+  # (GitHub still replaces a run that is waiting behind another in this group.)
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test-macos:

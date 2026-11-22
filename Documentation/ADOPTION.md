@@ -122,7 +122,7 @@ These properties are enforced by the compiler, by code, or by the unit test suit
 
 ## 5. Compatibility Evidence
 
-What has been run, and where. The release record is [`Documentation/releases/1.0.0.md`](releases/1.0.0.md).
+What has been run, and where. The release records are [`Documentation/releases/1.0.0.md`](releases/1.0.0.md) and, for the 1.1.0 release candidate, [`Documentation/releases/1.1.0.md`](releases/1.1.0.md).
 
 | Axis | Evidence | Not established |
 |---|---|---|

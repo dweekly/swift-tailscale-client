@@ -14,7 +14,7 @@ build and run it against the exact code under review. To use it as a template
 for your own project, replace the path dependency with:
 
 ```swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.1.0")
 ```
 
 Hosted CI builds this example on macOS. The self-hosted macOS workflow runs it against a live daemon using an endpoint supplied by the workflow.
