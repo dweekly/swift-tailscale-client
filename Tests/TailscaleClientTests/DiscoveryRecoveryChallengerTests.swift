@@ -570,6 +570,69 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     XCTAssertEqual(newPortCalls, 2)
   }
 
+  /// A request that arrives while a rediscovery is in flight shares that
+  /// rediscovery's outcome: when it fails, the request fails with the same
+  /// typed discovery error instead of trying the stale endpoint and starting a
+  /// second discovery of its own.
+  func testRequestWaitingOnFailedRediscoverySharesTheFailure() async throws {
+    let transport = ScriptedChallengerTransport()
+    let probes = SyncProbeCounter()
+    let probeGate = ProbeGate()
+
+    let deadPort: UInt16 = 40095
+    try Self.setupStandaloneDirectory(in: tempDir, port: deadPort, token: "dead-token")
+
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      standaloneDirectoryOverride: tempDir,
+      probeOverride: { _, _ in
+        probes.record()
+        probeGate.pass()
+        return false  // the daemon is down
+      }
+    )
+    await transport.setHandler { _, _ in
+      throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(deadPort)")
+    }
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        discovery: discovery,
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: deadPort),
+          authToken: "dead-token",
+          capabilityVersion: 144
+        ),
+        transport: transport
+      ))
+
+    // A is refused and starts the rediscovery, whose probe is held.
+    let first = Task { try await client.status() }
+    for await _ in probeGate.entered { break }
+
+    // B arrives while that rediscovery is in flight.
+    let waiterStarted = ArrivalGate(expected: 1)
+    let waiter = Task {
+      await waiterStarted.arrive(autoOpen: true)
+      return try await client.status()
+    }
+    await waiterStarted.waitForArrivals()
+    probeGate.open()
+
+    for task in [first, waiter] {
+      do {
+        _ = try await task.value
+        XCTFail("Requests against a stopped daemon must not succeed")
+      } catch TailscaleClientError.discovery {
+        // expected
+      } catch {
+        XCTFail("Expected TailscaleClientError.discovery, got \(error)")
+      }
+    }
+    XCTAssertFalse(probeGate.timedOut, "The held probe was never released")
+    XCTAssertEqual(probes.count, 1, "A request that waited on a failed rediscovery shares it")
+  }
+
   // MARK: - Challenge 2: Mutation Safety Under Daemon Disconnect
 
   func testMutationSafetyZeroDuplicateExecutionsOnAmbiguousMalformedResponse() async throws {
@@ -982,9 +1045,16 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
 
   // MARK: - Challenge 5: Concurrent Discovery Failure & Error Consistency
 
+  /// A burst of callers refused by a stopped daemon shares one failed
+  /// rediscovery, and every caller gets the typed discovery error.
+  ///
+  /// The old port holds all 30 requests until every one is there, so each
+  /// attempt demonstrably began before any rediscovery; a caller whose refusal
+  /// lands after the failed rediscovery finished shares its failure.
   func testConcurrentDiscoveryFailureThrowsTypedErrorAcrossAllCallers() async throws {
     let transport = ScriptedChallengerTransport()
-    let tracker = AtomicProbeTracker()
+    let probes = SyncProbeCounter()
+    let concurrentCallCount = 30
 
     let deadPort: UInt16 = 40099
     try Self.setupStandaloneDirectory(in: tempDir, port: deadPort, token: "dead-token")
@@ -994,14 +1064,15 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
       environment: [:],
       fileExists: { _ in false },
       standaloneDirectoryOverride: tempDir,
-      probeOverride: { port, token in
-        Task { await tracker.recordProbe(port: port, token: token) }
-        usleep(20_000)
+      probeOverride: { _, _ in
+        probes.record()
         return false  // candidate is dead!
       }
     )
 
+    let allAtDeadPort = ArrivalGate(expected: concurrentCallCount)
     await transport.setHandler { _, _ in
+      await allAtDeadPort.arrive(autoOpen: true)
       throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(deadPort)")
     }
 
@@ -1016,7 +1087,6 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     )
     let client = TailscaleClient(configuration: initialConfig)
 
-    let concurrentCallCount = 30
     var clientErrorCount = 0
     var rawDiscoveryErrorCount = 0
 
@@ -1052,15 +1122,14 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
       }
     }
 
-    // Empirical demonstration of error typing bug:
-    // Public API contract states methods throw TailscaleClientError.
-    // However, coalesced callers awaiting inFlight.value throw raw LocalAPIDiscoveryError.
+    // Every caller gets TailscaleClientError.discovery, whether it ran the
+    // rediscovery, waited on it, or shared its outcome after it finished.
     XCTAssertEqual(
       clientErrorCount, concurrentCallCount,
       "All \(concurrentCallCount) concurrent callers should receive TailscaleClientError.discovery, but \(rawDiscoveryErrorCount) received raw LocalAPIDiscoveryError"
     )
-    let probeCount = await tracker.count
     XCTAssertEqual(
-      probeCount, 1, "Even when discovery fails, single-flight coalescing must occur exactly once")
+      probes.count, 1, "Even when discovery fails, single-flight coalescing must occur exactly once"
+    )
   }
 }

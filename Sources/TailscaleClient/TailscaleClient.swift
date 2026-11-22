@@ -47,6 +47,11 @@ public actor TailscaleClient {
   private let configurationBox: ConfigurationBox
   private var activeConfiguration: TailscaleClientConfiguration
   private var rediscoveryTask: Task<TailscaleClientConfiguration, Error>?
+  /// How many rediscoveries have started, and the most recent one (kept after
+  /// it finishes). A unary request whose attempt fails after a rediscovery
+  /// started shares that rediscovery's outcome instead of starting another.
+  private var rediscoveriesStarted: UInt64 = 0
+  private var latestRediscovery: Task<TailscaleClientConfiguration, Error>?
 
   /// Configuration applied to each request the client makes.
   public nonisolated var configuration: TailscaleClientConfiguration {
@@ -136,6 +141,8 @@ public actor TailscaleClient {
     }
 
     self.rediscoveryTask = task
+    self.rediscoveriesStarted &+= 1
+    self.latestRediscovery = task
     defer { self.rediscoveryTask = nil }
 
     do {
@@ -1173,10 +1180,19 @@ public actor TailscaleClient {
     endpoint: String,
     attempt: Int
   ) async throws -> TailscaleResponse {
+    // Rediscoveries this attempt has already seen the outcome of. A request
+    // that waited on a rediscovery that failed has not "seen" it: if its own
+    // attempt then fails recoverably, it shares that failure.
+    var rediscoveriesSeen = rediscoveriesStarted
     if let inFlight = rediscoveryTask {
-      if let config = try? await inFlight.value {
+      let joined = rediscoveriesStarted
+      do {
+        let config = try await inFlight.value
         self.activeConfiguration = config
         self.configurationBox.update(config)
+        rediscoveriesSeen = joined
+      } catch {
+        rediscoveriesSeen = joined &- 1
       }
     }
     let currentConfig = self.activeConfiguration
@@ -1220,7 +1236,7 @@ public actor TailscaleClient {
         case .automatic = currentConfig.endpointSource,
         isReplaySafe(request: finalRequest, failurePhase: .credential)
       {
-        try await rediscoverUnlessRefreshed(since: currentConfig)
+        try await recover(afterSeeing: rediscoveriesSeen)
         return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
       }
 
@@ -1231,26 +1247,28 @@ public actor TailscaleClient {
         case .automatic = currentConfig.endpointSource,
         isReplaySafe(request: finalRequest, failurePhase: .connectStage)
       {
-        try await rediscoverUnlessRefreshed(since: currentConfig)
+        try await recover(afterSeeing: rediscoveriesSeen)
         return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
       }
       throw TailscaleClientError.transport(transportError)
     }
   }
 
-  /// Runs (or joins) a rediscovery unless the active configuration already
-  /// differs from the one the failed attempt used: a rediscovery finished after
-  /// that attempt began, so the retry goes to the refreshed endpoint (and the
-  /// retry's own entry check joins any rediscovery now in flight).
-  private func rediscoverUnlessRefreshed(since attempted: TailscaleClientConfiguration)
-    async throws
-  {
-    if activeConfiguration.endpoint != attempted.endpoint
-      || activeConfiguration.authToken != attempted.authToken
-    {
+  /// Before a unary retry: runs (or joins) a rediscovery if none has started
+  /// since the failed attempt read its configuration; otherwise shares the
+  /// outcome of the latest one. If it succeeded the retry uses the refreshed
+  /// configuration (the retry's entry check applies it if its owner has not
+  /// yet); if it failed, this request fails with the same error.
+  private func recover(afterSeeing rediscoveriesSeen: UInt64) async throws {
+    guard rediscoveriesStarted != rediscoveriesSeen, let latest = latestRediscovery else {
+      _ = try await singleFlightRediscovery()
       return
     }
-    _ = try await singleFlightRediscovery()
+    do {
+      _ = try await latest.value
+    } catch let discError as LocalAPIDiscoveryError {
+      throw TailscaleClientError.discovery(discError)
+    }
   }
 
   func recordObservedDaemonVersion(from headers: [String: String]) {
