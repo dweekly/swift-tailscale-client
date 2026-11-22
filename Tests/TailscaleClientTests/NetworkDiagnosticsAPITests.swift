@@ -175,4 +175,42 @@ final class NetworkDiagnosticsAPITests: XCTestCase {
       XCTAssertEqual(endpoint, "/localapi/v0/usermetrics")
     }
   }
+
+  // Tailscale 1.76 serves usermetrics only behind TS_DEBUG_USER_METRICS and
+  // otherwise answers 403 with this body (http.Error appends a newline).
+  func testUserMetricsMapsPre178DebugFlagRefusalToEndpointUnavailable() async {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 403, data: Data("usermetrics debug flag not enabled\n".utf8))
+    }
+    let client = makeClient(transport: transport)
+
+    await assertThrowsErrorAsync(try await client.userMetrics()) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .endpointUnavailable(let endpoint, let feature) = clientError
+      else {
+        XCTFail("Expected endpointUnavailable error, got \(error)")
+        return
+      }
+      XCTAssertEqual(endpoint, "/localapi/v0/usermetrics")
+      XCTAssertNil(feature)
+    }
+  }
+
+  func testUserMetricsKeepsOther403AsPermissionDenied() async {
+    let transport = MockTransport { _, _ in
+      TailscaleResponse(statusCode: 403, data: Data("usermetrics access denied\n".utf8))
+    }
+    let client = makeClient(transport: transport)
+
+    await assertThrowsErrorAsync(try await client.userMetrics()) { error in
+      guard let clientError = error as? TailscaleClientError,
+        case .permissionDenied(let body, let endpoint) = clientError
+      else {
+        XCTFail("Expected permissionDenied error, got \(error)")
+        return
+      }
+      XCTAssertEqual(endpoint, "/localapi/v0/usermetrics")
+      XCTAssertEqual(String(decoding: body, as: UTF8.self), "usermetrics access denied\n")
+    }
+  }
 }

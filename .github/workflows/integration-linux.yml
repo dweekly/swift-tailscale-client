@@ -7,8 +7,13 @@ name: Optional Linux integration (manual only)
 #
 # Multi-version matrix:
 # - Required blocking lanes: 1.76.0 (supported floor), 1.84.0 (intermediate LTS),
-#   1.96.4 (previous stable), 1.98.2 (current stable).
+#   1.102.5 (last release of the previous stable minor), 1.104.7 (current stable).
 # - Advisory lane: unstable (upstream main drift signal with continue-on-error).
+#
+# Headscale 0.29 rejects clients older than Tailscale 1.80 (capability version
+# 113, hscontrol/capver at v0.29.7), so the 1.76.0 lane runs Headscale 0.28.0,
+# the last release that accepts it (minimum client 1.74). The other lanes run
+# the current Headscale release.
 
 on:
   workflow_call:
@@ -32,7 +37,7 @@ permissions:
 jobs:
   headscale:
     name: Hermetic integration (tailscaled ${{ matrix.track }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container: swift:6.1
     timeout-minutes: 30
     strategy:
@@ -41,18 +46,23 @@ jobs:
         include:
           - track: supported-floor
             pin: "1.76.0"
+            headscale: "0.28.0"
             allow-failure: false
           - track: intermediate-lts
             pin: "1.84.0"
+            headscale: "0.29.7"
             allow-failure: false
           - track: previous-stable
-            pin: "1.96.4"
+            pin: "1.102.5"
+            headscale: "0.29.7"
             allow-failure: false
           - track: stable
-            pin: "1.98.2"
+            pin: "1.104.7"
+            headscale: "0.29.7"
             allow-failure: false
           - track: unstable
             pin: ""
+            headscale: "0.29.7"
             allow-failure: true
     steps:
       - name: Check whether to skip unstable lane
@@ -63,12 +73,19 @@ jobs:
       - uses: actions/checkout@v7
         if: steps.check-skip.outputs.skip != 'true'
 
+      # The container runs as root but the checkout belongs to the runner
+      # user, so git refuses the repository ("dubious ownership") and
+      # Scripts/ci-test-report.py cannot read the commit it tested.
+      - name: Mark the checkout as a safe git directory
+        if: steps.check-skip.outputs.skip != 'true'
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install headscale and tailscale
         if: steps.check-skip.outputs.skip != 'true'
         run: |
           apt-get update
           apt-get install -y curl ca-certificates python3
-          HEADSCALE_VERSION=0.26.1
+          HEADSCALE_VERSION=${{ matrix.headscale }}
           curl -fsSL --retry 3 -o /tmp/headscale.deb \
             "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_amd64.deb"
           apt-get install -y /tmp/headscale.deb
@@ -89,13 +106,13 @@ jobs:
       - name: Start headscale control plane
         if: steps.check-skip.outputs.skip != 'true'
         run: |
-          mkdir -p /etc/headscale /var/lib/headscale
+          mkdir -p /etc/headscale /var/lib/headscale /var/run/headscale
           cat > /etc/headscale/config.yaml <<'EOF'
           server_url: http://127.0.0.1:8080
           listen_addr: 127.0.0.1:8080
           metrics_listen_addr: 127.0.0.1:9090
           grpc_listen_addr: 127.0.0.1:50443
-          private_key_path: /var/lib/headscale/private.key
+          unix_socket: /var/run/headscale/headscale.sock
           noise:
             private_key_path: /var/lib/headscale/noise_private.key
           prefixes:
@@ -171,7 +188,7 @@ jobs:
 
       - name: Upload test reports and logs
         if: always() && steps.check-skip.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report-headscale-${{ matrix.track }}
           path: ${{ runner.temp }}/test-reports/
