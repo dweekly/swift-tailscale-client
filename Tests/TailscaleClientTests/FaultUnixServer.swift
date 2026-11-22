@@ -21,6 +21,26 @@ import XCTest
       case acceptThenSilence
       /// Write the given raw bytes, then close (or hold the connection open).
       case respond(String, closeAfterWrite: Bool)
+      /// Write `first`, hold the connection open in silence for `delay`
+      /// seconds, write `second`, then keep holding the connection open.
+      /// Records in ``peerClosedConnections`` when the client closes its
+      /// side during the silence.
+      case respondThenLater(String, after: TimeInterval, String)
+    }
+
+    /// Connections accepted so far.
+    var acceptedConnections: Int {
+      lock.lock()
+      defer { lock.unlock() }
+      return acceptedCount
+    }
+
+    /// Connections the client closed while a `respondThenLater` behavior was
+    /// waiting to send its second write.
+    var peerClosedConnections: Int {
+      lock.lock()
+      defer { lock.unlock() }
+      return peerClosedCount
     }
 
     /// The Unix socket path (empty for a loopback TCP server).
@@ -39,6 +59,8 @@ import XCTest
     private var listenFD: Int32 = -1
     private var openFDs: [Int32] = []
     private var stopped = false
+    private var acceptedCount = 0
+    private var peerClosedCount = 0
 
     private var thread: Thread?
 
@@ -128,6 +150,7 @@ import XCTest
           return
         }
         openFDs.append(fd)
+        acceptedCount += 1
         lock.unlock()
 
         // Drain whatever request bytes arrive first.
@@ -142,27 +165,7 @@ import XCTest
         case .acceptThenSilence:
           break  // Hold the fd open; the client must time out on its own.
         case .respond(let text, let closeAfterWrite):
-          #if canImport(Darwin)
-            var noSigPipe: Int32 = 1
-            _ = setsockopt(
-              fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
-          #endif
-          text.utf8CString.withUnsafeBufferPointer { pointer in
-            var offset = 0
-            while offset < pointer.count - 1, !isStopped {
-              #if canImport(Glibc)
-                let count = send(
-                  fd, pointer.baseAddress!.advanced(by: offset), pointer.count - 1 - offset,
-                  Int32(MSG_NOSIGNAL))
-              #else
-                let count = write(
-                  fd, pointer.baseAddress!.advanced(by: offset), pointer.count - 1 - offset)
-              #endif
-              if count < 0, errno == EINTR { continue }
-              guard count > 0 else { break }
-              offset += count
-            }
-          }
+          writeAll(fd, text)
           if closeAfterWrite {
             // Take ownership under the lock so a concurrent stop() cannot
             // also close this descriptor.
@@ -172,8 +175,57 @@ import XCTest
             lock.unlock()
             if owned { close(fd) }
           }
+        case .respondThenLater(let first, let delay, let second):
+          writeAll(fd, first)
+          if waitForPeerClose(fd, seconds: delay) {
+            lock.lock()
+            peerClosedCount += 1
+            lock.unlock()
+          } else {
+            writeAll(fd, second)
+          }
         }
       }
+    }
+
+    private func writeAll(_ fd: Int32, _ text: String) {
+      #if canImport(Darwin)
+        var noSigPipe: Int32 = 1
+        _ = setsockopt(
+          fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+      #endif
+      text.utf8CString.withUnsafeBufferPointer { pointer in
+        var offset = 0
+        while offset < pointer.count - 1, !isStopped {
+          #if canImport(Glibc)
+            let count = send(
+              fd, pointer.baseAddress!.advanced(by: offset), pointer.count - 1 - offset,
+              Int32(MSG_NOSIGNAL))
+          #else
+            let count = write(
+              fd, pointer.baseAddress!.advanced(by: offset), pointer.count - 1 - offset)
+          #endif
+          if count < 0, errno == EINTR { continue }
+          guard count > 0 else { break }
+          offset += count
+        }
+      }
+    }
+
+    /// Waits up to `seconds`, polling every 50 ms. Returns true as soon as
+    /// the client closes its side (a read returns EOF or an error), false
+    /// when the time elapses or the server stops first.
+    private func waitForPeerClose(_ fd: Int32, seconds: TimeInterval) -> Bool {
+      let deadline = Date().addingTimeInterval(seconds)
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      while Date() < deadline, !isStopped {
+        var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        guard poll(&descriptor, 1, 50) > 0 else { continue }
+        let count = read(fd, &buffer, buffer.count)
+        if count < 0, errno == EINTR { continue }
+        if count <= 0 { return !isStopped }
+      }
+      return false
     }
 
     private var isStopped: Bool {

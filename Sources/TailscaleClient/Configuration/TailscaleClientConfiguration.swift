@@ -19,8 +19,15 @@ public struct TailscaleClientConfiguration: Sendable {
   /// variable when you need different daemon behavior.
   public var capabilityVersion: Int
   /// Deadline applied to each unary request and to establishing a streaming
-  /// connection (not to the lifetime of an established stream). `nil` disables
-  /// the client-side deadline. Defaults to 30 seconds.
+  /// connection: connecting, sending the request, and receiving the response
+  /// head. It does not apply to an established stream, which may stay quiet
+  /// for any length of time (an IPN bus watch on a logged-out or stopped
+  /// daemon can go minutes without a notification). `nil` disables the
+  /// client-side deadline. Defaults to 30 seconds.
+  ///
+  /// On loopback TCP endpoints, ``URLSessionTailscaleTransport`` also leaves
+  /// the session's `timeoutIntervalForResource` in force, which ends a stream
+  /// that has been open that long (7 days for `URLSession.shared`).
   public var requestTimeout: Duration?
   /// Transport responsible for executing HTTP requests. Defaults to the built-in implementation.
   public var transport: any TailscaleTransport
