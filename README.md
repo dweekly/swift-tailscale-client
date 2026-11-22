@@ -263,6 +263,23 @@ When enabled, the library scans Group Containers to find `sameuserproof-<port>-<
 
 Community contributions are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines on coding style, testing, and documentation expectations. By participating you agree to abide by the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
+## Documentation index
+
+Project documentation (guides, release records, plans, and the DocC article sources) is indexed in [`Documentation/README.md`](Documentation/README.md). Documents outside that folder:
+
+- [Changelog](CHANGELOG.md): every release's changes, upgrade notes, and breaking changes, newest first, with an `[Unreleased]` section on top. (updated 2026-11-21; update when: a user-visible change merges, or a release is cut)
+- [Roadmap](ROADMAP.md): the current release's audience, the pilot plan, the numbered hardening list, stability tiers, API conventions, and the spike-first practice. (updated 2026-11-22; update when: a release ships, a hardening item is found or closed, or a tier or convention changes)
+- [Contributing](CONTRIBUTING.md): DCO sign-off, coding style, tests, and documentation expected in a pull request. (updated 2026-11-21; update when: the contribution workflow, sign-off rule, or required checks change)
+- [Code of Conduct](CODE_OF_CONDUCT.md): the Contributor Covenant as adopted here, and how to report. (updated 2026-08-03; update when: the covenant version or the reporting contact changes)
+- [Security policy](SECURITY.md): release and security ownership, tag immutability and the yank-and-patch protocol, supported version lines, and response targets by severity. (updated 2026-09-20; update when: a version line is added or retired, an owner changes, or a response target changes)
+- [CLAUDE.md](CLAUDE.md): Claude Code's working notes for this repo: where each kind of fact lives, build and test commands, architecture, and conventions. (updated 2026-08-03; update when: a build command, an authoritative source, or a repo convention changes)
+- [Agent guide](AGENTS.md): short adapter over the integration guide for coding agents, with the dependency line and the main gotchas. (updated 2026-11-22; update when: the public API or INTEGRATING.md changes)
+- [Claude skill](.claude/skills/swift-tailscale-client/SKILL.md): the swift-tailscale-client agent skill, an adapter over the integration guide. (updated 2026-11-22; update when: the public API or INTEGRATING.md changes)
+- [Copilot instructions](.github/copilot-instructions.md): GitHub Copilot's pointer to the integration guide and the endpoint manifest. (updated 2026-11-21; update when: the public API or INTEGRATING.md changes)
+- [tailscale-swift CLI](Sources/tailscale-swift/README.md): the development CLI's build, subcommands, and options. (updated 2026-11-21; update when: a subcommand or option is added, removed, or changes output)
+- [Peer Diagnostics sample](Examples/PeerDiagnostics/README.md): the SwiftUI sample app's fixture and live modes, headless flags, and what its window shows. (updated 2026-11-21; update when: the sample gains a mode or flag, or its window changes)
+- [StatusDemo example](Examples/StatusDemo/README.md): the minimal command-line example that prints node identity, peers, and netcheck. (updated 2026-11-21; update when: the example's output or run command changes)
+
 ## License
 
 MIT © 2025 David E. Weekly

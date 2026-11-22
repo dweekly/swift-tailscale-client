@@ -88,6 +88,7 @@ Follow-ups 1.1.0 surfaced, most important first. Each names what was observed.
 20. **Give hermetic runs a place in the endpoint manifest.** `endpoints.json` records live evidence from the macOS lane and historical evidence from the pre-1.0 matrix; a current Headscale run has only a lane record, so write endpoints that only that workflow exercises cannot show that they passed.
 21. **Linux gaps found while reviving the build:** Thread Sanitizer does not run under Docker's default security profile, arm64 is untried, and `PeerDiagnosticsCore` imports Combine, so the sample's core does not build there.
 22. **Docs deploy race.** `docc.yml` builds, uploads, and deploys in one job; twice on 2026-11-22 the deploy step read the Pages artifact in the same second it was uploaded and failed, and re-running the job cannot succeed ([#69](https://github.com/dweekly/swift-tailscale-client/issues/69)).
+23. **Check the documentation index in CI.** Every tracked Markdown file has one entry in `README.md` or `Documentation/README.md` with a summary, a date, and an update trigger; `orphan-audit` checks this, but it runs only on the maintainer's machine, so a new document can land unindexed.
 
 ## Stability & Support Tiers
 
