@@ -265,7 +265,8 @@ import XCTest
 
       /// Without `TailscaleClient`'s deadline around it, the transport itself
       /// still bounds waiting for the response head by `requestTimeout`, and
-      /// throws the `URLError(.timedOut)` URLSession threw for it before.
+      /// reports it the way the unary path reports its timeout:
+      /// `networkFailure(URLError(.timedOut))`.
       func testLoopbackTransportStreamingOpenWithoutResponseHeadTimesOut() async throws {
         let server = try FaultUnixServer(loopbackBehaviors: [.acceptThenSilence])
         defer { server.stop() }
@@ -280,8 +281,12 @@ import XCTest
           try await transport.sendStreaming(
             TailscaleRequest(path: "/localapi/v0/watch-ipn-bus"), configuration: configuration)
         ) { error in
-          XCTAssertEqual(
-            (error as? URLError)?.code, .timedOut, "Expected URLError(.timedOut), got \(error)")
+          guard case .networkFailure(let underlying) = error as? TailscaleTransportError,
+            (underlying as? URLError)?.code == .timedOut
+          else {
+            XCTFail("Expected networkFailure(URLError.timedOut), got \(error)")
+            return
+          }
         }
         let elapsed = start.duration(to: .now)
         XCTAssertGreaterThanOrEqual(elapsed, Self.requestTimeout - .milliseconds(50))

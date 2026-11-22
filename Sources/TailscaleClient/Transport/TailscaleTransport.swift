@@ -277,10 +277,15 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
         timeoutInterval: Self.streamingIdleTimeoutInterval)
 
       let session = self.session
-      let (bytes, response) = try await Self.withResponseHeadDeadline(
-        configuration.requestTimeout
-      ) {
-        try await session.bytes(for: urlRequest)
+      let endpoint = configuration.endpoint
+      let bytes: URLSession.AsyncBytes
+      let response: URLResponse
+      do {
+        (bytes, response) = try await Self.withResponseHeadDeadline(configuration.requestTimeout) {
+          try await session.bytes(for: urlRequest)
+        }
+      } catch {
+        throw Self.transportError(for: error, endpoint: endpoint)
       }
       guard let http = response as? HTTPURLResponse else {
         throw TailscaleTransportError.networkFailure(underlying: URLError(.badServerResponse))
@@ -306,10 +311,9 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
             try await queue.enqueue(remainder)
           }
           await queue.finish()
-        } catch let transportError as TailscaleTransportError {
-          await queue.fail(transportError)
         } catch {
-          await queue.fail(TailscaleTransportError.networkFailure(underlying: error))
+          await queue.fail(
+            URLSessionTailscaleTransport.transportError(for: error, endpoint: endpoint))
         }
       }
 
@@ -345,7 +349,37 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
       }
       return TailscaleResponse(statusCode: http.statusCode, data: data, headers: headers)
     } catch {
-      throw TailscaleTransportError.networkFailure(underlying: error)
+      throw Self.transportError(for: error, endpoint: configuration.endpoint)
+    }
+  }
+
+  /// Maps an error from a URLSession load (unary or streaming, opening or
+  /// reading the body) to the error this transport throws, so both request
+  /// kinds report the same condition the same way:
+  /// - `URLError(.cannotConnectToHost)` (nothing accepting connections on the
+  ///   port, as after a daemon restart moves it) becomes
+  ///   ``TailscaleTransportError/connectionRefused(endpoint:)``, the case the
+  ///   Unix-socket transport throws for a refused connect.
+  /// - A `TailscaleTransportError` or `CancellationError` passes through.
+  /// - Anything else becomes ``TailscaleTransportError/networkFailure(underlying:)``.
+  static func transportError(for error: any Error, endpoint: TailscaleEndpoint) -> any Error {
+    if error is TailscaleTransportError || error is CancellationError {
+      return error
+    }
+    if let urlError = error as? URLError, urlError.code == .cannotConnectToHost {
+      return TailscaleTransportError.connectionRefused(endpoint: Self.describe(endpoint))
+    }
+    return TailscaleTransportError.networkFailure(underlying: error)
+  }
+
+  private static func describe(_ endpoint: TailscaleEndpoint) -> String {
+    switch endpoint {
+    case .unixSocket(let path):
+      return "unix:\(path)"
+    case .loopback(let host, let port):
+      return "\(host):\(port)"
+    case .url(let url):
+      return url.absoluteString
     }
   }
 
@@ -363,8 +397,8 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
 
   /// Races `operation` (which returns once the response head arrives)
   /// against `timeout`, throwing `URLError(.timedOut)` (the error URLSession
-  /// throws for an expired request timeout) if the deadline elapses first.
-  /// `nil` waits without a deadline.
+  /// throws for an expired request timeout, which ``transportError(for:endpoint:)``
+  /// then wraps) if the deadline elapses first. `nil` waits without a deadline.
   static func withResponseHeadDeadline<T: Sendable>(
     _ timeout: Duration?,
     _ operation: @escaping @Sendable () async throws -> T
