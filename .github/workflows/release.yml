@@ -170,7 +170,7 @@ jobs:
           fi
 
       - name: Upload release notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.target.outputs.prefix }}release-notes
           path: ${{ runner.temp }}/release-notes/notes.md
@@ -222,7 +222,7 @@ jobs:
           shasum -a 256 "$ARCHIVE"
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.validate.outputs.prefix }}macos-universal
           path: tailscale-swift-*-macos-universal.tar.gz
@@ -245,7 +245,7 @@ jobs:
           ref: ${{ github.event_name == 'push' && github.ref || needs.validate.outputs.sha }}
 
       - name: Download binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.validate.outputs.prefix }}macos-universal
           path: ${{ runner.temp }}/release-artifacts
@@ -291,7 +291,7 @@ jobs:
             --validate
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.validate.outputs.prefix }}release-assets-${{ needs.validate.outputs.tag }}
           path: |
@@ -319,13 +319,13 @@ jobs:
       TAG: ${{ needs.validate.outputs.tag }}
     steps:
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-assets-${{ needs.validate.outputs.tag }}
           path: ${{ runner.temp }}/release-artifacts
 
       - name: Download release notes
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-notes
           path: ${{ runner.temp }}/release-notes
