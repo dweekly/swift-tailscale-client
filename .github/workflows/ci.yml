@@ -85,7 +85,7 @@ jobs:
           fi
 
       - name: Check formatting
-        run: swift format lint --strict --recursive Sources Tests
+        run: swift format lint --strict --recursive Sources Tests Examples/PeerDiagnostics/Sources Examples/PeerDiagnostics/Tests
 
       # The release workflow runs this same script on a macOS runner whose
       # system bash is 3.2; running it here too keeps that path exercised on
@@ -100,6 +100,12 @@ jobs:
         run: |
           swift build --package-path Examples/Recipes
           swift test --package-path Examples/Recipes
+
+      - name: Build and test the Peer Diagnostics example
+        run: |
+          swift build --package-path Examples/PeerDiagnostics
+          swift test --package-path Examples/PeerDiagnostics
+          swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --fixture --print
 
   docs-consistency:
     name: Docs consistency

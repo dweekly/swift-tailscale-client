@@ -129,7 +129,7 @@ Subcommands: `status`, `whois`, `prefs`, `ping`, `health`, `metrics`, `usermetri
 
 > **Using an AI coding agent?** [`Documentation/INTEGRATING.md`](Documentation/INTEGRATING.md) is the canonical integration guide for humans and agents alike; this repo also ships a [Claude Code skill](.claude/skills/swift-tailscale-client/SKILL.md), a root [`AGENTS.md`](AGENTS.md), and Copilot instructions that all point there.
 
-Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS; real-daemon checks are separate.
+Looking for a working starting point? [`Examples/StatusDemo`](Examples/StatusDemo) is a standalone package that connects, prints status, probes daemon features, and runs a netcheck — CI builds it on macOS; real-daemon checks are separate. [`Examples/PeerDiagnostics`](Examples/PeerDiagnostics) lists your peers and explains how a ping reached the one you pick, with a fixture mode that needs no Tailscale.
 
 ## API Reference
 
