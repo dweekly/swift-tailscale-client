@@ -47,6 +47,14 @@ public actor TailscaleClient {
   private let configurationBox: ConfigurationBox
   private var activeConfiguration: TailscaleClientConfiguration
   private var rediscoveryTask: Task<TailscaleClientConfiguration, Error>?
+  /// How many rediscoveries have started, and the most recent one (kept after
+  /// it finishes). A unary request whose attempt fails after a rediscovery
+  /// started shares that rediscovery's outcome instead of starting another.
+  private var rediscoveriesStarted: UInt64 = 0
+  private var latestRediscovery: Task<TailscaleClientConfiguration, Error>?
+  /// How many unary requests have started by waiting on an in-flight
+  /// rediscovery. Never decreases; tests read it to know a request is waiting.
+  private(set) var requestsThatWaitedOnRediscovery = 0
 
   /// Configuration applied to each request the client makes.
   public nonisolated var configuration: TailscaleClientConfiguration {
@@ -136,6 +144,8 @@ public actor TailscaleClient {
     }
 
     self.rediscoveryTask = task
+    self.rediscoveriesStarted &+= 1
+    self.latestRediscovery = task
     defer { self.rediscoveryTask = nil }
 
     do {
@@ -1173,10 +1183,20 @@ public actor TailscaleClient {
     endpoint: String,
     attempt: Int
   ) async throws -> TailscaleResponse {
+    // Rediscoveries this attempt has already seen the outcome of. A request
+    // that waited on a rediscovery that failed has not "seen" it: if its own
+    // attempt then fails recoverably, it shares that failure.
+    var rediscoveriesSeen = rediscoveriesStarted
     if let inFlight = rediscoveryTask {
-      if let config = try? await inFlight.value {
+      let joined = rediscoveriesStarted
+      requestsThatWaitedOnRediscovery += 1
+      do {
+        let config = try await inFlight.value
         self.activeConfiguration = config
         self.configurationBox.update(config)
+        rediscoveriesSeen = joined
+      } catch {
+        rediscoveriesSeen = joined &- 1
       }
     }
     let currentConfig = self.activeConfiguration
@@ -1220,7 +1240,7 @@ public actor TailscaleClient {
         case .automatic = currentConfig.endpointSource,
         isReplaySafe(request: finalRequest, failurePhase: .credential)
       {
-        _ = try await singleFlightRediscovery()
+        try await recover(afterSeeing: rediscoveriesSeen)
         return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
       }
 
@@ -1231,10 +1251,27 @@ public actor TailscaleClient {
         case .automatic = currentConfig.endpointSource,
         isReplaySafe(request: finalRequest, failurePhase: .connectStage)
       {
-        _ = try await singleFlightRediscovery()
+        try await recover(afterSeeing: rediscoveriesSeen)
         return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
       }
       throw TailscaleClientError.transport(transportError)
+    }
+  }
+
+  /// Before a unary retry: runs (or joins) a rediscovery if none has started
+  /// since the failed attempt read its configuration; otherwise shares the
+  /// outcome of the latest one. If it succeeded the retry uses the refreshed
+  /// configuration (the retry's entry check applies it if its owner has not
+  /// yet); if it failed, this request fails with the same error.
+  private func recover(afterSeeing rediscoveriesSeen: UInt64) async throws {
+    guard rediscoveriesStarted != rediscoveriesSeen, let latest = latestRediscovery else {
+      _ = try await singleFlightRediscovery()
+      return
+    }
+    do {
+      _ = try await latest.value
+    } catch let discError as LocalAPIDiscoveryError {
+      throw TailscaleClientError.discovery(discError)
     }
   }
 
