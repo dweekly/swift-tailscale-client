@@ -66,7 +66,7 @@ Nothing in this section has happened for 1.1.0 yet: nobody has been invited and 
 
 Follow-ups 1.1.0 surfaced, most important first. Each names what was observed.
 
-1. **Live trials not yet run.** A logged-in Tailscale 1.104+ daemon, a real daemon restart, the Mac App Store edition, and a sandboxed caller have not been exercised live; every 1.1.0 live run used a logged-in 1.102.2 daemon or never-logged-in disposable daemons ([release record](Documentation/releases/1.1.0.md)).
+1. **Live trials not yet run.** A logged-in Tailscale 1.104+ daemon with real peers, a real daemon restart, the Mac App Store edition, and a sandboxed caller have not been exercised live. Every 1.1.0 run on macOS used a logged-in 1.102.2 daemon or never-logged-in disposable daemons; the manual Headscale workflow on Linux logged a 1.104.7 daemon in, without peers ([release record](Documentation/releases/1.1.0.md)).
 2. **Model the notification fields that replaced `NetMap`** (`SelfChange`, `InitialStatus`, peer deltas) after capturing them from a logged-in 1.104+ daemon. Today a peer-change notification decodes with no modelled field, so a consumer cannot tell it from any other notification.
 3. **Suspended watches** (`NotifySuspendWhenBehind`, `resume-ipn-bus`) are unwrapped; upstream added them at the 152 pin ([COMPATIBILITY-152.md](Documentation/COMPATIBILITY-152.md)).
 4. **Expose which discovery mechanism found the daemon.** `TailscaleClientConfiguration` gives the endpoint but not whether it came from an override, a socket, `libproc`, or the standalone app's port file; the Peer Diagnostics sample can only print the endpoint kind.
@@ -84,6 +84,9 @@ Follow-ups 1.1.0 surfaced, most important first. Each names what was observed.
 16. **A multi-line streaming error body is joined into one line** because it passes through the line framer.
 17. **CLI parity for a DERP reply with no region code**: upstream prints `DERP()`, `tailscale-swift` prints `DERP(region <id>)`.
 18. **Decide whether DCO sign-off is enforced.** `Scripts/check-governance.py` fails on most 1.1 commits and on every merge commit; nothing in CI runs it.
+19. **Decide whether Linux gets a lane in required CI.** The package compiles and its unit suite passes in Swift 6.1 and 6.4 Linux containers, and the manual Headscale workflow passes on five daemon versions, but both run only by hand. A self-hosted Linux runner was deferred by the maintainer.
+20. **Give hermetic runs a place in the endpoint manifest.** `endpoints.json` records live evidence from the macOS lane and historical evidence from the pre-1.0 matrix; a current Headscale run has only a lane record, so write endpoints that only that workflow exercises cannot show that they passed.
+21. **Linux gaps found while reviving the build:** Thread Sanitizer does not run under Docker's default security profile, arm64 is untried, and `PeerDiagnosticsCore` imports Combine, so the sample's core does not build there.
 
 ## Stability & Support Tiers
 
