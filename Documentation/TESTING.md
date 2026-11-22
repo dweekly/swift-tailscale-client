@@ -118,14 +118,27 @@ The project has a self-hosted macOS runner with Tailscale installed and logged i
 
 The self-hosted runner gives one real macOS daemon; the version matrix and mutation-safe environment need hermetic infrastructure, and *hosted* macOS runners can't run tailscaled — **Linux runners can**. Design:
 
-- ubuntu runner boots **headscale** (open-source control plane) in a container
-- installs real `tailscaled`, runs it with `--tun=userspace-networking` (no root TUN needed)
+- an `ubuntu-26.04` runner starts a `swift:6.1` container (the package's declared minimum toolchain) and boots **headscale** (open-source control plane) inside it
+- installs real `tailscaled` from the pinned release tarball (or the unstable package track), runs it with `--tun=userspace-networking` (no root TUN needed)
 - mints a pre-auth key locally against headscale, brings the node up
-- runs the integration suite over the daemon's unix socket
+- runs `TailscaleClientIntegrationTests` over the daemon's unix socket with the write gate on, then `LoginLifecycleIntegrationTests` as a separate, final invocation
+- `Scripts/ci-test-report.py --lane integration_linux_headscale` fails a lane on any failure or on any skip it does not list by test name, reason and (for endpoints older daemons lack) track
 
 Why headscale rather than the real control plane: hermetic, no secrets, safe on fork PRs, free to create/destroy tailnets per run. A separate, optional monthly job with an ephemeral auth key (repo secret) can sanity-check against the production control plane.
 
-**Version matrix:** {stable, previous-stable (pinned), unstable} — implemented as the headscale matrix lanes. The workflow is manual-only and outside release qualification since 2026-09-19; its last successful run (2026-09-20) was on v0.12.0 code, and its one completed run on 1.x code (2026-09-22) failed to compile on Linux. Each release's notes state which daemon versions, if any, it was tested against.
+**Version matrix:**
+
+| Lane (track) | tailscaled | Headscale | Blocking |
+|---|---|---|---|
+| supported-floor | 1.76.0 | 0.28.0 | yes |
+| intermediate-lts | 1.84.0 | 0.29.7 | yes |
+| previous-stable | 1.102.5 (last 1.102.x) | 0.29.7 | yes |
+| stable | 1.104.7 | 0.29.7 | yes |
+| unstable | current unstable package | 0.29.7 | no (advisory drift signal) |
+
+Headscale 0.29 rejects clients older than Tailscale 1.80, so the 1.76.0 lane runs 0.28.0, the last Headscale release that accepts it. That lane also starts `tailscaled` with `TS_CONTROL_IS_PLAINTEXT_HTTP=1`: without it, 1.76 redials control over TLS on port 443 within two minutes of its previous dial (as the login test does after logout), which the plain-HTTP headscale never answers. Expected skips on every lane: no peers to ping, no exit-node suggestion, no OS DNS in userspace mode, no STUN responses, Darwin-only interface discovery (three tests), and query-feature (headscale does not implement it). The 1.76.0 and 1.84.0 lanes also skip the endpoints those daemons do not serve (debug-optional-features, peer-by-id, dns-config, services, cert-domains), and 1.76.0 skips usermetrics, which it serves only with `TS_DEBUG_USER_METRICS` set.
+
+The workflow is manual (`workflow_dispatch`) and outside release qualification since 2026-09-19; no other workflow calls it, and it is not a required check. Its last successful run on v0.12.0 code was 2026-09-20. On 1.x code it passed on all five lanes in [run 44980829674](https://github.com/dweekly/swift-tailscale-client/actions/runs/44980829674) (2026-11-22, commit `0a41f149e067`, tailscaled 1.76.0, 1.84.0, 1.102.5, 1.104.7, 1.105.361). That is an observation of those daemons under Headscale on Linux, not a statement that Linux is supported. Each release's notes state which daemon versions, if any, it was tested against.
 
 ### Testing against a specific daemon version (local, never in CI)
 

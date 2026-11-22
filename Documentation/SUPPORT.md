@@ -33,9 +33,9 @@ All public APIs require Swift 6 concurrency mode (`Sendable` annotations, actor 
 `swift-tailscale-client` interacts with an **already installed and running** `tailscaled` daemon over its LocalAPI.
 
 - **Compatibility target**: Tailscale `1.76.0` and later, subject to per-endpoint availability (`min_tailscaled` in [endpoints.json](endpoints.json)).
-- **Certified versions**: None. No daemon version matrix has been run against 1.x code.
+- **Certified versions**: None. The manual Headscale workflow passed on 1.x code once, on 2026-11-22 ([run 44980829674](https://github.com/dweekly/swift-tailscale-client/actions/runs/44980829674): tailscaled 1.76.0, 1.84.0, 1.102.5, 1.104.7, 1.105.361); it is outside release qualification.
 - **Real-daemon CI**: A read-only integration suite runs against the daemon installed on a self-hosted Mac (`.github/workflows/integration.yml`); for example tailscaled 1.102.2 on 2026-09-22. This is one version at a time and is not a required release check.
-- **Hermetic daemon lanes**: `.github/workflows/integration-linux.yml` (headscale with stable, previous-stable, and unstable tailscaled) is manual-only and outside release qualification.
+- **Hermetic daemon lanes**: `.github/workflows/integration-linux.yml` (headscale with supported-floor, intermediate-lts, previous-stable, stable, and unstable tailscaled) is manual-only and outside release qualification.
 - **Upstream drift**: A weekly job (`.github/workflows/upstream-drift.yml`) compares the endpoint manifest with current upstream `tailscale/tailscale` source. It does not run a daemon.
 
 ### Feature Availability and Older Daemons
