@@ -112,6 +112,10 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
   }
 
   private static func setupStandaloneDirectory(in dir: URL, port: UInt16, token: String) throws {
+    #if !os(macOS)
+      // LocalAPIDiscovery reads the standalone ipnport directory only on macOS.
+      throw XCTSkip("Rediscovery through the macOS standalone ipnport directory is macOS-only")
+    #endif
     let ipnportURL = dir.appendingPathComponent("ipnport")
     try? FileManager.default.removeItem(at: ipnportURL)
     try FileManager.default.createSymbolicLink(
@@ -126,6 +130,10 @@ final class DiscoveryRecoveryStressChallengerTests: XCTestCase {
   func test150ConcurrentRequestsArrivingWhileRediscoveryIsInFlightWaitAndAvoidStaleAttempt()
     async throws
   {
+    #if !os(macOS)
+      // Skip before the expectation below exists; skipping after it fails the test.
+      throw XCTSkip("Rediscovery through the macOS standalone ipnport directory is macOS-only")
+    #endif
     let transport = ScriptedStressTransport()
     let tracker = AtomicProbeTracker()
 
