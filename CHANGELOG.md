@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-21
+
 **Upgrading from 1.0.0.** No code change is needed. Without one, watches open on Tailscale 1.104 and later (the client drops the two options those daemons reject), `PingType.peerAPI` pings get an answer, `PingResult.isDirect` is `true` only for a direct path, a rejected watch reports its error at once, and a watch over loopback (the standalone and Mac App Store Tailscale apps) stays open through quiet periods and, with a reconnect policy, follows a daemon that restarts on a new port. To adopt: read `PingResult.path` to learn how a ping reached a peer, and consider subscribing with the new watch options (`.peerChanges`, `.noNetMap`) and re-reading `status()` on each notification, as the monitoring recipe and the Peer Diagnostics sample do. `PingResult.path`, `PingPath`, and the four new `NotifyWatchOpt` options are new in 1.1.0.
 
 ### Added
@@ -82,6 +84,11 @@ All notable changes to this project will be documented in this file. The format 
   rediscovers a daemon that restarted on a new port. Opening a watch now
   always throws `TailscaleClientError` for transport failures, and stream body
   errors are reported the same way as for other requests.
+- Concurrent requests against a restarting or stopped daemon share a single
+  rediscovery. A request whose connection failed after another request had
+  already started rediscovering, including one that waited on a rediscovery
+  that failed, takes that rediscovery's result (the refreshed endpoint, or the
+  same `TailscaleClientError.discovery`) instead of running another.
 - `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
   or, with a reconnect policy, on its first successful reconnect: the stream
   continues, the line is reported through `onUndecodableLine`, and genuine

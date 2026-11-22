@@ -1,6 +1,6 @@
 # Roadmap
 
-**1.0.0 is available. 1.1.0, for Mac developers who need to tell whether a peer is reachable through the user's existing Tailscale installation, is built and awaiting the maintainer's tag decision.** A backup app, for example, could show when it last reached the backup host, how the ping traveled, and when to try again. A successful peer ping describes the network path. The app still needs its own check for the backup service.
+**1.1.0 is the current release. It is for Mac developers who need to tell whether a peer is reachable through the user's existing Tailscale installation.** A backup app, for example, could show when it last reached the backup host, how the ping traveled, and when to try again. A successful peer ping describes the network path. The app still needs its own check for the backup service.
 
 The supported runtime is macOS 13+. iOS, tvOS, and watchOS receive build checks. Linux is unqualified. Network Weather (NWX) supplied a real adapter smoke test for 1.0. See the [smoke test results](Documentation/releases/1.0.0.md#4-nwx-adapter-smoke--2026-09-19), [changelog](CHANGELOG.md), and [original 1.0 plan](Documentation/PLAN-1.0.md).
 
@@ -11,7 +11,7 @@ This unofficial, MIT-licensed package speaks LocalAPI directly from Swift. Tails
 On a Mac with Swift 6.1 or later, start with a tagged checkout:
 
 ```sh
-git clone --branch v1.0.0 --depth 1 https://github.com/dweekly/swift-tailscale-client.git
+git clone --branch v1.1.0 --depth 1 https://github.com/dweekly/swift-tailscale-client.git
 cd swift-tailscale-client
 swift test --package-path Examples/Recipes --filter MockedClientTests/testStatusAgainstAFixture
 ```
@@ -28,7 +28,7 @@ If a step fails, include the command, macOS version, Tailscale install method, a
 
 ## 1.1.0
 
-1.1.0 contains what the [1.1.0 release plan](Documentation/PLAN-1.1.0.md) set out to build. The [changelog](CHANGELOG.md#unreleased) lists every change, and the [1.1.0 release record](Documentation/releases/1.1.0.md) says what was run to qualify it and what remains untested.
+1.1.0 contains what the [1.1.0 release plan](Documentation/PLAN-1.1.0.md) set out to build. The [changelog](CHANGELOG.md#110---2026-11-21) lists every change, and the [1.1.0 release record](Documentation/releases/1.1.0.md) says what was run to qualify it and what remains untested.
 
 | Deliverable | What it is |
 |---|---|
@@ -37,7 +37,7 @@ If a step fails, include the command, macOS version, Tailscale install method, a
 | Watches on current daemons | Watches open on Tailscale 1.104 and later, report a rejection at once, stay open through quiet periods on loopback, and rediscover a daemon that restarted. |
 | Inspectable evidence | Ping fixtures captured from a real daemon with provenance; an endpoint manifest that separates synthetic, source-checked, and live-observed evidence; and a script that runs disposable daemons of any upstream version. |
 
-To try it from a checkout of the candidate commit:
+To try it from a checkout of the `v1.1.0` tag:
 
 ```sh
 swift run --package-path Examples/PeerDiagnostics PeerDiagnostics                    # window, fixture mode

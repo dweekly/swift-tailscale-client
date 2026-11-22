@@ -11,7 +11,7 @@ Quick orientation:
 - This package talks to an **already-installed** tailscaled via the LocalAPI.
   It is not an embedded Tailscale node (that's TailscaleKit) and not the
   api.tailscale.com admin API.
-- Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")`,
+- Dependency: `.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.1.0")`,
   product `TailscaleClient`. Test with the `TailscaleClientMocks` product.
 - Start from the sample: `swift run --package-path Examples/PeerDiagnostics PeerDiagnostics`
   (fixture mode, no Tailscale needed; **Live** is an explicit, read-only switch). It shows

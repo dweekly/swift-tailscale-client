@@ -28,7 +28,7 @@ Requires Swift 6.1 or later (`swift-tools-version: 6.1` in `Package.swift`).
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.0.0")
+.package(url: "https://github.com/dweekly/swift-tailscale-client.git", from: "1.1.0")
 // app target dependency:
 .product(name: "TailscaleClient", package: "swift-tailscale-client")
 // test target dependencies (see "Testing an app that uses this package"):
