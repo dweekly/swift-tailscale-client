@@ -211,7 +211,12 @@ import XCTest
 
     func testUnaryThrowsOnOversizedResponseBodyOverSocket() async throws {
       let path = NSTemporaryDirectory() + "huge-unary-\(UUID().uuidString.prefix(8)).sock"
-      let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      #if canImport(Glibc)
+        // Glibc imports SOCK_STREAM as the `__socket_type` enum, not Int32.
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+      #else
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      #endif
       guard fd >= 0 else { throw POSIXError(.EIO) }
       defer {
         close(fd)
@@ -255,7 +260,7 @@ import XCTest
           #if canImport(Darwin)
             let written = write(clientFD, chunk, chunk.count)
           #else
-            let written = send(clientFD, chunk, chunk.count, MSG_NOSIGNAL)
+            let written = send(clientFD, chunk, chunk.count, Int32(MSG_NOSIGNAL))
           #endif
           if written <= 0 { break }
         }

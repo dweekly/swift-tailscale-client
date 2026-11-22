@@ -95,3 +95,28 @@ extension XCTestCase {
     return Data()
   }
 }
+
+#if canImport(Darwin) || canImport(Glibc)
+  /// The highest descriptor number, exclusive, that descriptor-counting tests inspect.
+  private let inspectedDescriptorLimit: Int32 = 4096
+
+  /// Counts this process's open socket descriptors.
+  ///
+  /// Descriptor-leak tests compare a count against a baseline taken earlier in
+  /// the test. Counting every descriptor makes that baseline unstable, because
+  /// the Swift runtime opens descriptors of its own on first use: on Linux a
+  /// `timerfd` appears the first time a task sleeps. The transports and the
+  /// fault server only ever open sockets, so a leaked connection is a leaked
+  /// socket, and sockets are what these tests count.
+  func openSocketDescriptorCount() -> Int {
+    let limit = min(getdtablesize(), inspectedDescriptorLimit)
+    var count = 0
+    for descriptor in 0..<limit {
+      var info = stat()
+      if fstat(descriptor, &info) == 0, (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFSOCK) {
+        count += 1
+      }
+    }
+    return count
+  }
+#endif

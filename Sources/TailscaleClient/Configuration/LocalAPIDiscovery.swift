@@ -454,7 +454,12 @@ public struct LocalAPIDiscovery {
     private static func probeUnixSocket(
       path: String
     ) -> (isAlive: Bool, error: LocalAPIDiscoveryError?) {
-      let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      #if canImport(Glibc)
+        // Glibc imports SOCK_STREAM as the `__socket_type` enum, not Int32.
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+      #else
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+      #endif
       guard fd >= 0 else {
         return (false, nil)
       }

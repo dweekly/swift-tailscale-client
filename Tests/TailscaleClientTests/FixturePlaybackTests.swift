@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 David E. Weekly
 
-import CryptoKit
 import Foundation
 import XCTest
 
 @testable import TailscaleClient
 @testable import TailscaleClientMocks
+
+#if canImport(CryptoKit)
+  import CryptoKit
+#endif
 
 public typealias ServicesResponse = [String: ServiceDetails]
 public typealias ProfilesResponse = [LoginProfile]
@@ -37,8 +40,10 @@ final class FixturePlaybackTests: XCTestCase {
       for (_, ep) in manifest.endpoints {
         let baseName = ep.file.replacingOccurrences(of: ".json", with: "")
         let fileData = try localAPIFixture(version: version, endpoint: baseName)
-        let hash = SHA256.hash(data: fileData).map { String(format: "%02x", $0) }.joined()
-        XCTAssertEqual(hash, ep.sha256, "Checksum mismatch for \(version)/\(ep.file)")
+        #if canImport(CryptoKit)
+          let hash = SHA256.hash(data: fileData).map { String(format: "%02x", $0) }.joined()
+          XCTAssertEqual(hash, ep.sha256, "Checksum mismatch for \(version)/\(ep.file)")
+        #endif
 
         // Verify valid JSON
         XCTAssertNoThrow(
@@ -47,6 +52,10 @@ final class FixturePlaybackTests: XCTestCase {
         )
       }
     }
+    #if !canImport(CryptoKit)
+      throw XCTSkip(
+        "Fixture JSON validated; SHA-256 checksums need CryptoKit, which is Apple-only")
+    #endif
   }
 
   // MARK: - 2. Model Decoding Across Supported Versions

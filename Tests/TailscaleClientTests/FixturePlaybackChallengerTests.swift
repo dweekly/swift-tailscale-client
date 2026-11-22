@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 David E. Weekly
 
-import CryptoKit
 import Foundation
 import XCTest
 
 @testable import TailscaleClient
 @testable import TailscaleClientMocks
+
+#if canImport(CryptoKit)
+  import CryptoKit
+#endif
 
 final class FixturePlaybackChallengerTests: XCTestCase {
   private let supportedVersions = ["1.76.0", "1.84.0", "1.96.4", "1.98.0"]
