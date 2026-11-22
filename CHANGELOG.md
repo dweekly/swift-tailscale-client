@@ -105,6 +105,13 @@ All notable changes to this project will be documented in this file. The format 
 - The recovery suggestion for `TailscaleTransportError.socketNotFound` no
   longer says the client discovers the Mac App Store app's loopback API on its
   own; that discovery is opt-in (`allowMacOSAppStoreDiscovery: true`).
+- `userMetrics()` throws `endpointUnavailable` on Tailscale 1.76, which answers
+  the endpoint with 403 "usermetrics debug flag not enabled". It threw
+  `permissionDenied`, contrary to its documentation. Any other 403 still
+  throws `permissionDenied`.
+- The package compiles on Linux again: the Unix-socket liveness probe passes
+  `SOCK_STREAM` as `Int32` on Glibc. Linux remains unqualified; macOS 13+ is
+  the supported runtime.
 - The example packages (`Examples/StatusDemo`, `Examples/Recipes`) build from
   a checkout in any folder, including a git worktree; before, SwiftPM stopped
   with `unknown package 'swift-tailscale-client'` unless the folder had the
@@ -152,6 +159,11 @@ All notable changes to this project will be documented in this file. The format 
   `capture-fixtures.py --capture`, which read live status and then wrote
   synthetic fixtures, is removed; `Scripts/capture-ping-fixture.py` is the
   capture path.
+- The manual Headscale workflow passes again. One run observed logged-in
+  tailscaled 1.76.0, 1.84.0, 1.102.5, 1.104.7, and unstable 1.105 under
+  Headscale 0.29.7 (0.28.0 for 1.76.0), including the default watch's retry
+  on 1.104. The unit suite also passes in Swift 6.1 and 6.4 Linux containers.
+  Neither runs in required CI, and Linux stays outside release qualification.
 - `Documentation/TESTING.md` explains how to test against a specific daemon
   version with `Scripts/disposable-tailscaled.sh`, which builds and runs a
   throwaway, never-logged-in userspace `tailscaled` of any upstream tag.
