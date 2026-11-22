@@ -104,7 +104,7 @@ These properties are enforced by the compiler, by code, or by the unit test suit
 
 ### 4.3 Bounded Resource Allocation & DoS Defense
 - **HTTP Head Limits**: `HTTPHeadBuffer` unconditionally enforces a 64 KiB ceiling before parsing headers, preventing memory exhaustion attacks from misbehaving sockets.
-- **Message Framing**: Strict unary response validation rejects truncated responses where byte counts do not match `Content-Length`. Chunked streams require full completion sequences before termination.
+- **Message Framing**: Strict unary response validation rejects truncated responses where byte counts do not match `Content-Length`. A streaming response body ends where its framing says: after `Content-Length` bytes (zero for 204 and 304), at the terminal chunk when chunked, and at connection close only when neither is present; the Unix socket is then closed without waiting for the daemon. A streaming body shorter than its `Content-Length`, or a chunked stream without its terminal chunk, fails with a typed `malformedResponse` error.
 - **Streaming Buffers**: `watchIPNBusEvents` buffers events within `StreamBufferBounds` (default 256 events and 16 MiB, `.reportGap`). When a consumer falls behind, the client emits `.stateGap(reason: "buffer_overflow")` or, with `.fail`, throws `streamOverflow`, rather than growing the buffer or dropping events silently. See `Documentation/SOAK-VERIFICATION.md`.
 - **Backoff & Jitter**: Stream reconnects use exponential backoff (default 100 ms doubling to a 10 s cap, ±20% jitter); errors classified as fatal stop retrying.
 

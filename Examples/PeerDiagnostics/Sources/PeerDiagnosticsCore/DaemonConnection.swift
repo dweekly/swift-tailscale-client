@@ -44,6 +44,8 @@ public let peerDiagnosticsWatchOptions: NotifyWatchOpt = [
 /// A ``DaemonConnection`` backed by the real Tailscale daemon through `TailscaleClient`.
 public struct LiveDaemon: DaemonConnection {
   /// How long any single request to the daemon may take, including one ping.
+  /// It bounds each unary request (status, ping) and the opening of the watch, not how long
+  /// an established watch may stay quiet.
   ///
   /// Slightly longer than ``PingBurstPolicy/perPingTimeout`` on purpose: the view model's
   /// own timeout decides when a ping counts as unanswered, and this deadline guarantees the

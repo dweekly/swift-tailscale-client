@@ -254,6 +254,72 @@ final class PeerDiagnosticsModelTests: XCTestCase {
     XCTAssertEqual(model.connection, .connected)
   }
 
+  /// A refresh scheduled before the watch dropped must not make the list look current.
+  func testPendingRefreshAfterDisconnectKeepsPeerListStale() async {
+    makeModel(debounceIsImmediate: false)
+    await startConnected()
+    let daemon = self.daemon!
+    let sleeper = self.sleeper!
+    let debounce = self.debounce
+    await daemon.emit(.notification(IPNNotify()))
+    await waitUntil("refresh pending") { await sleeper.waitingCount(debounce) == 1 }
+    clock.advance(seconds: 5)
+    let lostAt = clock.now
+    await daemon.emit(.lifecycle(.disconnected(underlying: "server_closed")))
+    await waitUntil("disconnected") { model.connection == .disconnected }
+    let peerC = node("nC", "example-relay", ip: "100.64.0.4")
+    await daemon.setStatus(tailnet(peers: [peerA, peerB, peerC]))
+    clock.advance(seconds: 5)
+    await sleeper.release(debounce)
+    await waitUntil("read applied") { model.peers.count == 3 }
+    XCTAssertEqual(model.peerListFreshness, .stale(since: lostAt))
+
+    // Current again only after the watch reconnects and a later read succeeds.
+    await daemon.emit(.lifecycle(.connected))
+    await waitUntil("reconnect refresh pending") { await sleeper.waitingCount(debounce) == 1 }
+    await sleeper.release(debounce)
+    await waitUntil("current again") { model.peerListFreshness == .current(asOf: clock.now) }
+  }
+
+  /// The same for a watch that ended for good.
+  func testPendingRefreshAfterTerminalWatchFailureKeepsPeerListStale() async {
+    makeModel(debounceIsImmediate: false)
+    await startConnected()
+    let daemon = self.daemon!
+    let sleeper = self.sleeper!
+    let debounce = self.debounce
+    await daemon.emit(.notification(IPNNotify()))
+    await waitUntil("refresh pending") { await sleeper.waitingCount(debounce) == 1 }
+    clock.advance(seconds: 5)
+    let lostAt = clock.now
+    await daemon.endWatch(throwing: TailscaleClientError.streamOverflow)
+    await waitUntil("unavailable") {
+      if case .unavailable = model.connection { return true }
+      return false
+    }
+    let before = await daemon.statusCalls
+    await sleeper.release(debounce)
+    await waitUntil("read done") { await daemon.statusCalls == before + 1 }
+    try? await Task.sleep(for: .milliseconds(20))
+    XCTAssertEqual(model.peerListFreshness, .stale(since: lostAt))
+  }
+
+  /// A reply measured while the watch is down is shown as stale from the moment it arrived.
+  func testPingCompletingWhileDisconnectedIsStale() async throws {
+    makeModel()
+    await daemon.script(ip: "100.64.0.2", [.reply(directReply)])
+    await startConnected()
+    model.select(peerID: peerA.id)
+    await daemon.emit(.lifecycle(.retrying(attempt: 1, delay: .milliseconds(100))))
+    await waitUntil("reconnecting") { model.connection == .reconnecting(attempt: 1) }
+    clock.advance(seconds: 3)
+    model.pingSelectedPeer()
+    await waitUntil("burst ended") { !model.isPinging && model.pingResult != nil }
+    let outcome = try XCTUnwrap(model.pingResult)
+    XCTAssertEqual(outcome.measuredAt, clock.now)
+    XCTAssertEqual(model.pingFreshness, .stale(since: outcome.measuredAt))
+  }
+
   func testDebounceCoalescesNotificationsIntoOneStatusRead() async throws {
     makeModel(debounceIsImmediate: false)
     await startConnected()

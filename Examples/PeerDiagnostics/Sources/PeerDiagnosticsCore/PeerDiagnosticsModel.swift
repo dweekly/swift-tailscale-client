@@ -286,10 +286,28 @@ public final class PeerDiagnosticsModel: ObservableObject {
     peers = status.peers.values.map(PeerSummary.init).sorted {
       $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
     }
-    peerListFreshness = .current(asOf: environment.now())
+    // The list is current only while the watch can report changes to it. A read that lands
+    // while the watch is down updates the data but leaves it stale; it becomes current again
+    // with the first successful read after the watch reconnects.
+    if isWatching {
+      peerListFreshness = .current(asOf: environment.now())
+    } else if !isStale(peerListFreshness) {
+      peerListFreshness = .stale(since: environment.now())
+    }
     if let selectedPeerID, !peers.contains(where: { $0.id == selectedPeerID }) {
       select(peerID: nil)
     }
+  }
+
+  /// Whether the watch is open, or still opening for the first time, so a profile change
+  /// or a peer change would reach the model.
+  private var isWatching: Bool {
+    connection == .connecting || connection == .connected
+  }
+
+  private func isStale(_ freshness: Freshness) -> Bool {
+    if case .stale = freshness { return true }
+    return false
   }
 
   private func fail(_ reason: String) {
@@ -370,8 +388,16 @@ public final class PeerDiagnosticsModel: ObservableObject {
 
   private func record(_ outcome: PingOutcome) {
     pingResult = outcome
-    pingFreshness = .current(asOf: outcome.measuredAt)
     expiryTask?.cancel()
+    expiryTask = nil
+    // A reply that arrives while the watch is down is a real measurement, but the model
+    // could not notice a profile change that would make it belong to another identity, so
+    // it is shown as stale from the moment it was measured.
+    guard isWatching else {
+      pingFreshness = .stale(since: outcome.measuredAt)
+      return
+    }
+    pingFreshness = .current(asOf: outcome.measuredAt)
     let token = burst
     let maximumAge = PingBurstPolicy.resultMaximumAge
     expiryTask = Task { [weak self] in

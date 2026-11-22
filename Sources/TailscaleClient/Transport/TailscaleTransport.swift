@@ -213,6 +213,11 @@ extension TailscaleTransportError: LocalizedError {
 /// - TCP loopback and custom URLs use `URLSession`
 ///
 /// The transport automatically injects required headers including `Tailscale-Cap` and optional authentication.
+///
+/// For a streaming request over URLSession, `requestTimeout` bounds the wait
+/// for the response head only; an established stream is not ended for being
+/// quiet. The session's `timeoutIntervalForResource` (7 days for
+/// `URLSession.shared`) still ends a stream that has been open that long.
 public struct URLSessionTailscaleTransport: TailscaleTransport {
   private let session: URLSession
 
@@ -263,10 +268,20 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
       // Darwin-only anyway.
       throw TailscaleTransportError.unimplemented
     #else
+      // URLSession applies a request's timeoutInterval as an idle timeout for
+      // the whole load, so silence on an established stream would end it.
+      // The request therefore carries a very long interval, and
+      // `requestTimeout` bounds only the wait for the response head, below.
       let urlRequest = try buildURLRequest(
-        for: enrich(request: request, configuration: configuration), configuration: configuration)
+        for: enrich(request: request, configuration: configuration), configuration: configuration,
+        timeoutInterval: Self.streamingIdleTimeoutInterval)
 
-      let (bytes, response) = try await session.bytes(for: urlRequest)
+      let session = self.session
+      let (bytes, response) = try await Self.withResponseHeadDeadline(
+        configuration.requestTimeout
+      ) {
+        try await session.bytes(for: urlRequest)
+      }
       guard let http = response as? HTTPURLResponse else {
         throw TailscaleTransportError.networkFailure(underlying: URLError(.badServerResponse))
       }
@@ -315,7 +330,8 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
     request: TailscaleRequest, configuration: TailscaleClientConfiguration
   ) async throws -> TailscaleResponse {
     let urlRequest = try buildURLRequest(
-      for: enrich(request: request, configuration: configuration), configuration: configuration)
+      for: enrich(request: request, configuration: configuration), configuration: configuration,
+      timeoutInterval: configuration.requestTimeout.map(Self.seconds))
     do {
       let (data, response) = try await session.data(for: urlRequest)
       guard let http = response as? HTTPURLResponse else {
@@ -333,8 +349,42 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
     }
   }
 
+  /// Idle timeout given to URLSession for a streaming request: `Int32.max`
+  /// seconds (about 68 years), so URLSession does not end a quiet stream. A
+  /// request's own interval takes precedence over the session's
+  /// `timeoutIntervalForRequest`; the session's `timeoutIntervalForResource`
+  /// (7 days for `URLSession.shared`) still limits the total life of one
+  /// stream.
+  static let streamingIdleTimeoutInterval = TimeInterval(Int32.max)
+
+  static func seconds(_ duration: Duration) -> TimeInterval {
+    Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+  }
+
+  /// Races `operation` (which returns once the response head arrives)
+  /// against `timeout`, throwing `URLError(.timedOut)` (the error URLSession
+  /// throws for an expired request timeout) if the deadline elapses first.
+  /// `nil` waits without a deadline.
+  static func withResponseHeadDeadline<T: Sendable>(
+    _ timeout: Duration?,
+    _ operation: @escaping @Sendable () async throws -> T
+  ) async throws -> T {
+    guard let timeout else { return try await operation() }
+    return try await withThrowingTaskGroup(of: T.self) { group in
+      group.addTask { try await operation() }
+      group.addTask {
+        try await Task.sleep(for: timeout)
+        throw URLError(.timedOut)
+      }
+      guard let result = try await group.next() else { throw URLError(.timedOut) }
+      group.cancelAll()
+      return result
+    }
+  }
+
   private func buildURLRequest(
-    for request: TailscaleRequest, configuration: TailscaleClientConfiguration
+    for request: TailscaleRequest, configuration: TailscaleClientConfiguration,
+    timeoutInterval: TimeInterval?
   ) throws -> URLRequest {
     let url: URL
     switch configuration.endpoint {
@@ -364,9 +414,8 @@ public struct URLSessionTailscaleTransport: TailscaleTransport {
     var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = request.method
     urlRequest.httpBody = request.body
-    if let timeout = configuration.requestTimeout {
-      urlRequest.timeoutInterval =
-        Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
+    if let timeoutInterval {
+      urlRequest.timeoutInterval = timeoutInterval
     }
     for (key, value) in request.additionalHeaders {
       urlRequest.setValue(value, forHTTPHeaderField: key)

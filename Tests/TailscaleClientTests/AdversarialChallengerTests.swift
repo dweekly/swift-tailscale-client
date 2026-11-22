@@ -518,9 +518,14 @@ final class AdversarialChallengerTests: XCTestCase {
         default: return .unsignedInteger(UInt64.random(in: (UInt64(Int64.max) + 1)...UInt64.max))
         }
       case 4:
-        // Double (normalized to avoid NaN / Inf)
+        // Double (normalized to avoid NaN / Inf). JSON text has one number
+        // type, so a double with no fractional part is written as "-446223"
+        // and decodes as `.integer`. Generated doubles keep a fractional part
+        // so the round-trip comparison is exact; the integral case has its own
+        // test below.
         let d = Double.random(in: -1000000.0...1000000.0)
-        return .double(Double(round(10000 * d) / 10000))
+        let rounded = Double(round(10000 * d) / 10000)
+        return .double(rounded == rounded.rounded() ? rounded + 0.5 : rounded)
       default:
         let chars = ["a", "b", " ", "🚀", "中", "\n", "\t", "\"", "\\", ""]
         let str = (0..<Int.random(in: 0...10)).map { _ in chars.randomElement()! }.joined()
@@ -547,6 +552,14 @@ final class AdversarialChallengerTests: XCTestCase {
       }
       return .object(dict)
     }
+  }
+
+  func testIntegralDoubleRoundTripsAsTheSameNumber() throws {
+    // The value that once failed the generative test: an integral double is
+    // encoded without a fractional part and decodes as an integer equal to it.
+    let encoded = try JSONEncoder().encode(["root": JSONValue.double(-446223.0)])
+    let decoded = try JSONDecoder().decode([String: JSONValue].self, from: encoded)
+    XCTAssertEqual(decoded["root"], .integer(-446223))
   }
 
   func testGenerativeJSONValueRoundTripStress() throws {

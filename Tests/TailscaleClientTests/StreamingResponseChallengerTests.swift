@@ -441,7 +441,7 @@ final class StreamingResponseChallengerTests: XCTestCase {
     #if canImport(Darwin) || os(Linux)
       let raw =
         "HTTP/1.1 500 Internal Server Error\r\n"
-        + "Content-Length: 14\r\n\r\n"
+        + "Content-Length: 15\r\n\r\n"
         + "backend crashed"
 
       let server = try FaultUnixServer(behaviors: [
@@ -486,7 +486,7 @@ final class StreamingResponseChallengerTests: XCTestCase {
     #if canImport(Darwin) || os(Linux)
       let raw =
         "HTTP/1.1 503 Service Unavailable\r\n"
-        + "Content-Length: 12\r\n\r\n"
+        + "Content-Length: 13\r\n\r\n"
         + "over capacity"
 
       let server = try FaultUnixServer(behaviors: [

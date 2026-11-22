@@ -128,6 +128,11 @@ actor ScriptedDaemon: DaemonConnection {
 
   private func watchEnded() { activeWatches -= 1 }
 
+  /// Ends the most recently opened watch with `error`, as a failure the library gave up on.
+  func endWatch(throwing error: any Error & Sendable) {
+    watchContinuations.last?.finish(throwing: error)
+  }
+
   /// Sends an event on the most recently opened watch.
   func emit(_ event: IPNBusEvent) {
     watchContinuations.last?.yield(event)
