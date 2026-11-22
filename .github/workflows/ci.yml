@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload test report and log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report-test_macos
           path: ${{ runner.temp }}/test-reports/
@@ -115,7 +115,7 @@ jobs:
 
   docs-consistency:
     name: Docs consistency
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -230,7 +230,7 @@ jobs:
 
       - name: Upload test report and log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report-test_tsan
           path: ${{ runner.temp }}/test-reports/
@@ -274,7 +274,7 @@ jobs:
 
   all-required:
     name: All Required Checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     if: always()
     needs:
