@@ -433,19 +433,34 @@ final class WatchReconnectRecoveryTests: XCTestCase {
 
   func testWatchIPNBusStillThrowsStreamOverflowWhenBufferExceeded() async throws {
     // watchIPNBus uses `.throwing` bounds (256 events); overflow is raised by the queue itself.
-    let lines = (1...400).map { MockStreamEvent.jsonLine("{\"Version\":\"1.\($0)\"}") }
-    let transport = MockTransport.scriptedStream(lines)
+    // The consumer reads nothing until the client has stopped reading the body, which it
+    // does once the queue has overflowed, so the outcome does not depend on scheduling.
+    let lineCount = 400
+    let bodyReleased = expectation(description: "client stopped reading the body")
+    let transport = MockTransport.streaming { _, _ in
+      let body = AsyncThrowingStream<Data, Error> { continuation in
+        for index in 1...lineCount {
+          continuation.yield(Data("{\"Version\":\"1.\(index)\"}".utf8))
+        }
+        // The stream stays open: only the client letting go of it ends it.
+        continuation.onTermination = { _ in bodyReleased.fulfill() }
+      }
+      return StreamingResponse(statusCode: 200, body: body)
+    }
     let client = TailscaleClient(
       configuration: TailscaleClientConfiguration(
         endpoint: .loopback(host: "127.0.0.1", port: 41310), authToken: "t",
         transport: transport))
 
     let stream = try await client.watchIPNBus()
-    var iterator = stream.makeAsyncIterator()
-    _ = try await iterator.next()
-    try await Task.sleep(for: .milliseconds(200))
+    let waited = await XCTWaiter().fulfillment(of: [bodyReleased], timeout: 10)
+    guard waited == .completed else {
+      // Without an overflow the body stays open, so iterating would never return.
+      return XCTFail("The client kept reading past the buffer bound: no overflow occurred")
+    }
+
     do {
-      while try await iterator.next() != nil {}
+      for try await _ in stream {}
       XCTFail("Expected streamOverflow")
     } catch TailscaleClientError.streamOverflow {
       // expected
