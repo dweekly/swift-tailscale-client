@@ -61,7 +61,8 @@ code that depends on these behavior changes:
   In 1.0 it was also `true` for TSMP, ICMP, peerAPI and failed pings. Read
   `PingResult.path` to see how a reply traveled.
 - **Watches on Tailscale 1.104 and later.** Those daemons reject
-  `.initialNetMap` and `.rateLimit` (both part of `NotifyWatchOpt.default`).
+  `.initialNetMap` (part of `NotifyWatchOpt.allInitial`) and `.rateLimit`
+  (part of `NotifyWatchOpt.default`).
   The client retries without them, so the watch opens, but no `NetMap` arrives.
   Code that reads peers from `IPNNotify.netMap` gets nothing there. Subscribe
   with `[.initialState, .peerChanges, .noNetMap]` and re-read `status()` on
