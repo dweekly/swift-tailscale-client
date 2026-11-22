@@ -51,6 +51,28 @@ are build-verified only — there is no reachable daemon on those devices. Linux
 is unqualified: it is not built or tested in required CI. Swift 6 strict
 concurrency throughout.
 
+## Upgrading from 1.0
+
+Change the pin to `from: "1.1.0"`. Code written against 1.0 compiles unchanged:
+the public API baseline from `v1.0.0` is intact, with no allowed breaks. Check
+code that depends on these behavior changes:
+
+- **`PingResult.isDirect`** is `true` only when a disco ping took a direct path.
+  In 1.0 it was also `true` for TSMP, ICMP, peerAPI and failed pings. Read
+  `PingResult.path` to see how a reply traveled.
+- **Watches on Tailscale 1.104 and later.** Those daemons reject
+  `.initialNetMap` and `.rateLimit` (both part of `NotifyWatchOpt.default`).
+  The client retries without them, so the watch opens, but no `NetMap` arrives.
+  Code that reads peers from `IPNNotify.netMap` gets nothing there. Subscribe
+  with `[.initialState, .peerChanges, .noNetMap]` and re-read `status()` on
+  each notification instead (gotcha 4 and the Peer Diagnostics sample).
+- **Fixes with no action needed:** `PingType.peerAPI` pings get an answer; a
+  rejected watch throws its status error at once instead of hanging; loopback
+  watches (the standalone and App Store apps) stay open through quiet periods
+  and, with a reconnect policy, follow a daemon that restarts on a new port.
+
+[`CHANGELOG.md`](../CHANGELOG.md#110---2026-11-21) lists every change.
+
 ## Start with the sample app
 
 The sample needs a checkout of this repository, on macOS 13+ with Swift 6.1+:
