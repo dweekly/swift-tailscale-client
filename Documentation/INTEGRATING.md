@@ -22,6 +22,37 @@ over its unix socket / loopback port. It is the Swift analog of Go's
 If Tailscale is not installed on the target machine, this package cannot do
 anything — it has no embedded node.
 
+## Start with the sample app
+
+From a checkout, on macOS 13+ with Swift 6.1+:
+
+```bash
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics             # window
+swift run --package-path Examples/PeerDiagnostics PeerDiagnostics --fixture --print  # headless
+```
+
+[`Examples/PeerDiagnostics`](../Examples/PeerDiagnostics) lists peers and shows how
+a ping reached the selected one. Copy its patterns:
+
+- **Fixture versus live.** It starts in fixture mode: a built-in, made-up
+  tailnet behind the same `DaemonConnection` protocol as the real daemon, so it
+  runs and tests with no Tailscale installed. Live mode is an explicit switch
+  (the window's **Live** control, or `--live`) and is read-only: `status()`,
+  disco `ping(ip:type:)` to the selected peer, and one IPN bus watch.
+- **Discovery consent.** Finding the Mac App Store edition is a separate,
+  default-off toggle that warns about the macOS permission prompt before it is
+  used (gotcha 1 below).
+- **Reading a ping.** It classifies each reply with `PingResult.path`, sends a
+  bounded burst (up to 5 pings, 1 s apart, 5 s timeout each, stopping at the
+  first `.direct`), calls only a direct ending the settled path, labels any
+  other last reply as one measurement, and shows each result's time and
+  staleness (gotcha 7 below).
+- **Keeping peers current.** It re-reads `status()` on every notification,
+  reconnect, and state gap (gotcha 4 below).
+
+The DocC article `RecipePeerDiagnostics` quotes the compiled code for each
+pattern, and the sample's README explains every label in the window.
+
 ## Add the dependency
 
 ```swift

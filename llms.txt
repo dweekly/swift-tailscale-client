@@ -14,9 +14,10 @@ IPN bus: Tailscale 1.104+ rejects the `initialNetMap`/`rateLimit` watch options 
 ## Docs
 
 - [Integration guide (canonical)](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/INTEGRATING.md): usage patterns, gotchas, testing with mocks
+- [Peer Diagnostics sample](https://github.com/dweekly/swift-tailscale-client/tree/main/Examples/PeerDiagnostics): runnable SwiftUI app with a fixture mode (no Tailscale needed) and a read-only live mode; shows ping-path classification, a bounded ping burst, staleness, and App Store discovery consent
 - Ping path (1.1.0+): `PingResult.path` is `nil` on error, else `.peerRelay`, `.derp`, `.direct`, or `.unknown` (TSMP/ICMP/peerAPI pings); see gotcha 7 in the integration guide
 - [Endpoint manifest (JSON)](https://raw.githubusercontent.com/dweekly/swift-tailscale-client/main/Documentation/endpoints.json): machine-readable per-endpoint facts — symbol, read/write risk, feature gate, minimum tailscaled version, stability
-- [API reference (DocC)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/): full symbol documentation and articles (Getting Started, Streaming, Writing Safely, Login Flow, Serve & Funnel)
+- [API reference (DocC)](https://dweekly.github.io/swift-tailscale-client/documentation/tailscaleclient/): full symbol documentation and articles (Getting Started, Streaming, Writing Safely, Login Flow, Serve & Funnel) and recipes, including the Peer Diagnostics walkthrough
 - [LocalAPI coverage](https://github.com/dweekly/swift-tailscale-client/blob/main/Documentation/LOCALAPI-COVERAGE.md): the package's position on every LocalAPI endpoint
 - [README](https://github.com/dweekly/swift-tailscale-client/blob/main/README.md): tool choice (this package vs TailscaleKit vs admin API vs CLI), runtime support matrix
 

@@ -23,9 +23,15 @@ let package = Package(
         .product(name: "TailscaleClient", package: "swift-tailscale-client")
       ]
     ),
+    // The SwiftUI views and the offscreen snapshot renderer. A library rather than part of
+    // the executable so tests can render the snapshot.
+    .target(
+      name: "PeerDiagnosticsUI",
+      dependencies: ["PeerDiagnosticsCore"]
+    ),
     .executableTarget(
       name: "PeerDiagnostics",
-      dependencies: ["PeerDiagnosticsCore"]
+      dependencies: ["PeerDiagnosticsCore", "PeerDiagnosticsUI"]
     ),
     .testTarget(
       name: "PeerDiagnosticsCoreTests",
@@ -34,6 +40,10 @@ let package = Package(
         .product(name: "TailscaleClient", package: "swift-tailscale-client"),
         .product(name: "TailscaleClientMocks", package: "swift-tailscale-client"),
       ]
+    ),
+    .testTarget(
+      name: "PeerDiagnosticsUITests",
+      dependencies: ["PeerDiagnosticsCore", "PeerDiagnosticsUI"]
     ),
   ],
   swiftLanguageModes: [.v6]

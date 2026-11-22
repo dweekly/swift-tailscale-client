@@ -41,7 +41,8 @@ print("Latency: \(ping.latencyDescription ?? "n/a")")
 - <doc:VersionCompatibility>
 - <doc:MigrationFrom012>
 
-### Recipes (compiled from Examples/Recipes)
+### Recipes (compiled from Examples/Recipes and Examples/PeerDiagnostics)
+- <doc:RecipePeerDiagnostics>
 - <doc:RecipeMenuBar>
 - <doc:RecipeMonitoring>
 - <doc:RecipeExitNode>

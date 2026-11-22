@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Unofficial sample for swift-tailscale-client; not affiliated with Tailscale Inc.
 
-// Headless entry point over PeerDiagnosticsCore. Prints the peers and one ping
-// interpretation, then exits. It never writes to the daemon.
+// Entry point. With no action flag it opens the window; `--print` and `--snapshot` run
+// without a window and exit. Nothing here ever writes to the daemon.
 //
-//   PeerDiagnostics --fixture --print   built-in fixture tailnet, no Tailscale needed
-//   PeerDiagnostics --live --print      the Tailscale daemon on this Mac (read-only)
+//   PeerDiagnostics                         the window, starting with fixture data
+//   PeerDiagnostics --fixture --print       built-in fixture tailnet, no Tailscale needed
+//   PeerDiagnostics --live --print          the Tailscale daemon on this Mac (read-only)
+//   PeerDiagnostics --fixture --snapshot shot.png [--appearance dark]
 
+import AppKit
 import Foundation
 import PeerDiagnosticsCore
+import PeerDiagnosticsUI
 
+/// Exit status for arguments that cannot be used (BSD `EX_USAGE`).
+let usageExitCode: Int32 = 64
 /// How long to wait for the first status read and watch event before giving up.
 let connectTimeout: Duration = .seconds(10)
 /// Longest a whole ping burst can take: every ping waits its full timeout plus spacing.
@@ -17,8 +23,6 @@ let burstTimeout =
   (PingBurstPolicy.perPingTimeout + PingBurstPolicy.spacing) * PingBurstPolicy.maximumPings
 /// How often the command checks the model's published state while waiting.
 let pollInterval: Duration = .milliseconds(50)
-/// The fixture peer whose burst shows a DERP reply upgrading to direct.
-let fixturePeerName = "example-laptop"
 
 /// Waits until `condition` holds or `timeout` passes; returns whether it held.
 @MainActor
@@ -36,20 +40,16 @@ func fail(_ message: String) -> Never {
   exit(1)
 }
 
+/// `--print`: the peers and one ping interpretation as text.
 @MainActor
-func run(arguments: [String]) async -> Int32 {
-  guard arguments.contains("--print") else {
-    print("usage: PeerDiagnostics [--fixture | --live] --print")
-    print("The windowed app arrives in a later change; --print is the headless mode.")
-    return 64
-  }
-  let live = arguments.contains("--live")
-  if arguments.contains("--allow-app-store-discovery") && !live {
+func printReport(_ options: LaunchOptions) async -> Int32 {
+  let live = options.mode == .live
+  if options.allowMacOSAppStoreDiscovery && !live {
     print("note: --allow-app-store-discovery only applies to --live")
   }
 
   let model = PeerDiagnosticsModel()
-  model.allowMacOSAppStoreDiscovery = arguments.contains("--allow-app-store-discovery")
+  model.allowMacOSAppStoreDiscovery = options.allowMacOSAppStoreDiscovery
   if live { model.switchMode(to: .live) } else { model.start() }
   defer { model.stop() }
 
@@ -78,7 +78,7 @@ func run(arguments: [String]) async -> Int32 {
   let target =
     live
     ? model.peers.first { $0.isOnline }
-    : model.peers.first { $0.name == fixturePeerName }
+    : model.peers.first { $0.name == FixtureDaemon.showcasePeerName }
   guard let target else {
     print("ping: skipped, no online peer to ping")
     return live ? 1 : 0
@@ -92,5 +92,39 @@ func run(arguments: [String]) async -> Int32 {
   return gotNotification ? 0 : 1
 }
 
-let status = await run(arguments: CommandLine.arguments)
-exit(status)
+/// `--snapshot`: renders the fixture scenario and writes the PNG.
+@MainActor
+func writeSnapshot(to path: String, appearance: LaunchOptions.Appearance) async -> Int32 {
+  // A snapshot never shows a Dock icon or a window.
+  NSApplication.shared.setActivationPolicy(.prohibited)
+  do {
+    let png = try await SnapshotRenderer.renderScenario(appearance: appearance)
+    try png.write(to: URL(fileURLWithPath: path))
+    print("wrote \(path) (\(png.count) bytes, \(appearance.rawValue))")
+    return 0
+  } catch {
+    fail("could not render the snapshot: \(error)")
+  }
+}
+
+let options: LaunchOptions
+do {
+  options = try LaunchOptions.parse(Array(CommandLine.arguments.dropFirst()))
+} catch {
+  FileHandle.standardError.write(Data("error: \(error)\n\(LaunchOptions.usage)\n".utf8))
+  exit(usageExitCode)
+}
+
+switch options.action {
+case .window:
+  PeerDiagnosticsApp.launchOptions = options
+  PeerDiagnosticsApp.main()
+case .print:
+  // The headless modes still run on the main run loop, which the model's tasks and (for
+  // snapshots) AppKit drawing need. Each mode exits the process when it finishes.
+  Task { @MainActor in exit(await printReport(options)) }
+  RunLoop.main.run()
+case .snapshot(let path):
+  Task { @MainActor in exit(await writeSnapshot(to: path, appearance: options.appearance)) }
+  RunLoop.main.run()
+}
