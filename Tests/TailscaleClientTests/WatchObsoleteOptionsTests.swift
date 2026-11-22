@@ -483,10 +483,6 @@ final class WatchObsoleteOptionsTests: XCTestCase {
   // MARK: - Real Unix socket
 
   #if canImport(Darwin) || os(Linux)
-    static func openDescriptorCount() -> Int {
-      (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? -1
-    }
-
     /// The daemon answers the first connection with a 400 that carries
     /// `Content-Length` and keeps the connection open, as v1.104.7 does. The
     /// client must open a second connection and close the first.
@@ -510,7 +506,7 @@ final class WatchObsoleteOptionsTests: XCTestCase {
           requestTimeout: .seconds(3),
           transport: URLSessionTailscaleTransport()))
 
-      let baseline = Self.openDescriptorCount()
+      let baseline = openSocketDescriptorCount()
       let watch = Task { () -> String? in
         let stream = try await client.watchIPNBus()
         for try await notify in stream {
@@ -525,18 +521,18 @@ final class WatchObsoleteOptionsTests: XCTestCase {
       // Open: the server keeps both accepted descriptors; the client keeps only
       // the second connection once it has released the rejected one.
       let deadline = ContinuousClock.now + .seconds(4)
-      while Self.openDescriptorCount() != baseline + 3, ContinuousClock.now < deadline {
+      while openSocketDescriptorCount() != baseline + 3, ContinuousClock.now < deadline {
         try await Task.sleep(for: .milliseconds(20))
       }
-      XCTAssertEqual(Self.openDescriptorCount(), baseline + 3)
+      XCTAssertEqual(openSocketDescriptorCount(), baseline + 3)
 
       watch.cancel()
       _ = try? await watch.value
       let closeDeadline = ContinuousClock.now + .seconds(4)
-      while Self.openDescriptorCount() != baseline + 2, ContinuousClock.now < closeDeadline {
+      while openSocketDescriptorCount() != baseline + 2, ContinuousClock.now < closeDeadline {
         try await Task.sleep(for: .milliseconds(20))
       }
-      XCTAssertEqual(Self.openDescriptorCount(), baseline + 2)
+      XCTAssertEqual(openSocketDescriptorCount(), baseline + 2)
     }
   #endif
 }
