@@ -215,6 +215,21 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     func count(port: UInt16) -> Int { entries.filter { $0.port == port }.count }
   }
 
+  /// Suspends until `count` unary requests have started waiting on an
+  /// in-flight rediscovery inside `client`, failing the test after 30 s.
+  private func waitForRequestsWaitingOnRediscovery(
+    _ client: TailscaleClient, count: Int, file: StaticString = #filePath, line: UInt = #line
+  ) async {
+    let deadline = ContinuousClock.now + .seconds(30)
+    while await client.requestsThatWaitedOnRediscovery < count {
+      if ContinuousClock.now > deadline {
+        XCTFail("Requests never waited on the in-flight rediscovery", file: file, line: line)
+        return
+      }
+      await Task.yield()
+    }
+  }
+
   private static func setupStandaloneDirectory(in dir: URL, port: UInt16, token: String) throws {
     let ipnportURL = dir.appendingPathComponent("ipnport")
     try? FileManager.default.removeItem(at: ipnportURL)
@@ -381,9 +396,8 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
   ///
   /// Gates instead of sleeps: the 30 early requests are held at the old port
   /// until all 30 are there (so each one demonstrably used the stale endpoint),
-  /// then refused; the probe of the rediscovery they trigger is held until all
-  /// 30 late requests have started. A late request may reach the client before
-  /// or after the probe is released; neither path may use the old port.
+  /// then refused; the probe of the rediscovery they trigger is held until the
+  /// client reports that all 30 late requests are waiting on it.
   func testRequestsArrivingWhileRediscoveryIsInFlightWaitAndAvoidStaleAttempt() async throws {
     let transport = ScriptedChallengerTransport()
     let probes = SyncProbeCounter()
@@ -451,21 +465,18 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     await earlyAtOldPort.waitForArrivals()
     for await _ in probeGate.entered { break }
 
-    let lateStarted = ArrivalGate(expected: lateCount)
     let late = Task {
       try await withThrowingTaskGroup(of: StatusResponse.self) { group in
         for _ in 0..<lateCount {
-          group.addTask {
-            await lateStarted.arrive(autoOpen: true)
-            return try await client.status()
-          }
+          group.addTask { try await client.status() }
         }
         var results: [StatusResponse] = []
         for try await response in group { results.append(response) }
         return results
       }
     }
-    await lateStarted.waitForArrivals()
+    // Release the probe only once every late request is waiting on it.
+    await waitForRequestsWaitingOnRediscovery(client, count: lateCount)
     probeGate.open()
 
     let earlyResults = try await early.value
@@ -611,12 +622,8 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     for await _ in probeGate.entered { break }
 
     // B arrives while that rediscovery is in flight.
-    let waiterStarted = ArrivalGate(expected: 1)
-    let waiter = Task {
-      await waiterStarted.arrive(autoOpen: true)
-      return try await client.status()
-    }
-    await waiterStarted.waitForArrivals()
+    let waiter = Task { try await client.status() }
+    await waitForRequestsWaitingOnRediscovery(client, count: 1)
     probeGate.open()
 
     for task in [first, waiter] {

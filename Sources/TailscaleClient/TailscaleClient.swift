@@ -52,6 +52,9 @@ public actor TailscaleClient {
   /// started shares that rediscovery's outcome instead of starting another.
   private var rediscoveriesStarted: UInt64 = 0
   private var latestRediscovery: Task<TailscaleClientConfiguration, Error>?
+  /// How many unary requests have started by waiting on an in-flight
+  /// rediscovery. Never decreases; tests read it to know a request is waiting.
+  private(set) var requestsThatWaitedOnRediscovery = 0
 
   /// Configuration applied to each request the client makes.
   public nonisolated var configuration: TailscaleClientConfiguration {
@@ -1186,6 +1189,7 @@ public actor TailscaleClient {
     var rediscoveriesSeen = rediscoveriesStarted
     if let inFlight = rediscoveryTask {
       let joined = rediscoveriesStarted
+      requestsThatWaitedOnRediscovery += 1
       do {
         let config = try await inFlight.value
         self.activeConfiguration = config
