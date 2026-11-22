@@ -2,16 +2,16 @@
 """
 Scripts/aggregate-release-evidence.py - Exact-SHA Release Evidence Aggregator & Rehearsal Tooling.
 
-Aggregates, normalizes, validates, and rehearses release evidence for swift-tailscale-client 1.0.
+Aggregates, normalizes, validates, and rehearses release evidence for swift-tailscale-client releases.
 
 Features:
 - Normalized machine-readable JSON evidence document (release-evidence-<tag>.json)
 - Full 6-gate validation engine:
-    Gate 1: Required CI Lanes (macOS, Linux, docs-consistency, DocC strict, TSan, platforms, headscale)
+    Gate 1: Required CI Lanes (macOS unit, TSan, docs-consistency, DocC strict, iOS/tvOS/watchOS builds)
     Gate 2: Unexpected Test Skips (0 skips allowed in core suites, no critical test skips)
     Gate 3: Exact Commit SHA Alignment (evidence SHA == tag target SHA, clean worktree)
     Gate 4: Annotated Tag Enforcement (git cat-file -t == "tag", valid tagger/message)
-    Gate 5: Binary Builds & Asset Checksums (macOS universal, Linux x86_64, SHA256SUMS.txt, smoke tests)
+    Gate 5: Binary Builds & Asset Checksums (macOS universal, SHA256SUMS.txt, --help/--version smoke tests)
     Gate 6: Documentation & API Baseline (consistency script, endpoints, maturity, recipes, models, DocC)
 - Simulated Release Rehearsal: verifies full staged release flow without publishing.
 
@@ -798,6 +798,8 @@ class EvidenceAggregator:
                 "target_commit": target_commit,
                 "message": f"{self.tag}: Release rehearsal candidate",
                 "tagger": "Rehearsal Harness <release@tailscale.internal>",
+                # No tag exists yet: never mistake this for a published release's evidence.
+                "simulated": True,
             }
         else:
             tag_info = get_git_tag_info(self.tag)
@@ -1007,8 +1009,11 @@ class EvidenceAggregator:
                         error += f"--help failed (rc={rc}): {err or out}; "
 
                     rc, out, err = run_cmd([str(bin_path), "--version"])
-                    if rc == 0 and out.strip():
+                    expected_version = self.tag[1:] if self.tag.startswith("v") else self.tag
+                    if rc == 0 and out.strip() == expected_version:
                         version_flag = "passed"
+                    elif rc == 0:
+                        error += f"--version printed '{out.strip()}', expected '{expected_version}' for tag {self.tag}; "
                     else:
                         error += f"--version failed (rc={rc}): {err or out}; "
                 else:
@@ -1224,7 +1229,7 @@ def print_rehearsal_report(evidence: Dict[str, Any]) -> None:
     violations = verdict.get("violations", [])
 
     print("=" * 80)
-    print("           SWIFT-TAILSCALE-CLIENT 1.0 RELEASE REHEARSAL REPORT")
+    print("           SWIFT-TAILSCALE-CLIENT RELEASE EVIDENCE REPORT")
     print("=" * 80)
     print(f"Target Tag:       {tag_info.get('name')} (Annotated Tag: {'YES' if tag_info.get('is_annotated') else 'NO'})")
     print(f"Tagger:           {tag_info.get('tagger') or 'N/A'}")
@@ -1240,7 +1245,9 @@ def print_rehearsal_report(evidence: Dict[str, Any]) -> None:
     # Gate 1
     g1_violations = [v for v in violations if v.get("gate") == 1]
     g1_status = "[FAIL]" if g1_violations else "[PASS]"
-    print(f"{g1_status} Gate 1: Required CI Lanes (7/7 lanes verified)")
+    lanes = evidence.get("required_lanes", {})
+    passed_lanes = sum(1 for lane in REQUIRED_LANES if lanes.get(lane, {}).get("status") == "passed")
+    print(f"{g1_status} Gate 1: Required CI Lanes ({passed_lanes}/{len(REQUIRED_LANES)} required lanes passed)")
     for lane_name, lane in evidence.get("required_lanes", {}).items():
         st = lane.get("status", "unknown").upper()
         print(f"       - {lane_name}: {st}")
@@ -1301,8 +1308,10 @@ def print_rehearsal_report(evidence: Dict[str, Any]) -> None:
     overall_status = "SUCCESS (ALL 6 GATES PASSED)" if verdict.get("passed") else "FAILED (GATE VIOLATIONS DETECTED)"
     print(f"Verdict:             {overall_status}")
     print(f"Violations:          {len(violations)}")
-    print("Artifact Staging:    Simulated in draft stage (.build/release-rehearsal/)")
-    print("Publication Status:  REHEARSAL ONLY (No public release published)")
+    if tag_info.get("simulated"):
+        print("Publication Status:  REHEARSAL ONLY (simulated tag; this script never publishes)")
+    else:
+        print("Publication Status:  Evidence only (this script never publishes; release.yml does)")
     print("=" * 80)
 
 
