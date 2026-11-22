@@ -47,6 +47,13 @@ jobs:
           - track: supported-floor
             pin: "1.76.0"
             headscale: "0.28.0"
+            # 1.76 falls back to Noise over TLS on port 443 when it redials
+            # control within two minutes of its last dial (as the login test
+            # does after logout), which a plain-HTTP headscale never answers.
+            # This knob makes it treat a loopback http:// control URL as
+            # plaintext only (control/controlclient/noise.go at v1.76.0);
+            # from 1.84 that is the built-in behavior and the knob is gone.
+            tailscaled-env: "TS_CONTROL_IS_PLAINTEXT_HTTP=1"
             allow-failure: false
           - track: intermediate-lts
             pin: "1.84.0"
@@ -144,7 +151,7 @@ jobs:
         if: steps.check-skip.outputs.skip != 'true'
         run: |
           mkdir -p /var/run/tailscale
-          tailscaled --tun=userspace-networking \
+          env ${{ matrix.tailscaled-env }} tailscaled --tun=userspace-networking \
             --statedir=/tmp/tailscaled \
             --socket=/var/run/tailscale/tailscaled.sock > /tmp/tailscaled.log 2>&1 &
           sleep 2
