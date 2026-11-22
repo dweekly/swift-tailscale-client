@@ -111,6 +111,110 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     func countForToken(_ token: String) -> Int { requestsByToken[token, default: 0] }
   }
 
+  /// Counts discovery probes synchronously, so a count read after the requests
+  /// finish includes every probe that ran (no unstructured recording task).
+  final class SyncProbeCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var probes = 0
+
+    func record() {
+      lock.lock()
+      probes += 1
+      lock.unlock()
+    }
+
+    var count: Int {
+      lock.lock()
+      defer { lock.unlock() }
+      return probes
+    }
+  }
+
+  /// Holds the first discovery probe until the test releases it, and tells the
+  /// test when that probe has started. The probe callback is synchronous, so the
+  /// hold blocks one thread; the wait is bounded so a broken test cannot hang.
+  final class ProbeGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var held = false
+    private let release = DispatchSemaphore(value: 0)
+    private let enteredContinuation: AsyncStream<Void>.Continuation
+    let entered: AsyncStream<Void>
+    private(set) var timedOut = false
+
+    init() {
+      (entered, enteredContinuation) = AsyncStream<Void>.makeStream()
+    }
+
+    /// Called from the probe. Only the first call holds.
+    func pass() {
+      lock.lock()
+      let shouldHold = !held
+      held = true
+      lock.unlock()
+      guard shouldHold else { return }
+      enteredContinuation.yield()
+      enteredContinuation.finish()
+      if release.wait(timeout: .now() + 30) == .timedOut {
+        lock.lock()
+        timedOut = true
+        lock.unlock()
+      }
+    }
+
+    func open() { release.signal() }
+  }
+
+  /// An async barrier: callers suspend in `arrive()` until `expected` callers
+  /// have arrived, or until `open()` is called. `waitForArrivals()` lets the
+  /// test observe that every expected caller is parked.
+  actor ArrivalGate {
+    private let expected: Int
+    private var arrivals = 0
+    private var isOpen = false
+    private var parked: [CheckedContinuation<Void, Never>] = []
+    private var observers: [CheckedContinuation<Void, Never>] = []
+
+    init(expected: Int) { self.expected = expected }
+
+    /// Suspends until the gate opens. Opens automatically once `expected`
+    /// callers have arrived when `autoOpen` is true.
+    func arrive(autoOpen: Bool) async {
+      arrivals += 1
+      if arrivals >= expected {
+        let waiting = observers
+        observers.removeAll()
+        for observer in waiting { observer.resume() }
+        if autoOpen { open() }
+      }
+      if isOpen { return }
+      await withCheckedContinuation { parked.append($0) }
+    }
+
+    func waitForArrivals() async {
+      if arrivals >= expected { return }
+      await withCheckedContinuation { observers.append($0) }
+    }
+
+    func open() {
+      isOpen = true
+      let waiting = parked
+      parked.removeAll()
+      for continuation in waiting { continuation.resume() }
+    }
+
+    var arrivalCount: Int { arrivals }
+  }
+
+  /// Thread-safe log of which port each request name was sent to, in order.
+  actor SendLog {
+    private(set) var entries: [(name: String, port: UInt16)] = []
+    func record(name: String, port: UInt16) { entries.append((name, port)) }
+    func count(name: String, port: UInt16) -> Int {
+      entries.filter { $0.name == name && $0.port == port }.count
+    }
+    func count(port: UInt16) -> Int { entries.filter { $0.port == port }.count }
+  }
+
   private static func setupStandaloneDirectory(in dir: URL, port: UInt16, token: String) throws {
     let ipnportURL = dir.appendingPathComponent("ipnport")
     try? FileManager.default.removeItem(at: ipnportURL)
@@ -271,14 +375,26 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     XCTAssertEqual(client.configuration.authToken, refreshedToken)
   }
 
+  /// Requests that start while a rediscovery is in flight wait for it and go
+  /// straight to the new endpoint; only requests that started before the
+  /// rediscovery touch the stale one, and all of them share one discovery.
+  ///
+  /// Gates instead of sleeps: the 30 early requests are held at the old port
+  /// until all 30 are there (so each one demonstrably used the stale endpoint),
+  /// then refused; the probe of the rediscovery they trigger is held until all
+  /// 30 late requests have started. A late request may reach the client before
+  /// or after the probe is released; neither path may use the old port.
   func testRequestsArrivingWhileRediscoveryIsInFlightWaitAndAvoidStaleAttempt() async throws {
     let transport = ScriptedChallengerTransport()
-    let tracker = AtomicProbeTracker()
+    let probes = SyncProbeCounter()
+    let probeGate = ProbeGate()
 
     let initialPort: UInt16 = 40020
     let newPort: UInt16 = 40021
     let initialToken = "token-early"
     let newToken = "token-recovered"
+    let earlyCount = 30
+    let lateCount = 30
 
     try Self.setupStandaloneDirectory(in: tempDir, port: newPort, token: newToken)
 
@@ -286,72 +402,172 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
       environment: [:],
       fileExists: { _ in false },
       standaloneDirectoryOverride: tempDir,
-      probeOverride: { port, token in
-        Task {
-          await tracker.recordProbe(port: port, token: token)
-        }
-        usleep(60_000)  // 60ms delay
+      probeOverride: { _, _ in
+        probes.record()
+        probeGate.pass()
         return true
       }
     )
 
-    await transport.setHandler { request, config in
-      if case .loopback(_, let port) = config.endpoint, port == initialPort {
+    let earlyAtOldPort = ArrivalGate(expected: earlyCount)
+    await transport.setHandler { _, config in
+      guard case .loopback(_, let port) = config.endpoint else {
+        throw TailscaleTransportError.networkFailure(underlying: POSIXError(.ECONNRESET))
+      }
+      if port == initialPort {
+        await earlyAtOldPort.arrive(autoOpen: true)
         throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(initialPort)")
       }
-      if case .loopback(_, let port) = config.endpoint, port == newPort {
+      if port == newPort, config.authToken == newToken {
         return TailscaleResponse(statusCode: 200, data: Data("{\"BackendState\":\"Running\"}".utf8))
       }
       throw TailscaleTransportError.networkFailure(underlying: POSIXError(.ECONNRESET))
     }
 
-    let initialConfig = TailscaleClientConfiguration(
-      discovery: discovery,
-      result: .init(
-        endpoint: .loopback(host: "127.0.0.1", port: initialPort),
-        authToken: initialToken,
-        capabilityVersion: 144
-      ),
-      transport: transport
-    )
-    let client = TailscaleClient(configuration: initialConfig)
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        discovery: discovery,
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: initialPort),
+          authToken: initialToken,
+          capabilityVersion: 144
+        ),
+        transport: transport
+      ))
 
-    // Group 1: 30 requests launch immediately and trigger rediscovery
-    // Group 2: 30 requests launch after 15ms (while rediscovery is in flight)
-    try await withThrowingTaskGroup(of: StatusResponse.self) { group in
-      for _ in 0..<30 {
-        group.addTask {
-          try await client.status()
+    let early = Task {
+      try await withThrowingTaskGroup(of: StatusResponse.self) { group in
+        for _ in 0..<earlyCount {
+          group.addTask { try await client.status() }
         }
-      }
-
-      group.addTask {
-        try await Task.sleep(nanoseconds: 15_000_000)  // 15ms
-        return try await client.status()
-      }
-
-      for _ in 0..<29 {
-        group.addTask {
-          try await Task.sleep(nanoseconds: 15_000_000)
-          return try await client.status()
-        }
-      }
-
-      for try await response in group {
-        XCTAssertEqual(response.backendState, .running)
+        var results: [StatusResponse] = []
+        for try await response in group { results.append(response) }
+        return results
       }
     }
 
-    let probeCount = await tracker.count
+    // Every early request is at the old port; the gate then refuses them all,
+    // and the first refusal starts the rediscovery whose probe is held.
+    await earlyAtOldPort.waitForArrivals()
+    for await _ in probeGate.entered { break }
+
+    let lateStarted = ArrivalGate(expected: lateCount)
+    let late = Task {
+      try await withThrowingTaskGroup(of: StatusResponse.self) { group in
+        for _ in 0..<lateCount {
+          group.addTask {
+            await lateStarted.arrive(autoOpen: true)
+            return try await client.status()
+          }
+        }
+        var results: [StatusResponse] = []
+        for try await response in group { results.append(response) }
+        return results
+      }
+    }
+    await lateStarted.waitForArrivals()
+    probeGate.open()
+
+    let earlyResults = try await early.value
+    let lateResults = try await late.value
+    XCTAssertEqual(earlyResults.count, earlyCount)
+    XCTAssertEqual(lateResults.count, lateCount)
+    for response in earlyResults + lateResults {
+      XCTAssertEqual(response.backendState, .running)
+    }
+    XCTAssertFalse(probeGate.timedOut, "The held probe was never released")
+
     XCTAssertEqual(
-      probeCount, 1,
+      probes.count, 1,
       "Requests launched during in-flight rediscovery must coalesce into the same probe")
 
-    // The late arrivals waited on inFlight.value, so they sent directly to newPort without attempting initialPort
+    // Exactly the early requests used the old port: late arrivals never did.
     let callsOnOldPort = await transport.countForPort(initialPort)
     let callsOnNewPort = await transport.countForPort(newPort)
-    XCTAssertEqual(callsOnOldPort, 30, "Late arrivals must not send on the stale port")
-    XCTAssertEqual(callsOnNewPort, 60, "All 60 requests must complete on the new port")
+    XCTAssertEqual(callsOnOldPort, earlyCount, "Late arrivals must not send on the stale port")
+    XCTAssertEqual(
+      callsOnNewPort, earlyCount + lateCount, "Every request completes once on the new port")
+    XCTAssertEqual(client.configuration.endpoint, .loopback(host: "127.0.0.1", port: newPort))
+  }
+
+  actor Ticket {
+    private var next = 0
+    func take() -> Int {
+      defer { next += 1 }
+      return next
+    }
+  }
+
+  /// A request that read the old endpoint before rediscovery started, but whose
+  /// connect fails only after that rediscovery has finished, retries against
+  /// the refreshed endpoint without running a second discovery.
+  func testStaleConnectFailureAfterCompletedRediscoveryDoesNotRediscoverAgain() async throws {
+    let transport = ScriptedChallengerTransport()
+    let probes = SyncProbeCounter()
+
+    let initialPort: UInt16 = 40025
+    let newPort: UInt16 = 40026
+    try Self.setupStandaloneDirectory(in: tempDir, port: newPort, token: "token-new")
+
+    let discovery = LocalAPIDiscovery(
+      environment: [:],
+      fileExists: { _ in false },
+      standaloneDirectoryOverride: tempDir,
+      probeOverride: { _, _ in
+        probes.record()
+        return true
+      }
+    )
+
+    // The first send to the old port parks until the test opens `straggler`;
+    // every other send to the old port is refused at once.
+    let straggler = ArrivalGate(expected: 1)
+    let oldPortTickets = Ticket()
+    await transport.setHandler { _, config in
+      guard case .loopback(_, let port) = config.endpoint else {
+        throw TailscaleTransportError.networkFailure(underlying: POSIXError(.ECONNABORTED))
+      }
+      if port == initialPort {
+        if await oldPortTickets.take() == 0 {
+          await straggler.arrive(autoOpen: false)
+        }
+        throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(initialPort)")
+      }
+      return TailscaleResponse(statusCode: 200, data: Data("{\"BackendState\":\"Running\"}".utf8))
+    }
+
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        discovery: discovery,
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: initialPort),
+          authToken: "token-old",
+          capabilityVersion: 144
+        ),
+        transport: transport
+      ))
+
+    // A reads the old endpoint and parks inside its send.
+    let stale = Task { try await client.status() }
+    await straggler.waitForArrivals()
+
+    // B fails on the old port, rediscovers, and finishes on the new port.
+    let fresh = try await client.status()
+    XCTAssertEqual(fresh.backendState, .running)
+    XCTAssertEqual(probes.count, 1)
+    XCTAssertEqual(client.configuration.endpoint, .loopback(host: "127.0.0.1", port: newPort))
+
+    // Now A's connect fails. Rediscovery already refreshed the endpoint after
+    // A's attempt began, so A retries on the new port without discovering again.
+    await straggler.open()
+    let late = try await stale.value
+    XCTAssertEqual(late.backendState, .running)
+
+    XCTAssertEqual(probes.count, 1, "A stale connect failure must reuse the completed rediscovery")
+    let oldPortCalls = await transport.countForPort(initialPort)
+    let newPortCalls = await transport.countForPort(newPort)
+    XCTAssertEqual(oldPortCalls, 2)
+    XCTAssertEqual(newPortCalls, 2)
   }
 
   // MARK: - Challenge 2: Mutation Safety Under Daemon Disconnect
@@ -464,13 +680,21 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
     XCTAssertEqual(callCount, 1, "ECONNRESET on mutation must never replay")
   }
 
+  /// Connect-stage refusals are replay-safe (the daemon received nothing), so
+  /// each mutation is replayed exactly once on the restarted daemon, and the
+  /// whole burst shares one rediscovery.
+  ///
+  /// The old port holds every mutation until all of them are there, so each one
+  /// demonstrably attempted the stale daemon before any rediscovery started.
   func testMutationSafetyAllowsConnectStageReplayOnceOnDaemonRestart() async throws {
     let transport = ScriptedChallengerTransport()
-    let tracker = AtomicProbeTracker()
+    let probes = SyncProbeCounter()
+    let sends = SendLog()
 
     let initialPort: UInt16 = 40040
     let newPort: UInt16 = 40041
     let token = "post-replay-token"
+    let count = 40
 
     try Self.setupStandaloneDirectory(in: tempDir, port: newPort, token: token)
 
@@ -478,36 +702,41 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
       environment: [:],
       fileExists: { _ in false },
       standaloneDirectoryOverride: tempDir,
-      probeOverride: { port, token in
-        Task { await tracker.recordProbe(port: port, token: token) }
-        usleep(20_000)
+      probeOverride: { _, _ in
+        probes.record()
         return true
       }
     )
 
+    let allAtOldPort = ArrivalGate(expected: count)
     await transport.setHandler { request, config in
-      if case .loopback(_, let port) = config.endpoint, port == initialPort {
-        // Connect stage error: zero bytes sent, connection refused
+      guard case .loopback(_, let port) = config.endpoint else {
+        throw TailscaleTransportError.networkFailure(underlying: POSIXError(.ECONNABORTED))
+      }
+      let name = request.queryItems.first { $0.name == "name" }?.value ?? "?"
+      await sends.record(name: name, port: port)
+      if port == initialPort {
+        // Connect stage error: zero bytes reached the daemon.
+        await allAtOldPort.arrive(autoOpen: true)
         throw TailscaleTransportError.connectionRefused(endpoint: "127.0.0.1:\(initialPort)")
       }
-      if case .loopback(_, let port) = config.endpoint, port == newPort {
+      if port == newPort {
         return TailscaleResponse(statusCode: 200, data: Data("{}".utf8))
       }
       throw TailscaleTransportError.networkFailure(underlying: POSIXError(.ECONNABORTED))
     }
 
-    let initialConfig = TailscaleClientConfiguration(
-      discovery: discovery,
-      result: .init(
-        endpoint: .loopback(host: "127.0.0.1", port: initialPort),
-        authToken: token,
-        capabilityVersion: 144
-      ),
-      transport: transport
-    )
-    let client = TailscaleClient(configuration: initialConfig)
+    let client = TailscaleClient(
+      configuration: TailscaleClientConfiguration(
+        discovery: discovery,
+        result: .init(
+          endpoint: .loopback(host: "127.0.0.1", port: initialPort),
+          authToken: token,
+          capabilityVersion: 144
+        ),
+        transport: transport
+      ))
 
-    let count = 40
     try await withThrowingTaskGroup(of: Void.self) { group in
       for i in 0..<count {
         group.addTask {
@@ -517,14 +746,19 @@ final class DiscoveryRecoveryChallengerTests: XCTestCase {
       try await group.waitForAll()
     }
 
-    // Connect-stage errors are safe to replay because zero bytes were received by the daemon
-    let probeCount = await tracker.count
-    XCTAssertEqual(probeCount, 1)
+    XCTAssertEqual(probes.count, 1, "The burst of refusals shares one rediscovery")
 
     let oldPortCalls = await transport.countForPort(initialPort)
     let newPortCalls = await transport.countForPort(newPort)
     XCTAssertEqual(oldPortCalls, count, "All mutations attempted on initial port")
     XCTAssertEqual(newPortCalls, count, "All mutations replayed exactly once on new port")
+    for i in 0..<count {
+      let name = "node-\(i).tailnet.local"
+      let onOld = await sends.count(name: name, port: initialPort)
+      let onNew = await sends.count(name: name, port: newPort)
+      XCTAssertEqual(onOld, 1, "\(name) attempted once on the stale daemon")
+      XCTAssertEqual(onNew, 1, "\(name) sent exactly once to the restarted daemon")
+    }
   }
 
   // MARK: - Challenge 3: Pinned Immutability

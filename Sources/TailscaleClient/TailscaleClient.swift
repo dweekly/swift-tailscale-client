@@ -1220,7 +1220,7 @@ public actor TailscaleClient {
         case .automatic = currentConfig.endpointSource,
         isReplaySafe(request: finalRequest, failurePhase: .credential)
       {
-        _ = try await singleFlightRediscovery()
+        try await rediscoverUnlessRefreshed(since: currentConfig)
         return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
       }
 
@@ -1231,11 +1231,26 @@ public actor TailscaleClient {
         case .automatic = currentConfig.endpointSource,
         isReplaySafe(request: finalRequest, failurePhase: .connectStage)
       {
-        _ = try await singleFlightRediscovery()
+        try await rediscoverUnlessRefreshed(since: currentConfig)
         return try await executeWithRecovery(request, endpoint: endpoint, attempt: attempt + 1)
       }
       throw TailscaleClientError.transport(transportError)
     }
+  }
+
+  /// Runs (or joins) a rediscovery unless the active configuration already
+  /// differs from the one the failed attempt used: a rediscovery finished after
+  /// that attempt began, so the retry goes to the refreshed endpoint (and the
+  /// retry's own entry check joins any rediscovery now in flight).
+  private func rediscoverUnlessRefreshed(since attempted: TailscaleClientConfiguration)
+    async throws
+  {
+    if activeConfiguration.endpoint != attempted.endpoint
+      || activeConfiguration.authToken != attempted.authToken
+    {
+      return
+    }
+    _ = try await singleFlightRediscovery()
   }
 
   func recordObservedDaemonVersion(from headers: [String: String]) {
