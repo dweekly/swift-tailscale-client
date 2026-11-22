@@ -18,7 +18,7 @@
     "headscale-matrix": {
       "workflow": ".github/workflows/integration-linux.yml",
       "trigger": "manual",
-      "description": "hermetic headscale control plane plus a userspace tailscaled per lane, with write tests enabled; outside release qualification and not run successfully on 1.x code",
+      "description": "hermetic headscale control plane plus a userspace tailscaled per lane, with write tests enabled; outside release qualification. last_success here is the last pre-1.0 run, which the historical records cite; runs on 1.x code are recorded under headscale-matrix-1x",
       "last_success": {
         "run": 35513916288,
         "commit": "619b9dba5649",
@@ -27,6 +27,20 @@
         "daemons": "1.96.4, 1.102.4, 1.103.229",
         "executed": "44 per daemon plus the login-lifecycle test",
         "skipped": "12 on 1.96.4 and 8 on each of the others",
+        "failed": 0
+      }
+    },
+    "headscale-matrix-1x": {
+      "workflow": ".github/workflows/integration-linux.yml",
+      "trigger": "manual",
+      "description": "the same workflow on 1.x code: Headscale 0.29.7 (0.28.0 on the 1.76.0 lane), swift:6.1 on ubuntu-26.04, write tests enabled; outside release qualification. Recorded per lane only: per-endpoint evidence has one live record (the macOS lane) and one historical record (the pre-1.0 run), and no field for this lane",
+      "last_success": {
+        "run": 44980829674,
+        "commit": "0a41f149e067",
+        "date": "2026-11-22",
+        "daemons": "1.76.0, 1.84.0, 1.102.5, 1.104.7, 1.105.361",
+        "executed": "45 per daemon plus the login-lifecycle test",
+        "skipped": "14 on 1.76.0, 13 on 1.84.0 and 8 on each of the others",
         "failed": 0
       }
     }

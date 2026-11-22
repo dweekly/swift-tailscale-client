@@ -36,14 +36,20 @@ HEADSCALE_SKIPS = {
     "testCheckUpdateAgainstLiveDaemon": ("Update check unavailable in this environment; skipping",),
     "testQueryFeatureAgainstLiveDaemon": ("Control plane does not support query-feature; skipping",),
 }
-# Only older daemon tracks may lack these endpoints. Stable must exercise them.
+# Endpoints the pinned older daemons do not serve, with the tracks allowed to
+# skip them: supported-floor is 1.76.0 and intermediate-lts is 1.84.0 in
+# integration-linux.yml. previous-stable and stable must exercise all of them.
+OLDER_TRACKS = ("supported-floor", "intermediate-lts")
 OLDER_SKIPS = {
-    "testDaemonFeaturesAgainstLiveDaemon": "Daemon predates debug-optional-features; skipping",
-    "testUserMetricsAgainstLiveDaemon": "Daemon predates usermetrics; skipping",
-    "testPeerAndUserProfileLookupAgainstLiveDaemon": "Daemon predates the peer-by-id endpoint; skipping",
-    "testDNSConfigAgainstLiveDaemon": "Daemon predates dns-config (Tailscale 1.98+); skipping",
-    "testCheckUDPGROForwardingAgainstLiveDaemon": "Daemon does not serve check-udp-gro-forwarding; skipping",
-    "testServicesAgainstLiveDaemon": "Daemon predates the services endpoint; skipping",
+    # debug-optional-features first ships in 1.86.
+    "testDaemonFeaturesAgainstLiveDaemon": ("Daemon predates debug-optional-features; skipping", OLDER_TRACKS),
+    # Before 1.78 the handler answers 403 unless TS_DEBUG_USER_METRICS is set.
+    "testUserMetricsAgainstLiveDaemon": ("Daemon predates usermetrics; skipping", ("supported-floor",)),
+    # peer-by-id, dns-config, services and cert-domains are not in localapi.go at v1.84.0.
+    "testPeerAndUserProfileLookupAgainstLiveDaemon": ("Daemon predates the peer-by-id endpoint; skipping", OLDER_TRACKS),
+    "testDNSConfigAgainstLiveDaemon": ("Daemon predates dns-config (Tailscale 1.98+); skipping", OLDER_TRACKS),
+    "testServicesAgainstLiveDaemon": ("Daemon predates the services endpoint; skipping", OLDER_TRACKS),
+    "testCertDomainsAgainstLiveDaemon": ("Daemon predates cert-domains or was built without ACME; skipping", OLDER_TRACKS),
 }
 
 
@@ -59,7 +65,8 @@ def expected_skip(test, reason, lane, member):
     if any(reason == allowed or (allowed.endswith(":") and reason.startswith(allowed))
            for allowed in HEADSCALE_SKIPS.get(method, ())):
         return True
-    return any(member == f"{track}-api" for track in TRACKS[:-1]) and reason == OLDER_SKIPS.get(method)
+    allowed_reason, tracks = OLDER_SKIPS.get(method, (None, ()))
+    return reason == allowed_reason and any(member == f"{track}-api" for track in tracks)
 
 
 def parse_output(output, lane, member):

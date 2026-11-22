@@ -359,13 +359,16 @@ def coverage_table(data):
         f"{lane_sentence(lanes['macos-self-hosted'])}. \"—\" means no 1.x run has "
         f"observed the endpoint. *read+write* in either column means a write test that "
         f"calls the endpoint also passed.")
+    current = lanes.get("headscale-matrix-1x")
+    later = (f"Its runs on 1.x code are recorded for the lane, not per endpoint: "
+             f"{lane_sentence(current)}." if current else "It has not passed on 1.x code.")
     lines.append(
         f"- **Pre-1.0 matrix**: tailscaled versions on which the headscale matrix "
-        f"observed the endpoint in its last successful run, on "
-        f"{lanes['headscale-matrix']['last_success']['code_line']} code: "
+        f"observed the endpoint in its last successful run on pre-1.0 code "
+        f"({lanes['headscale-matrix']['last_success']['code_line']}): "
         f"{lane_sentence(lanes['headscale-matrix'])}. That workflow is "
-        f"{lanes['headscale-matrix']['trigger']}-only and has not passed on 1.x code; "
-        f"these are historical observations, not current results.")
+        f"{lanes['headscale-matrix']['trigger']}-only; these are historical observations, "
+        f"not current results. {later}")
     return "\n".join(lines)
 
 

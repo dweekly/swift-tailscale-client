@@ -66,6 +66,16 @@ import XCTest
       }
       let notify = try XCTUnwrap(first, "Expected a notification within 5 seconds")
       XCTAssertNotNil(notify.state, "Expected initial state in the first notification")
+
+      // Tailscale 1.104 and later answer the default options with 400; the
+      // client must then have reopened the watch without the obsolete ones.
+      let version = await client.observedDaemonVersion ?? "unknown"
+      let rejected = await client.daemonRejectsObsoleteWatchOptions
+      print("default-watch: daemon=\(version) rejectedObsoleteOptions=\(rejected)")
+      let parts = version.split(separator: ".").compactMap { Int($0.prefix(while: \.isNumber)) }
+      if parts.count >= 2, parts[0] > 1 || (parts[0] == 1 && parts[1] >= 104) {
+        XCTAssertTrue(rejected, "A \(version) daemon should have rejected the obsolete options")
+      }
     }
 
     // MARK: - WhoIs Endpoint Tests
@@ -266,6 +276,9 @@ import XCTest
           metrics.contains("tailscaled_"),
           "Expected tailscaled_-prefixed user metrics")
       } catch let error as TailscaleClientError {
+        // userMetrics() reports a daemon older than 1.78 (404, or 1.76's
+        // "debug flag not enabled" 403) as endpointUnavailable; any other
+        // 403 stays permissionDenied and fails this test.
         guard case .endpointUnavailable = error else { throw error }
         throw XCTSkip("Daemon predates usermetrics; skipping")
       }
@@ -711,10 +724,12 @@ import XCTest
           XCTAssertFalse(domain.isEmpty)
         }
       } catch let error as TailscaleClientError {
-        // Some builds omit the ACME feature entirely (404 seen live on the
-        // 1.96.4 tarball); that is the documented optional-endpoint signal.
+        // A 404 here means either a build without the ACME feature or a
+        // daemon that predates the handler (absent from upstream localapi.go
+        // at v1.84.0, registered at v1.98.2; 404 seen live on 1.76.0, 1.84.0
+        // and the 1.96.4 tarball). The status cannot tell the two apart.
         guard case .endpointUnavailable = error else { throw error }
-        throw XCTSkip("Daemon built without ACME support; skipping")
+        throw XCTSkip("Daemon predates cert-domains or was built without ACME; skipping")
       }
     }
 

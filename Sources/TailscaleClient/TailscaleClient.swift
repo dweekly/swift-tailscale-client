@@ -304,7 +304,22 @@ public actor TailscaleClient {
   public func userMetrics() async throws -> String {
     let endpoint = "/localapi/v0/usermetrics"
     let request = TailscaleRequest(path: endpoint)
-    return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
+    do {
+      return try await performRawRequest(request, endpoint: endpoint, optionalEndpoint: true)
+    } catch TailscaleClientError.permissionDenied(let body, _)
+      where Self.isPreReleaseUserMetricsRefusal(body)
+    {
+      throw TailscaleClientError.endpointUnavailable(endpoint: endpoint, feature: nil)
+    }
+  }
+
+  /// Before 1.78, tailscaled registers `usermetrics` but serves it only when
+  /// the daemon runs with `TS_DEBUG_USER_METRICS`; otherwise it answers 403
+  /// with exactly this body (upstream v1.76.0 `serveUserMetrics`). From 1.78
+  /// on the handler has no such check, so this match never applies there.
+  static func isPreReleaseUserMetricsRefusal(_ body: Data) -> Bool {
+    String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+      == "usermetrics debug flag not enabled"
   }
 
   /// Applies a partial preferences update and returns the resulting prefs.

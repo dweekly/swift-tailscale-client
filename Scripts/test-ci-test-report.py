@@ -47,7 +47,15 @@ class ReportTests(unittest.TestCase):
     def test_old_endpoint_skip_is_not_allowed_on_stable(self):
         output = skipped_log("TailscaleClientIntegrationTests.testDNSConfigAgainstLiveDaemon",
                              "Daemon predates dns-config (Tailscale 1.98+); skipping")
-        for member, expected in [("supported-floor-api", 1), ("stable-api", 0), ("unstable-api", 0)]:
+        for member, expected in [("supported-floor-api", 1), ("intermediate-lts-api", 1),
+                                 ("previous-stable-api", 0), ("stable-api", 0), ("unstable-api", 0)]:
+            summary, _, _ = reporter.parse_output(output, "integration_linux_headscale", member)
+            self.assertEqual(summary["expected_skips"], expected)
+
+    def test_usermetrics_skip_is_only_allowed_on_the_floor(self):
+        output = skipped_log("TailscaleClientIntegrationTests.testUserMetricsAgainstLiveDaemon",
+                             "Daemon predates usermetrics; skipping")
+        for member, expected in [("supported-floor-api", 1), ("intermediate-lts-api", 0)]:
             summary, _, _ = reporter.parse_output(output, "integration_linux_headscale", member)
             self.assertEqual(summary["expected_skips"], expected)
 
