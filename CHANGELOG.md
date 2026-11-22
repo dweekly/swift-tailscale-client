@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+**Upgrading from 1.0.0.** No code change is needed. Without one, watches open on Tailscale 1.104 and later (the client drops the two options those daemons reject), `PingType.peerAPI` pings get an answer, `PingResult.isDirect` is `true` only for a direct path, a rejected watch reports its error at once, and a watch over loopback (the standalone and Mac App Store Tailscale apps) stays open through quiet periods and, with a reconnect policy, follows a daemon that restarts on a new port. To adopt: read `PingResult.path` to learn how a ping reached a peer, and consider subscribing with the new watch options (`.peerChanges`, `.noNetMap`) and re-reading `status()` on each notification, as the monitoring recipe and the Peer Diagnostics sample do. `PingResult.path`, `PingPath`, and the four new `NotifyWatchOpt` options are new in 1.1.0.
+
 ### Added
 
 - `PingResult.path` says how a ping reply reached the peer: a new `PingPath`
@@ -12,43 +14,32 @@ All notable changes to this project will be documented in this file. The format 
   It uses the same precedence as `tailscale ping` (peer relay, then DERP, then
   direct endpoint) and treats the empty strings and zeros the daemon always
   sends as absent. Only disco pings report a path.
-- `tailscale-swift ping` prints that path the way `tailscale ping` does
-  (`via <ip:port>`, `via peer-relay(...)`, `via DERP(<code>)`, or the ping type
-  when the reply names no path). `--json` output is unchanged.
-- Sanitized ping replies captured from a Tailscale 1.102.2 daemon as test
-  fixtures, with provenance and digests, and `Scripts/capture-ping-fixture.py`
-  to capture more.
+- Peer Diagnostics, a Mac sample app:
+  `swift run --package-path Examples/PeerDiagnostics PeerDiagnostics` opens a
+  SwiftUI window that lists your peers and shows how a ping reached the
+  selected one (Direct, Peer relay, DERP, Unknown, or Failed), its latency,
+  when it was measured, how many pings it took, whether it is the settled path
+  or one measurement, and whether it is still current. It starts with a
+  built-in fixture tailnet that needs no Tailscale; **Live** reads the local
+  daemon without changing it. `--fixture --print` and `--live --print` run it
+  headless. Its view model is a tested library target
+  (`PeerDiagnosticsCore`). A new DocC recipe, "Show How a Ping Reached a Peer",
+  walks through it.
 - `NotifyWatchOpt.peerChanges`, `.noNetMap`, `.initialStatus`, and
   `.peerPatches` (upstream bits 12-15), observed accepted by Tailscale
   v1.102.2 and v1.104.7. `IPNNotify` does not yet model the fields they
   produce; those notifications still decode.
+- `tailscale-swift ping` prints that path the way `tailscale ping` does
+  (`via <ip:port>`, `via peer-relay(...)`, `via DERP(<code>)`, or the ping type
+  when the reply names no path). `--json` output is unchanged.
 - `tailscale-swift watch` prints the daemon's message when it rejects a watch,
   and its help, man page, and README describe the options it requests.
+- Sanitized ping replies captured from a Tailscale 1.102.2 daemon as test
+  fixtures, with provenance and digests, and `Scripts/capture-ping-fixture.py`
+  to capture more.
 
 ### Fixed
 
-- `PingResult.isDirect` was `true` for TSMP, ICMP, peerAPI, and failed pings,
-  because the daemon sends `Endpoint` as `""` rather than omitting it. It is now
-  `true` exactly when `path` is `.direct`.
-- `PingType.peerAPI` pings never got an answer and ran until the request
-  timeout, because they sent `type=peerAPI`; the daemon only recognizes
-  `peerapi` (`tailcfg.PingPeerAPI`). The raw value is now `"peerapi"`.
-  `PingType(rawValue:)` and decoding still accept `"peerAPI"`.
-- `tailscale-swift ping` no longer prints a bare `via ` for replies without an
-  endpoint.
-- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
-  or, with a reconnect policy, on its first successful reconnect: the stream
-  continues, the line is reported through `onUndecodableLine`, and genuine
-  buffer overflow still throws `streamOverflow`.
-- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
-  now follow a daemon restart that changes the loopback port or proof token:
-  when the endpoint source is automatic, each reconnect attempt rediscovers
-  the daemon once (single-flight with unary requests) on a connect-stage
-  failure or a 401/loopback 403, as the initial open does. A rediscovery
-  failure during a reconnect (for example, discovery metadata briefly missing
-  mid-restart) counts as one failed attempt under the retry policy rather
-  than ending the stream; on the initial open it is still thrown. Pinned
-  configurations still never rediscover.
 - Watching the IPN bus works on Tailscale 1.104 and later. Those daemons answer
   a watch that sets `.rateLimit` or `.initialNetMap` (including
   `NotifyWatchOpt.default` and `.allInitial`) with HTTP 400. Before this fix,
@@ -59,20 +50,61 @@ All notable changes to this project will be documented in this file. The format 
   from later watches and reconnects of the same client. A daemon that accepts
   them still receives exactly the options the caller passed, in one request.
   Callers do not need to change their options.
-- A rejected IPN bus watch (`watchIPNBus`, `watchIPNBusEvents`, `tailscale-swift watch`) now reports its typed status error as soon as the response arrives (the error's `body` and `bodyPreview` carry the daemon's message), instead of hanging until the daemon closes the connection. Over the Unix socket, a streaming response body now ends after its `Content-Length` bytes (or at the terminal chunk, or at EOF only when neither framing is present), and the socket is closed then; a body shorter than its `Content-Length` fails with `malformedResponse`. Observed against tailscaled v1.104.7, which answers an unsupported watch mask with HTTP 400 and keeps the connection open.
+- A rejected IPN bus watch (`watchIPNBus`, `watchIPNBusEvents`,
+  `tailscale-swift watch`) now reports its typed status error as soon as the
+  response arrives (the error's `body` and `bodyPreview` carry the daemon's
+  message), instead of hanging until the daemon closes the connection. Over
+  the Unix socket, a streaming response body now ends after its
+  `Content-Length` bytes (or at the terminal chunk, or at EOF only when
+  neither framing is present), and the socket is closed then; a body shorter
+  than its `Content-Length` fails with `malformedResponse`.
+- An IPN bus watch over loopback TCP (the standalone and Mac App Store
+  Tailscale apps on macOS) no longer ends with "The request timed out" after
+  `requestTimeout` (30 s by default) without notifications, and a watch with a
+  reconnect policy no longer reconnects and reports a state gap on that
+  period. `requestTimeout` now bounds only opening a stream (connect, send,
+  response head), as documented. The session's `timeoutIntervalForResource`
+  (7 days for `URLSession.shared`) still ends a stream that has been open that
+  long.
+- Reconnecting watchers (`watchIPNBus(reconnect:)` and `watchIPNBusEvents`)
+  now follow a daemon restart that changes the loopback port or proof token:
+  when the endpoint source is automatic, each reconnect attempt rediscovers
+  the daemon once (single-flight with unary requests) on a connect-stage
+  failure or a 401/loopback 403, as the initial open does. A rediscovery
+  failure during a reconnect (for example, discovery metadata briefly missing
+  mid-restart) counts as one failed attempt under the retry policy rather
+  than ending the stream; on the initial open it is still thrown. Pinned
+  configurations still never rediscover.
+- On macOS loopback connections, a refused connection is now reported as
+  `TailscaleTransportError.connectionRefused`, as it already is on Unix
+  sockets, instead of a raw `URLError` (watch open) or `networkFailure` (other
+  requests). A watch or request using automatic discovery therefore
+  rediscovers a daemon that restarted on a new port. Opening a watch now
+  always throws `TailscaleClientError` for transport failures, and stream body
+  errors are reported the same way as for other requests.
+- `watchIPNBus` no longer ends with `streamOverflow` on an undecodable line
+  or, with a reconnect policy, on its first successful reconnect: the stream
+  continues, the line is reported through `onUndecodableLine`, and genuine
+  buffer overflow still throws `streamOverflow`.
+- `PingResult.isDirect` was `true` for TSMP, ICMP, peerAPI, and failed pings,
+  because the daemon sends `Endpoint` as `""` rather than omitting it. It is now
+  `true` exactly when `path` is `.direct`.
+- `PingType.peerAPI` pings never got an answer and ran until the request
+  timeout, because they sent `type=peerAPI`; the daemon only recognizes
+  `peerapi` (`tailcfg.PingPeerAPI`). The raw value is now `"peerapi"`.
+  `PingType(rawValue:)` and decoding still accept `"peerAPI"`.
+- `tailscale-swift ping` no longer prints a bare `via ` for replies without an
+  endpoint.
+- The recovery suggestion for `TailscaleTransportError.socketNotFound` no
+  longer says the client discovers the Mac App Store app's loopback API on its
+  own; that discovery is opt-in (`allowMacOSAppStoreDiscovery: true`).
+- The example packages (`Examples/StatusDemo`, `Examples/Recipes`) build from
+  a checkout in any folder, including a git worktree; before, SwiftPM stopped
+  with `unknown package 'swift-tailscale-client'` unless the folder had the
+  repository's name.
 
 ### Changed
 
-- The API compatibility check now compares against `v1.0.0` with an empty
-  breakage allowlist (previously `v0.12.0` plus an allowlist of pre-1.0 breaks).
-- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
-  and advance the default advertised capability from 144 to 152. Explicit
-  `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
-  still override the default. The upstream `cert-status/` and
-  `resume-ipn-bus` handlers are recorded as unwrapped. See
-  `Documentation/COMPATIBILITY-148.md` and
-  `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
-  compatibility evidence.
 - A watch answered with HTTP 400 now ends instead of being retried:
   `StreamRetryPolicy.classify` treats `unexpectedStatus(400, …)` as fatal, so
   the initial open throws it and a reconnecting stream ends with it. 429, 5xx,
@@ -81,10 +113,46 @@ All notable changes to this project will be documented in this file. The format 
   `[.initialState, .initialHealthState, .peerChanges, .noNetMap]` and re-reads
   `status()` on each notification, reconnect, and state gap, instead of asking
   for `.initialNetMap`. It works on daemons before and after Tailscale 1.104.
+- Re-pin upstream LocalAPI provenance to `tailscale/tailscale@1db8e79a8b00`
+  and advance the default advertised capability from 144 to 152. Explicit
+  `capabilityVersion` configuration and `TAILSCALE_LOCALAPI_CAPABILITY`
+  still override the default. The upstream `cert-status/` and
+  `resume-ipn-bus` handlers are recorded as unwrapped. See
+  `Documentation/COMPATIBILITY-148.md` and
+  `Documentation/COMPATIBILITY-152.md` for the upstream reviews and
+  compatibility evidence.
+- The API compatibility check now compares against `v1.0.0` with an empty
+  breakage allowlist (previously `v0.12.0` plus an allowlist of pre-1.0 breaks).
+- The release workflow can be rehearsed with a manual run that validates,
+  tests, builds, checksums, and aggregates evidence for any commit without
+  publishing. Release evidence now requires the packaged CLI to report the
+  tagged version.
+- CI no longer cancels a run on `main` that has started when the next commit
+  lands; only superseded pull-request runs are cancelled, so a release commit
+  keeps the completed CI run the release workflow looks for. (GitHub still
+  replaces a `main` run that is waiting to start behind another.)
 
 ### Documentation
 
+- The endpoint manifest (`Documentation/endpoints.json`) and the tables
+  generated from it keep three kinds of evidence apart for each endpoint: what
+  the unit tests decode (synthetic fixture, captured fixture, or wire shape),
+  the CI comparison with the pinned upstream source, and observation on a real
+  daemon, which names the lane, run, tailscaled version, and date.
+  Headscale-matrix observations from v0.12.0 code are kept in their own
+  column, labeled as pre-1.0. `min_tailscaled` no longer implies a tested
+  floor. `generate-endpoint-docs.py --check` rejects untraceable live claims.
+  `capture-fixtures.py --capture`, which read live status and then wrote
+  synthetic fixtures, is removed; `Scripts/capture-ping-fixture.py` is the
+  capture path.
+- `Documentation/TESTING.md` explains how to test against a specific daemon
+  version with `Scripts/disposable-tailscaled.sh`, which builds and runs a
+  throwaway, never-logged-in userspace `tailscaled` of any upstream tag.
+- The integration guide, `llms.txt`, and the agent skill describe ping paths,
+  the watch options that work on current daemons, and Linux as unqualified.
 - Corrected the soak, adoption, consumer, review, support, testing, and 1.0 release documents to state only measured results: the 1-hour and 24-hour soaks are listed as not yet run, Linux as unqualified, no daemon versions as certified, and DCO sign-off as requested but not enforced in CI. The 1.0.0 release record now gives the published outcome and the gates left open.
+- `Documentation/releases/1.1.0.md` records what was run to qualify this
+  release and what remains untested.
 
 ## [1.0.0] - 2026-09-20
 
