@@ -1,36 +1,95 @@
 name: Release
 
-# Cutting a release = merging the CHANGELOG roll, then pushing an annotated
-# tag (see Documentation/RELEASING.md). This workflow does the rest:
-# 1. Validates annotated tag and exact commit SHA match.
-# 2. Creates a staged draft release with release notes.
-# 3. Compiles and smoke-tests macOS universal binary.
-# 5. Generates and verifies canonical SHA256SUMS.txt manifest.
-# 6. Uploads all assets to draft and promotes to public release.
+# Two ways in (see Documentation/RELEASING.md):
+#
+# - Push of an annotated v* tag: validate the tag and its commit, run the tests,
+#   build and smoke-test the universal macOS CLI, write SHA256SUMS.txt, aggregate
+#   exact-SHA evidence from the CI run on the tagged commit, then publish the
+#   GitHub Release with those assets.
+# - workflow_dispatch (rehearsal): the same validation, tests, build, smoke test,
+#   checksums and evidence for any ref, against a simulated tag. The would-be
+#   assets are uploaded as a `rehearsal-release-assets-<tag>` workflow artifact.
+#   A rehearsal never creates or edits a tag or a release: the only job that
+#   holds contents: write is `publish`, and it runs only for tag pushes.
+#
+# A re-run of a tag-push run uses this file as it was at the tagged commit, so a
+# fix made here after tagging does not reach that tag's run.
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to rehearse; its exact commit needs a successful ci.yml run"
+        required: true
+        default: main
+      tag:
+        description: "Simulated tag, e.g. v1.1.0 (empty: v<packageVersion> at that ref)"
+        required: false
+        default: ""
 
+# Read-only by default. `publish` raises its own token to contents: write.
 permissions:
-  contents: write
+  contents: read
   actions: read
   checks: read
 
 jobs:
-  validate-and-stage:
-    name: Validate Tag & Stage Draft Release
+  validate:
+    name: Validate Tag, Commit & Tests
     runs-on: macos-26
     timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.target.outputs.tag }}
+      sha: ${{ steps.target.outputs.sha }}
+      prefix: ${{ steps.target.outputs.prefix }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Resolve release target
+        id: target
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            case "$GITHUB_REF" in
+              refs/tags/v*) ;;
+              *) echo "::error::Releases publish only from v* tag pushes (got $GITHUB_REF)"; exit 1 ;;
+            esac
+            TAG="$GITHUB_REF_NAME"
+            SHA=$(git rev-parse "${GITHUB_REF}^{commit}")
+            PREFIX=""
+          else
+            TAG="$INPUT_TAG"
+            if [ -z "$TAG" ]; then
+              VERSION=$(grep -oE 'packageVersion = "[0-9]+\.[0-9]+\.[0-9]+"' \
+                Sources/TailscaleClient/Configuration/TailscaleClientConfiguration.swift \
+                | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+              TAG="v$VERSION"
+            fi
+            SHA=$(git rev-parse HEAD)
+            PREFIX="rehearsal-"
+            echo "::notice title=Rehearsal::Rehearsing $TAG on $SHA. Nothing is tagged or published."
+          fi
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$TAG' is not of the form vX.Y.Z"
+            exit 1
+          fi
+          echo "Release target: $TAG at $SHA"
+          {
+            echo "tag=$TAG"
+            echo "sha=$SHA"
+            echo "prefix=$PREFIX"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Verify tag is an annotated tag
+        if: github.event_name == 'push'
         run: |
-          TAG_REF="${GITHUB_REF:-refs/tags/$GITHUB_REF_NAME}"
-          TAG_TYPE=$(git cat-file -t "$TAG_REF" 2>/dev/null || true)
+          TAG_TYPE=$(git cat-file -t "$GITHUB_REF" 2>/dev/null || true)
           if [ "$TAG_TYPE" != "tag" ]; then
             echo "::error::Tag '$GITHUB_REF_NAME' is of object type '$TAG_TYPE', expected 'tag'."
             echo "::error::Release tags MUST be annotated tags created with 'git tag -a $GITHUB_REF_NAME -m \"...\"'."
@@ -44,13 +103,14 @@ jobs:
           echo "✓ Tag '$GITHUB_REF_NAME' is a valid annotated tag: '$TAG_SUBJECT'"
 
       - name: Verify exact commit match and clean working tree
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
         run: |
-          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
           HEAD_COMMIT=$(git rev-parse HEAD)
-          echo "Tagged commit:    $TAG_COMMIT"
+          echo "Release commit:   $SHA"
           echo "Checked-out HEAD: $HEAD_COMMIT"
-          if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
-            echo "::error::Checked-out HEAD ($HEAD_COMMIT) does not match tagged commit ($TAG_COMMIT)."
+          if [ "$SHA" != "$HEAD_COMMIT" ]; then
+            echo "::error::Checked-out HEAD ($HEAD_COMMIT) does not match the release commit ($SHA)."
             echo "::error::Release assets must be built from the exact tagged commit."
             exit 1
           fi
@@ -59,69 +119,74 @@ jobs:
             git status --porcelain
             exit 1
           fi
-          echo "✓ Clean working tree verified at commit $TAG_COMMIT"
+          echo "✓ Clean working tree verified at commit $SHA"
 
       - name: Verify All Required Checks passed on commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.target.outputs.sha }}
         run: |
-          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
-          CHECK_CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG_COMMIT}/check-runs" \
+          CHECK_CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" \
             --jq '.check_runs[] | select(.name == "All Required Checks") | .conclusion' | head -1)
           if [ "$CHECK_CONCLUSION" != "success" ]; then
-            echo "::error::All Required Checks did not pass on commit ${TAG_COMMIT} (conclusion: ${CHECK_CONCLUSION})"
+            echo "::error::All Required Checks did not pass on commit ${SHA} (conclusion: ${CHECK_CONCLUSION})"
             exit 1
           fi
-          echo "✓ All Required Checks passed on commit $TAG_COMMIT"
+          echo "✓ All Required Checks passed on commit $SHA"
 
       - name: Verify tag matches a CHANGELOG entry
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           if ! grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
             echo "::error::No CHANGELOG entry for ${VERSION}; add one before tagging"
             exit 1
           fi
 
       - name: Verify docs agree with the tag
-        run: ./Scripts/check-release-consistency.sh "${GITHUB_REF_NAME}"
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: ./Scripts/check-release-consistency.sh "$TAG"
 
       - name: Run tests
         run: swift test
 
-      - name: Extract release notes and create draft release
+      - name: Extract release notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.target.outputs.tag }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
+          mkdir -p "$RUNNER_TEMP/release-notes"
           awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" { found = 1; next }
             found && /^## \[/ { exit }
             found { print }
-          ' CHANGELOG.md > notes.md
-          cat notes.md
-
-          EXISTING_DRAFT=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' 2>/dev/null || echo "not_found")
-          if [ "$EXISTING_DRAFT" = "false" ]; then
-            echo "::error::Release $GITHUB_REF_NAME already exists and is not a draft (cannot overwrite published release)"
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes/notes.md"
+          cat "$RUNNER_TEMP/release-notes/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes/notes.md"; then
+            echo "::error::The CHANGELOG section for ${VERSION} is empty; the release would have no notes"
             exit 1
-          elif [ "$EXISTING_DRAFT" = "true" ]; then
-            echo "Draft release already exists for $GITHUB_REF_NAME; updating notes"
-            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              --draft \
-              --title "$GITHUB_REF_NAME" \
-              --notes-file notes.md \
-              --verify-tag
           fi
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.target.outputs.prefix }}release-notes
+          path: ${{ runner.temp }}/release-notes/notes.md
+          if-no-files-found: error
 
   build-macos-universal:
     name: Build & Smoke-Test macOS Binary
-    needs: validate-and-stage
+    needs: validate
     runs-on: macos-26
     timeout-minutes: 30
+    env:
+      TAG: ${{ needs.validate.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
 
       - name: Build universal CLI binary (arm64 + x86_64)
         run: |
@@ -141,7 +206,7 @@ jobs:
           "$BIN" --help | grep -q "SUBCOMMANDS:"
           VERSION_OUT=$("$BIN" --version)
           echo "CLI version: $VERSION_OUT"
-          test "$VERSION_OUT" = "${GITHUB_REF_NAME#v}"
+          test "$VERSION_OUT" = "${TAG#v}"
           "$BIN" help status >/dev/null
           "$BIN" help serve >/dev/null
 
@@ -152,33 +217,38 @@ jobs:
             exit 1
           fi
 
-          ARCHIVE="tailscale-swift-${GITHUB_REF_NAME}-macos-universal.tar.gz"
+          ARCHIVE="tailscale-swift-${TAG}-macos-universal.tar.gz"
           tar -C "$BIN_DIR" -czf "$ARCHIVE" tailscale-swift
           shasum -a 256 "$ARCHIVE"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-universal
+          name: ${{ needs.validate.outputs.prefix }}macos-universal
           path: tailscale-swift-*-macos-universal.tar.gz
+          if-no-files-found: error
 
-  publish-release:
-    name: Verify Checksums & Publish Release
+  evidence:
+    name: Verify Checksums & Aggregate Evidence
     needs:
-      - validate-and-stage
+      - validate
       - build-macos-universal
     runs-on: macos-26
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      TAG: ${{ needs.validate.outputs.tag }}
+      SHA: ${{ needs.validate.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'push' && github.ref || needs.validate.outputs.sha }}
 
-      - name: Download all release artifacts
+      - name: Download binary artifact
         uses: actions/download-artifact@v4
         with:
+          name: ${{ needs.validate.outputs.prefix }}macos-universal
           path: ${{ runner.temp }}/release-artifacts
-          merge-multiple: true
 
       - name: Compute and verify SHA256SUMS.txt
         run: |
@@ -188,16 +258,17 @@ jobs:
           cat SHA256SUMS.txt
           shasum -a 256 -c SHA256SUMS.txt
 
-      - name: Download test evidence from successful CI on the exact tagged commit
+      - name: Download test evidence from successful CI on the exact commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
-          CI_RUN=$(gh run list --workflow ci.yml --commit "$TAG_COMMIT" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test "$(git rev-parse HEAD)" = "$SHA"
+          CI_RUN=$(gh run list --workflow ci.yml --commit "$SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -z "$CI_RUN" ] || [ "$CI_RUN" = null ]; then
-            echo "::error::No successful CI run for tagged commit $TAG_COMMIT"
+            echo "::error::No successful CI run for commit $SHA"
             exit 1
           fi
+          echo "Using CI run $CI_RUN"
           gh run download "$CI_RUN" --pattern 'test-report-*' --dir "$RUNNER_TEMP/test-reports"
           # Scope every lane verdict to this run, including reusable workflow jobs.
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN}/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/ci-job-pages.json"
@@ -206,27 +277,88 @@ jobs:
       - name: Aggregate and validate release evidence
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIMULATE: ${{ github.event_name == 'push' && 'false' || 'true' }}
         run: |
-          TAG_COMMIT=$(git rev-parse "${GITHUB_REF}^{commit}")
-          python3 Scripts/aggregate-release-evidence.py \
-            --tag "$GITHUB_REF_NAME" \
-            --commit "$TAG_COMMIT" \
+          set -- --tag "$TAG" --commit "$SHA"
+          if [ "$SIMULATE" = "true" ]; then
+            set -- "$@" --simulate-tag
+          fi
+          python3 Scripts/aggregate-release-evidence.py "$@" \
             --artifacts-dir "$RUNNER_TEMP/release-artifacts" \
             --ci-data "$RUNNER_TEMP/ci-checks.json" \
             --test-reports "$RUNNER_TEMP/test-reports" \
-            --output "$RUNNER_TEMP/release-artifacts/release-evidence-${GITHUB_REF_NAME}.json" \
+            --output "$RUNNER_TEMP/release-artifacts/release-evidence-${TAG}.json" \
             --validate
 
-      - name: Attach assets and publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.validate.outputs.prefix }}release-assets-${{ needs.validate.outputs.tag }}
+          path: |
+            ${{ runner.temp }}/release-artifacts/tailscale-swift-*-macos-universal.tar.gz
+            ${{ runner.temp }}/release-artifacts/SHA256SUMS.txt
+            ${{ runner.temp }}/release-artifacts/release-evidence-*.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - validate
+      - evidence
+    # The only path that writes to the repository: real tag pushes, never rehearsals.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-26
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gh runs outside a checkout here; without this it cannot resolve the repo (v1.0.0 failed so).
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-${{ needs.validate.outputs.tag }}
+          path: ${{ runner.temp }}/release-artifacts
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes
+
+      - name: Re-verify checksums
         run: |
           cd "$RUNNER_TEMP/release-artifacts"
-          gh release upload "$GITHUB_REF_NAME" \
-            tailscale-swift-*.tar.gz \
-            SHA256SUMS.txt \
-            "release-evidence-${GITHUB_REF_NAME}.json" \
+          ls -la
+          shasum -a 256 -c SHA256SUMS.txt
+          test -s "release-evidence-${TAG}.json"
+
+      - name: Create or update draft, attach assets, publish
+        run: |
+          A="$RUNNER_TEMP/release-artifacts"
+          NOTES="$RUNNER_TEMP/release-notes/notes.md"
+          EXISTING_DRAFT=$(gh release view "$TAG" --repo "$GH_REPO" --json isDraft --jq '.isDraft' 2>/dev/null || echo "not_found")
+          if [ "$EXISTING_DRAFT" = "false" ]; then
+            echo "::error::Release $TAG already exists and is not a draft (cannot overwrite published release)"
+            exit 1
+          elif [ "$EXISTING_DRAFT" = "true" ]; then
+            echo "Draft release already exists for $TAG; updating notes"
+            gh release edit "$TAG" --repo "$GH_REPO" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" --repo "$GH_REPO" \
+              --draft \
+              --title "$TAG" \
+              --notes-file "$NOTES" \
+              --verify-tag
+          fi
+          gh release upload "$TAG" --repo "$GH_REPO" \
+            "$A"/tailscale-swift-*.tar.gz \
+            "$A/SHA256SUMS.txt" \
+            "$A/release-evidence-${TAG}.json" \
             --clobber
-          gh release edit "$GITHUB_REF_NAME" --draft=false
-          echo "✓ Release $GITHUB_REF_NAME published successfully."
+          gh release edit "$TAG" --repo "$GH_REPO" --draft=false
+          echo "✓ Release $TAG published successfully."

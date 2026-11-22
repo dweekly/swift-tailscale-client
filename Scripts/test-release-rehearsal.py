@@ -48,6 +48,19 @@ GateViolation = agg_module.GateViolation
 EvidenceAggregator = agg_module.EvidenceAggregator
 
 
+def documented_release_tag() -> str:
+    """The tag the tree documents: its top CHANGELOG release, as check-release-consistency.sh reads it.
+
+    The real docs check must target this tag rather than a pinned one, or the release-preparation
+    commit (which moves the CHANGELOG top entry) fails CI and blocks its own tag.
+    """
+    import re
+    match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", (ROOT_DIR / "CHANGELOG.md").read_text(), re.MULTILINE)
+    if not match:
+        raise RuntimeError("CHANGELOG.md has no released version heading")
+    return f"v{match.group(1)}"
+
+
 # ============================================================================
 # Test Fixture Factory: Deterministic 1.0 Release Candidate Evidence
 # ============================================================================
@@ -252,6 +265,7 @@ class TestRunner:
         self.test_negative_gate_6_outdated_docs_and_api()
         self.test_cli_rehearsal_flow_dry_run()
         self.test_genuine_evidence_collection()
+        self.test_version_smoke_and_simulated_tag()
 
         print("\n" + "=" * 80)
         print(f"TEST SUITE SUMMARY: {self.passed} PASSED, {self.failed} FAILED")
@@ -598,7 +612,7 @@ class TestRunner:
             )
             self.log_result(
                 "CLI --rehearse report confirms all 6 gates passed and no publication occurred",
-                "REHEARSAL ONLY" in proc_rehearse.stdout and "SUCCESS (ALL 6 GATES PASSED)" in proc_rehearse.stdout,
+                "never publishes" in proc_rehearse.stdout and "SUCCESS (ALL 6 GATES PASSED)" in proc_rehearse.stdout,
                 f"stdout preview: {proc_rehearse.stdout[:300]}"
             )
 
@@ -609,7 +623,7 @@ class TestRunner:
         print("\n--- Genuine Evidence Collection & Remediation Tests ---")
 
         # 1. _collect_docs_and_api executes real verification scripts
-        agg = EvidenceAggregator(tag="v1.0.0")
+        agg = EvidenceAggregator(tag=documented_release_tag())
         docs_api = agg._collect_docs_and_api(skip_local_checks=False)
         self.log_result(
             "_collect_docs_and_api runs real docs scripts and reports release_consistency passed",
@@ -625,6 +639,13 @@ class TestRunner:
             "_collect_docs_and_api runs real model conformance check",
             docs_api.get("model_conformance_check") == "passed",
             f"Result: {docs_api.get('model_conformance_check')}"
+        )
+        # Negative control: the same real check rejects a tag the tree does not document.
+        wrong = EvidenceAggregator(tag="v0.0.1")._collect_docs_and_api(skip_local_checks=False)
+        self.log_result(
+            "_collect_docs_and_api reports drift for a tag the CHANGELOG does not document",
+            wrong.get("release_consistency", {}).get("status") == "drift_detected",
+            f"Result: {wrong.get('release_consistency')}"
         )
 
         # 2. _collect_assets rejects missing artifacts without synthesizing fake values
@@ -811,6 +832,65 @@ class TestRunner:
                 f"integration lane: {lanes.get('integration_linux_headscale')}"
             )
 
+    # ------------------------------------------------------------------------
+    # Packaged binary must report the tag's version; simulated tags are labeled
+    # ------------------------------------------------------------------------
+    def test_version_smoke_and_simulated_tag(self):
+        print("\n--- Binary Version Smoke Test & Simulated Tag Labeling ---")
+        import tarfile
+
+        class DarwinPlatform:
+            @staticmethod
+            def system():
+                return "Darwin"
+
+            @staticmethod
+            def machine():
+                return "arm64"
+
+        def archive_printing(directory: pathlib.Path, version: str, tag: str) -> pathlib.Path:
+            # A shell stand-in for the CLI, padded past the collector's minimum binary size.
+            binary = directory / "tailscale-swift"
+            binary.write_text(
+                "#!/bin/sh\n"
+                f'if [ "$1" = "--version" ]; then echo {version}; else echo "OVERVIEW: stand-in"; fi\n'
+                + "#" * 12000 + "\n")
+            binary.chmod(0o755)
+            archive = directory / f"tailscale-swift-{tag}-macos-universal.tar.gz"
+            with tarfile.open(archive, "w:gz") as tar:
+                tar.add(binary, arcname="tailscale-swift")
+            return archive
+
+        real_platform = agg_module.platform
+        agg_module.platform = DarwinPlatform
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                directory = pathlib.Path(tmpdir)
+                matching = archive_printing(directory, "1.1.0", "v1.1.0")
+                smoke = EvidenceAggregator(tag="v1.1.0")._smoke_test_archive(matching, "darwin-universal")
+                self.log_result(
+                    "Smoke test passes when --version prints the tag's version",
+                    smoke.get("help_flag") == "passed" and smoke.get("version_flag") == "passed",
+                    f"Smoke: {smoke}"
+                )
+                stale = archive_printing(directory, "1.0.0", "v1.1.0")
+                smoke = EvidenceAggregator(tag="v1.1.0")._smoke_test_archive(stale, "darwin-universal")
+                self.log_result(
+                    "Smoke test fails when the binary reports a different version than the tag",
+                    smoke.get("version_flag") == "failed" and "expected '1.1.0'" in smoke.get("error", ""),
+                    f"Smoke: {smoke}"
+                )
+        finally:
+            agg_module.platform = real_platform
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence = EvidenceAggregator(tag="v9.9.9", artifacts_dir=pathlib.Path(tmpdir)).aggregate(
+                skip_local_checks=True, simulate_tag=True)
+            self.log_result(
+                "Simulated-tag evidence is labeled simulated so it cannot pass for a real tag's record",
+                evidence["tag"].get("simulated") is True,
+                f"Tag: {evidence['tag']}"
+            )
 
 if __name__ == "__main__":
     runner = TestRunner()
